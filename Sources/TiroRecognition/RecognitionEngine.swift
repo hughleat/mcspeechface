@@ -6,6 +6,7 @@ public enum RecognitionModel: String, Codable, Sendable {
     case parakeetCompactCoreML = "parakeet-tdt-ctc-110m-coreml"
     case parakeetV2CoreML = "parakeet-tdt-0.6b-v2-coreml"
     case parakeetV3CoreML = "parakeet-tdt-0.6b-v3-coreml"
+    case parakeetUnifiedCoreML = "parakeet-unified-en-0.6b-coreml"
     case whisperTinyEnglishCoreML = "whisper-tiny-english-coreml"
     case whisperBaseEnglishCoreML = "whisper-base-english-coreml"
     case whisperSmallEnglishCoreML = "whisper-small-english-coreml"
@@ -21,12 +22,14 @@ public enum ParakeetModel: String, CaseIterable, Codable, Sendable {
     case compact
     case v2
     case v3
+    case unified
 
     public var recognitionModel: RecognitionModel {
         switch self {
         case .compact: .parakeetCompactCoreML
         case .v2: .parakeetV2CoreML
         case .v3: .parakeetV3CoreML
+        case .unified: .parakeetUnifiedCoreML
         }
     }
 
@@ -35,6 +38,7 @@ public enum ParakeetModel: String, CaseIterable, Codable, Sendable {
         case .compact: "parakeet-tdt-ctc-110m"
         case .v2: "parakeet-tdt-0.6b-v2"
         case .v3: "parakeet-tdt-0.6b-v3"
+        case .unified: "parakeet-unified-en-0.6b-coreml"
         }
     }
 }

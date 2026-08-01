@@ -34,7 +34,7 @@ final class FileTranscriptionWindowController: NSWindowController, NSWindowDeleg
         content.onCopy = { [weak self] in self?.copyResult() }
         content.onSave = { [weak self] in self?.saveResult() }
         content.onDrop = { [weak self] url in self?.transcribe(url) }
-        content.configureSpeakerIdentification(modelKey: DictationModel.selected.key)
+        content.configureSpeakerIdentification(model: DictationModel.selected)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -63,7 +63,7 @@ final class FileTranscriptionWindowController: NSWindowController, NSWindowDeleg
         let model = DictationModel.selected
         let operationID = operationOwner.begin()
         showWindow(nil)
-        content.configureSpeakerIdentification(modelKey: model.key)
+        content.configureSpeakerIdentification(model: model)
         content.begin(fileName: url.lastPathComponent, modelName: model.name)
         task = Task { [weak self] in
             guard let self else { return }
@@ -306,8 +306,8 @@ private final class FileTranscriptionView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    func configureSpeakerIdentification(modelKey: String) {
-        speakerIdentificationAvailable = modelKey != DictationModel.appleSpeechKey
+    func configureSpeakerIdentification(model: DictationModel) {
+        speakerIdentificationAvailable = model.supportsSpeakerIdentification
         if !speakerIdentificationAvailable {
             identifySpeakersButton.state = .off
         }

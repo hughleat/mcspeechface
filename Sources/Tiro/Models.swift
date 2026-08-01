@@ -198,8 +198,13 @@ struct DictationModel: Hashable {
         return bytes
     }
 
+    var supportsSpeakerIdentification: Bool {
+        key != Self.appleSpeechKey && key != Self.coreMLParakeetUnifiedKey
+    }
+
     static let appleSpeechKey = "apple-speech"
     static let coreMLCompactKey = "coreml-compact"
+    static let coreMLParakeetUnifiedKey = "coreml-parakeet-unified"
     static let appleSpeech = DictationModel(
         key: appleSpeechKey,
         name: "Apple Speech",
@@ -223,7 +228,7 @@ struct DictationModel: Hashable {
         .init(
             key: "coreml-parakeet-v2",
             name: "Parakeet 0.6B v2",
-            detail: "English · Recommended",
+            detail: "English · Established high recall",
             provisioning: .downloadable(bytes: 500_000_000),
             languageSupport: .english,
             isSupported: true
@@ -234,6 +239,14 @@ struct DictationModel: Hashable {
             detail: "Multilingual · Automatic detection",
             provisioning: .downloadable(bytes: 520_000_000),
             languageSupport: .automatic,
+            isSupported: true
+        ),
+        .init(
+            key: coreMLParakeetUnifiedKey,
+            name: "Parakeet Unified English",
+            detail: "English · New · Punctuation built in",
+            provisioning: .downloadable(bytes: 615_000_000),
+            languageSupport: .english,
             isSupported: true
         ),
         .init(

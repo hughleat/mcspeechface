@@ -8,6 +8,7 @@ FluidAudio downloads Core ML conversions of NVIDIA Parakeet models:
 - [Parakeet TDT-CTC 110M](https://huggingface.co/FluidInference/parakeet-tdt-ctc-110m-coreml)
 - [Parakeet TDT 0.6B v2](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml)
 - [Parakeet TDT 0.6B v3](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml)
+- [Parakeet Unified English 0.6B](https://huggingface.co/FluidInference/parakeet-unified-en-0.6b-coreml)
 
 These model repositories contain their applicable license and attribution
 terms. Model files are downloaded separately and are not included in Tiro.

@@ -38,6 +38,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         DictationModel.coreMLCompactKey,
         "coreml-parakeet-v2",
         "coreml-parakeet-v3",
+        "coreml-parakeet-unified",
         DictationModel.appleSpeechKey,
     ]
 
@@ -397,8 +398,10 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     private func starterTitle(for model: DictationModel) -> String {
         switch model.key {
         case DictationModel.coreMLCompactKey: "Fast English — Parakeet Compact (228 MB)"
-        case "coreml-parakeet-v2": "Best English — Parakeet 0.6B v2 (500 MB)"
+        case "coreml-parakeet-v2": "English — Parakeet 0.6B v2 (500 MB)"
         case "coreml-parakeet-v3": "Multilingual — Parakeet 0.6B v3 (520 MB)"
+        case DictationModel.coreMLParakeetUnifiedKey:
+            "New English — Parakeet Unified (615 MB)"
         case DictationModel.appleSpeechKey: "Apple Speech — no Tiro download"
         default: model.name
         }

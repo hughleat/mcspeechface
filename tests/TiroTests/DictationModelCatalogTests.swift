@@ -10,6 +10,7 @@ struct DictationModelCatalogTests {
             "coreml-compact",
             "coreml-parakeet-v2",
             "coreml-parakeet-v3",
+            "coreml-parakeet-unified",
             "coreml-whisper-tiny-english",
             "coreml-whisper-base-english",
             "coreml-whisper-small-english",
@@ -25,6 +26,13 @@ struct DictationModelCatalogTests {
         #expect(DictationModel.catalog.dropFirst().allSatisfy {
             ($0.downloadSizeBytes ?? 0) > 0
         })
+        #expect(!DictationModel.appleSpeech.supportsSpeakerIdentification)
+        #expect(
+            !DictationModel.catalog.first {
+                $0.key == DictationModel.coreMLParakeetUnifiedKey
+            }!.supportsSpeakerIdentification
+        )
+        #expect(DictationModel.coreMLCompact.supportsSpeakerIdentification)
     }
 
     @Test
@@ -34,12 +42,12 @@ struct DictationModelCatalogTests {
         #expect(DictationModel.catalog[2].languageSupport == .english)
         #expect(DictationModel.catalog[3].languageSupport == .automatic)
         #expect(
-            DictationModel.catalog[4...6].allSatisfy {
+            DictationModel.catalog[4...7].allSatisfy {
                 $0.languageSupport == .english
             }
         )
         #expect(
-            DictationModel.catalog.dropFirst(7).allSatisfy {
+            DictationModel.catalog.dropFirst(8).allSatisfy {
                 $0.languageSupport == .selectable
             }
         )

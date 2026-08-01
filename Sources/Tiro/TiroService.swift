@@ -84,6 +84,10 @@ final class TiroService {
                 model: .v3,
                 modelsRootDirectory: root
             ),
+            "coreml-parakeet-unified": CoreMLParakeetEngine(
+                model: .unified,
+                modelsRootDirectory: root
+            ),
         ]
         whisperEngines = [
             "coreml-whisper-tiny-english": CoreMLWhisperEngine(
@@ -159,6 +163,11 @@ final class TiroService {
         try Task.checkCancellation()
         let preferences = DictationPreferences.snapshot(for: model)
         if identifySpeakers {
+            guard model.supportsSpeakerIdentification else {
+                throw TiroError.message(
+                    "\(model.name) does not provide the timestamps needed to identify speakers."
+                )
+            }
             let status = try await speakerDiarizationEngine.status()
             guard status.installed else {
                 throw TiroError.message(

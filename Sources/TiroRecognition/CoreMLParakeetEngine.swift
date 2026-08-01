@@ -95,20 +95,20 @@ struct RuntimeTranscript: Sendable {
     }
 }
 
-protocol CompactCoreMLSession: Sendable {
+protocol ParakeetCoreMLSession: Sendable {
     func transcribe(_ audioURL: URL) async throws -> RuntimeTranscript
 }
 
-protocol CompactCoreMLRuntime: Sendable {
+protocol ParakeetCoreMLRuntime: Sendable {
     func isInstalled(at directory: URL) async -> Bool
     func download(
         to directory: URL,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws
-    func makeSession(from directory: URL) async throws -> any CompactCoreMLSession
+    func makeSession(from directory: URL) async throws -> any ParakeetCoreMLSession
 }
 
-struct FluidAudioRuntime: CompactCoreMLRuntime {
+struct FluidAudioRuntime: ParakeetCoreMLRuntime {
     let model: ParakeetModel
 
     init(model: ParakeetModel = .compact) {
@@ -171,7 +171,7 @@ struct FluidAudioRuntime: CompactCoreMLRuntime {
         try fileManager.moveItem(at: candidate, to: directory)
     }
 
-    func makeSession(from directory: URL) async throws -> any CompactCoreMLSession {
+    func makeSession(from directory: URL) async throws -> any ParakeetCoreMLSession {
         try await Self.withOfflineAccess {
             let configuration = MLModelConfiguration()
             configuration.computeUnits = .cpuAndNeuralEngine
@@ -212,6 +212,8 @@ private extension ParakeetModel {
         case .compact: .tdtCtc110m
         case .v2: .v2
         case .v3: .v3
+        case .unified:
+            preconditionFailure("Unified Parakeet uses UnifiedFluidAudioRuntime")
         }
     }
 }
@@ -267,7 +269,7 @@ private actor AsyncLock {
     }
 }
 
-private actor FluidAudioSession: CompactCoreMLSession {
+private actor FluidAudioSession: ParakeetCoreMLSession {
     private let manager: AsrManager
 
     init(manager: AsrManager) {
@@ -286,6 +288,103 @@ private actor FluidAudioSession: CompactCoreMLSession {
     }
 }
 
+struct UnifiedFluidAudioRuntime: ParakeetCoreMLRuntime {
+    private static let variant = "offline"
+
+    func isInstalled(at directory: URL) async -> Bool {
+        let fileManager = FileManager.default
+        return ModelNames.ParakeetUnified.requiredModels(variant: Self.variant).allSatisfy {
+            let item = directory.appendingPathComponent($0)
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: item.path, isDirectory: &isDirectory) else {
+                return false
+            }
+            if item.pathExtension == "mlmodelc" {
+                return isDirectory.boolValue
+                    && fileManager.fileExists(
+                        atPath: item.appendingPathComponent("coremldata.bin").path
+                    )
+            }
+            return !isDirectory.boolValue
+        }
+    }
+
+    func download(
+        to directory: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws {
+        try await FluidAudioRuntime.withNetworkAccess {
+            try Task.checkCancellation()
+            try await ModelHub.download(
+                .parakeetUnified,
+                to: directory,
+                variant: Self.variant,
+                progressHandler: { update in
+                    progress(Self.normalizedDownloadProgress(update.fractionCompleted))
+                }
+            )
+            try Task.checkCancellation()
+        }
+
+        let downloaded = directory.appendingPathComponent(
+            Repo.parakeetUnified.folderName,
+            isDirectory: true
+        )
+        for item in try FileManager.default.contentsOfDirectory(
+            at: downloaded,
+            includingPropertiesForKeys: nil
+        ) {
+            try FileManager.default.moveItem(
+                at: item,
+                to: directory.appendingPathComponent(item.lastPathComponent)
+            )
+        }
+        try FileManager.default.removeItem(at: downloaded)
+    }
+
+    static func normalizedDownloadProgress(_ fractionCompleted: Double) -> Double {
+        min(1, max(0, fractionCompleted * 2))
+    }
+
+    func makeSession(from directory: URL) async throws -> any ParakeetCoreMLSession {
+        try await FluidAudioRuntime.withOfflineAccess {
+            let configuration = MLModelConfiguration()
+            configuration.computeUnits = .cpuAndNeuralEngine
+            let manager = UnifiedAsrManager(
+                configuration: configuration,
+                encoderPrecision: .int8
+            )
+            try await manager.loadModels(from: directory)
+            return UnifiedFluidAudioSession(manager: manager)
+        }
+    }
+}
+
+private actor UnifiedFluidAudioSession: ParakeetCoreMLSession {
+    private let manager: UnifiedAsrManager
+    private let converter = AudioConverter()
+
+    init(manager: UnifiedAsrManager) {
+        self.manager = manager
+    }
+
+    func transcribe(_ audioURL: URL) async throws -> RuntimeTranscript {
+        let samples = try converter.resampleAudioFile(audioURL)
+        let started = ProcessInfo.processInfo.systemUptime
+        let text = try await manager.transcribe(samples)
+        let transcriptionSeconds = ProcessInfo.processInfo.systemUptime - started
+        let audioSeconds = Double(samples.count) / 16_000
+        return RuntimeTranscript(
+            text: text,
+            audioSeconds: audioSeconds,
+            transcriptionSeconds: transcriptionSeconds,
+            timesFasterThanRealtime: transcriptionSeconds > 0
+                ? audioSeconds / transcriptionSeconds
+                : 0
+        )
+    }
+}
+
 public actor CoreMLParakeetEngine: RecognitionEngine {
     public static let canonicalDirectoryName = "parakeet-tdt-ctc-110m"
 
@@ -293,12 +392,12 @@ public actor CoreMLParakeetEngine: RecognitionEngine {
     public nonisolated let modelsRootDirectory: URL
     public nonisolated let modelDirectory: URL
 
-    private let runtime: any CompactCoreMLRuntime
+    private let runtime: any ParakeetCoreMLRuntime
     private let progressState = DownloadProgressState()
-    private var session: (any CompactCoreMLSession)?
+    private var session: (any ParakeetCoreMLSession)?
     private var preloadTask: (
         id: UUID,
-        task: Task<any CompactCoreMLSession, Error>
+        task: Task<any ParakeetCoreMLSession, Error>
     )?
     private var activity = CoreMLModelActivity.idle
     private var lastError: String?
@@ -311,14 +410,16 @@ public actor CoreMLParakeetEngine: RecognitionEngine {
         self.init(
             model: model,
             modelsRootDirectory: modelsRootDirectory,
-            runtime: FluidAudioRuntime(model: model)
+            runtime: model == .unified
+                ? UnifiedFluidAudioRuntime()
+                : FluidAudioRuntime(model: model)
         )
     }
 
     init(
         model: ParakeetModel = .compact,
         modelsRootDirectory: URL,
-        runtime: any CompactCoreMLRuntime
+        runtime: any ParakeetCoreMLRuntime
     ) {
         let root = modelsRootDirectory.standardizedFileURL
         self.model = model
@@ -438,7 +539,7 @@ public actor CoreMLParakeetEngine: RecognitionEngine {
         let id = UUID()
         let runtime = runtime
         let directory = modelDirectory
-        let task = Task<any CompactCoreMLSession, Error> {
+        let task = Task<any ParakeetCoreMLSession, Error> {
             guard await runtime.isInstalled(at: directory) else {
                 throw CoreMLParakeetError.modelNotInstalled(directory)
             }

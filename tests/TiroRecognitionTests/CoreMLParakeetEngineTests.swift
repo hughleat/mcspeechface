@@ -6,6 +6,14 @@ import Testing
 @Suite(.serialized)
 struct CoreMLParakeetEngineTests {
     @Test
+    func unifiedDownloadProgressCoversTheFullUserVisibleRange() {
+        #expect(UnifiedFluidAudioRuntime.normalizedDownloadProgress(-0.1) == 0)
+        #expect(UnifiedFluidAudioRuntime.normalizedDownloadProgress(0.25) == 0.5)
+        #expect(UnifiedFluidAudioRuntime.normalizedDownloadProgress(0.5) == 1)
+        #expect(UnifiedFluidAudioRuntime.normalizedDownloadProgress(1) == 1)
+    }
+
+    @Test
     func testDerivesCanonicalDirectoryFromConfiguredRoot() {
         let engine = CoreMLParakeetEngine(
             modelsRootDirectory: URL(fileURLWithPath: "/tmp/tiro-coreml")
@@ -363,13 +371,44 @@ struct CoreMLParakeetEngineTests {
         #expect(transcript.timesFasterThanRealtime > 0)
     }
 
+    @Test
+    func unifiedModelTranscribesRealAudioWhenExplicitlyConfigured() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard
+            environment["TIRO_UNIFIED_COREML_TEST"] == "1",
+            let rootPath = environment["TIRO_COREML_TEST_MODEL_ROOT"],
+            let audioPath = environment["TIRO_COREML_TEST_AUDIO"]
+        else {
+            return
+        }
+        let engine = CoreMLParakeetEngine(
+            model: .unified,
+            modelsRootDirectory: URL(fileURLWithPath: rootPath, isDirectory: true)
+        )
+
+        if environment["TIRO_COREML_TEST_DOWNLOAD"] == "1",
+           !(await engine.status()).installed {
+            try await engine.download()
+        }
+        try await engine.preload()
+        let transcript = try await engine.transcribe(
+            URL(fileURLWithPath: audioPath)
+        )
+
+        #expect(!transcript.text.isEmpty)
+        #expect(transcript.model == .parakeetUnifiedCoreML)
+        #expect(transcript.audioSeconds > 0)
+        #expect(transcript.transcriptionSeconds > 0)
+        #expect(transcript.timesFasterThanRealtime > 0)
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
     }
 }
 
-private actor RuntimeStub: CompactCoreMLRuntime {
+private actor RuntimeStub: ParakeetCoreMLRuntime {
     private var installed: Bool
     private let downloadCreatesInstallation: Bool
     private let downloadThrowsCancellation: Bool
@@ -419,7 +458,7 @@ private actor RuntimeStub: CompactCoreMLRuntime {
         installed = true
     }
 
-    func makeSession(from directory: URL) async throws -> any CompactCoreMLSession {
+    func makeSession(from directory: URL) async throws -> any ParakeetCoreMLSession {
         makeSessionCount += 1
         if sessionDelay > 0 {
             try await Task.sleep(for: .seconds(sessionDelay))
@@ -428,7 +467,7 @@ private actor RuntimeStub: CompactCoreMLRuntime {
     }
 }
 
-private actor SessionStub: CompactCoreMLSession {
+private actor SessionStub: ParakeetCoreMLSession {
     static let segments = [
         TranscriptSegment(
             text: "Hello from Core ML.",

@@ -7,10 +7,11 @@ import Testing
 struct ParakeetCatalogTests {
     @Test
     func catalogHasStableIdentityAndSeparateDirectories() {
-        #expect(ParakeetModel.allCases == [.compact, .v2, .v3])
+        #expect(ParakeetModel.allCases == [.compact, .v2, .v3, .unified])
         #expect(ParakeetModel.compact.recognitionModel == .parakeetCompactCoreML)
         #expect(ParakeetModel.v2.recognitionModel == .parakeetV2CoreML)
         #expect(ParakeetModel.v3.recognitionModel == .parakeetV3CoreML)
+        #expect(ParakeetModel.unified.recognitionModel == .parakeetUnifiedCoreML)
 
         let directoryNames = Set(ParakeetModel.allCases.map(\.directoryName))
         #expect(directoryNames.count == ParakeetModel.allCases.count)
@@ -104,6 +105,32 @@ struct ParakeetCatalogTests {
     }
 
     @Test
+    func unifiedRuntimeRequiresEveryOfflineArtifact() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let required = ModelNames.ParakeetUnified.requiredModels(variant: "offline")
+        for name in required {
+            let item = root.appendingPathComponent(name)
+            if item.pathExtension == "mlmodelc" {
+                try FileManager.default.createDirectory(at: item, withIntermediateDirectories: true)
+                try Data().write(to: item.appendingPathComponent("coremldata.bin"))
+            } else {
+                try Data().write(to: item)
+            }
+        }
+
+        let runtime = UnifiedFluidAudioRuntime()
+        #expect(await runtime.isInstalled(at: root))
+
+        try FileManager.default.removeItem(
+            at: root.appendingPathComponent(try #require(required.first))
+        )
+        #expect(!(await runtime.isInstalled(at: root)))
+    }
+
+    @Test
     func fluidAudioGlobalBackendAccessIsSerializedAndRestored() async throws {
         let originalMode = await FluidAudioRuntime.backendOfflineMode()
         let probe = ConcurrencyProbe()
@@ -151,7 +178,7 @@ struct ParakeetCatalogTests {
     }
 }
 
-private actor CatalogRuntimeStub: CompactCoreMLRuntime {
+private actor CatalogRuntimeStub: ParakeetCoreMLRuntime {
     func isInstalled(at directory: URL) -> Bool {
         true
     }
@@ -163,12 +190,12 @@ private actor CatalogRuntimeStub: CompactCoreMLRuntime {
 
     func makeSession(
         from directory: URL
-    ) -> any CompactCoreMLSession {
+    ) -> any ParakeetCoreMLSession {
         CatalogSessionStub()
     }
 }
 
-private actor CatalogSessionStub: CompactCoreMLSession {
+private actor CatalogSessionStub: ParakeetCoreMLSession {
     func transcribe(_ audioURL: URL) -> RuntimeTranscript {
         RuntimeTranscript(
             text: "Catalog transcript",
@@ -179,7 +206,7 @@ private actor CatalogSessionStub: CompactCoreMLSession {
     }
 }
 
-private actor CatalogLifecycleRuntime: CompactCoreMLRuntime {
+private actor CatalogLifecycleRuntime: ParakeetCoreMLRuntime {
     func isInstalled(at directory: URL) -> Bool {
         FileManager.default.fileExists(
             atPath: directory.appendingPathComponent("model").path
@@ -200,7 +227,7 @@ private actor CatalogLifecycleRuntime: CompactCoreMLRuntime {
 
     func makeSession(
         from directory: URL
-    ) -> any CompactCoreMLSession {
+    ) -> any ParakeetCoreMLSession {
         CatalogSessionStub()
     }
 }

@@ -135,11 +135,14 @@ application names.
 | --- | --- | ---: |
 | Fast everyday English | Parakeet Compact | 228 MB |
 | Larger English Parakeet | Parakeet 0.6B v2 | 500 MB |
+| New punctuated English model | Parakeet Unified English | 615 MB |
 | 25 European languages | Parakeet 0.6B v3 | 520 MB |
 | No Tiro-managed download | Apple Speech | None |
 
-For everyday English, start with Compact; v2 provides the larger English-only
-Parakeet model. Choose v3 for automatic detection across its
+For everyday English, start with Compact; v2 provides the established larger
+English-only Parakeet model. Unified is a newer English model with punctuation
+and capitalization built into its recognition output. Choose v3 for automatic
+detection across its
 [supported European languages](https://github.com/FluidInference/FluidAudio/blob/main/Documentation/ASR/GettingStarted.md).
 Apple Speech avoids a Tiro-managed model download but requires macOS Speech
 Recognition permission and on-device support for the selected language.
@@ -200,6 +203,7 @@ For a completely clean removal, you can also delete
 ## More
 
 - [Use Tiro from the command line](docs/COMMAND_LINE.md)
+- [See what has changed](CHANGELOG.md)
 - [Build Tiro from source](docs/DEVELOPMENT.md)
 - [Read the beta testing guide](docs/BETA_TESTING.md)
 - [Report a bug or suggest an improvement](https://github.com/hughleat/tiro/issues/new/choose)
