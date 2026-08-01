@@ -263,11 +263,7 @@ final class ModelManagementView: NSStackView, NSTableViewDataSource, NSTableView
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !isApplyingSelection else { return }
         let row = table.selectedRow
-        guard !modelUseInProgress,
-              models.indices.contains(row),
-              models[row].usable || (models[row].isSystemManaged && models[row].installed),
-              models[row].operation == nil,
-              let model = models[row].dictationModel else {
+        guard let model = selectableModel(at: row) else {
             restoreSafeSelection()
             return
         }
@@ -298,6 +294,32 @@ final class ModelManagementView: NSStackView, NSTableViewDataSource, NSTableView
                 window?.presentError(error)
             }
         }
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        selectableModel(at: row) != nil
+    }
+
+    private func selectableModel(at row: Int) -> DictationModel? {
+        guard models.indices.contains(row),
+              Self.allowsSelection(
+                of: models[row],
+                modelUseInProgress: modelUseInProgress,
+                modelOperationInProgress: service.modelOperationInProgress
+              ) else {
+            return nil
+        }
+        return models[row].dictationModel
+    }
+
+    static func allowsSelection(
+        of model: ManagedModel,
+        modelUseInProgress: Bool,
+        modelOperationInProgress: Bool
+    ) -> Bool {
+        !modelUseInProgress
+            && !modelOperationInProgress
+            && (model.usable || (model.isSystemManaged && model.installed))
     }
 
     @objc fileprivate func download(_ sender: NSButton) {

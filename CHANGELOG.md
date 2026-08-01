@@ -3,6 +3,13 @@
 Notable changes to Tiro are recorded here. Tiro is currently in public beta,
 so releases may also refine existing behaviour and compatibility.
 
+## 0.1.0-beta.7 - 2026-08-01
+
+### Fixed
+
+- Prevented unavailable or temporarily busy model rows from briefly appearing
+  selected before Tiro restored the active model.
+
 ## 0.1.0-beta.6 - 2026-08-01
 
 ### Added

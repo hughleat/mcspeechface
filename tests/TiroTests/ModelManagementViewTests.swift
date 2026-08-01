@@ -77,6 +77,77 @@ struct ModelManagementViewTests {
     }
 
     @Test @MainActor
+    func unavailableModelCannotAcquireTheSelectionHighlight() throws {
+        _ = NSApplication.shared
+        let defaults = UserDefaults.standard
+        let previousSelection = defaults.string(forKey: "selectedModel")
+        defer {
+            restoreSelection(previousSelection, in: defaults)
+        }
+        let available = Array(
+            DictationModel.all.filter { $0.downloadSizeBytes != nil }.prefix(2)
+        )
+        #expect(available.count == 2)
+        guard available.count == 2 else { return }
+        DictationModel.select(available[0])
+
+        let view = ModelManagementView(service: TiroService())
+        view.apply([
+            managedModel(available[0]),
+            managedModel(available[1], installed: false, usable: false),
+        ])
+        let table = try #require(firstSubview(of: NSTableView.self, in: view))
+
+        #expect((table.delegate as AnyObject?) === view)
+        #expect(table.delegate?.tableView?(table, shouldSelectRow: 0) == true)
+        #expect(table.delegate?.tableView?(table, shouldSelectRow: 1) == false)
+        #expect(table.selectedRow == 0)
+        view.cancelWork()
+    }
+
+    @Test @MainActor
+    func selectionEligibilityCoversUnavailableAndBusyStates() {
+        let downloadable = DictationModel.coreMLCompact
+        let appleSpeech = DictationModel.appleSpeech
+
+        #expect(ModelManagementView.allowsSelection(
+            of: managedModel(downloadable),
+            modelUseInProgress: false,
+            modelOperationInProgress: false
+        ))
+        #expect(!ModelManagementView.allowsSelection(
+            of: managedModel(downloadable, installed: false, usable: false),
+            modelUseInProgress: false,
+            modelOperationInProgress: false
+        ))
+        #expect(ModelManagementView.allowsSelection(
+            of: managedModel(appleSpeech, usable: false),
+            modelUseInProgress: false,
+            modelOperationInProgress: false
+        ))
+        #expect(!ModelManagementView.allowsSelection(
+            of: managedModel(appleSpeech, installed: false, usable: false),
+            modelUseInProgress: false,
+            modelOperationInProgress: false
+        ))
+        #expect(!ModelManagementView.allowsSelection(
+            of: managedModel(downloadable, operation: .downloading(progress: 0.2)),
+            modelUseInProgress: false,
+            modelOperationInProgress: true
+        ))
+        #expect(!ModelManagementView.allowsSelection(
+            of: managedModel(downloadable),
+            modelUseInProgress: false,
+            modelOperationInProgress: true
+        ))
+        #expect(!ModelManagementView.allowsSelection(
+            of: managedModel(downloadable),
+            modelUseInProgress: true,
+            modelOperationInProgress: false
+        ))
+    }
+
+    @Test @MainActor
     func deletingSelectionFallsBackWithoutReenteringDelegate() {
         _ = NSApplication.shared
         let defaults = UserDefaults.standard
@@ -177,6 +248,7 @@ struct ModelManagementViewTests {
     @MainActor
     private func managedModel(
         _ model: DictationModel,
+        installed: Bool = true,
         usable: Bool = true,
         deleting: Bool = false,
         operation: ManagedModelOperation? = nil
@@ -184,7 +256,7 @@ struct ModelManagementViewTests {
         ManagedModel(
             key: model.key,
             installedSizeBytes: 1,
-            installed: true,
+            installed: installed,
             usable: usable,
             operation: deleting ? .deleting : operation,
             loaded: false,
