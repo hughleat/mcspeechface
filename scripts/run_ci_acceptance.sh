@@ -12,7 +12,7 @@ failures="$(
     grep -E '✘|recorded an issue|Expectation failed|Caught error|error:' "$LOG" \
         | tail -80 || true
 )"
-failure_summary="${failures:-$(tail -40 "$LOG")}"
+failure_summary="${failures:+$failures$'\n\n'}$(tail -60 "$LOG")"
 {
     echo "### Acceptance failure"
     echo '```text'
