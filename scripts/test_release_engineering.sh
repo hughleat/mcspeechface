@@ -85,7 +85,7 @@ rg -q -F 'persist-credentials: false' "$MACOS_14_WORKFLOW"
 rg -q -F 'DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer' "$MACOS_14_WORKFLOW"
 rg -q -F 'run: brew install actionlint cmake ripgrep' "$MACOS_14_WORKFLOW"
 rg -q -F "run: swift --version | grep -q 'Swift version 6\\.'" "$MACOS_14_WORKFLOW"
-rg -q -F 'run: ./scripts/test_all.sh' "$MACOS_14_WORKFLOW"
+rg -q -F 'if ./scripts/test_all.sh 2>&1 | tee "$log"; then' "$MACOS_14_WORKFLOW"
 if rg -q 'setup-uv|uv sync|python install' "$MACOS_14_WORKFLOW"; then
     print -u2 "native acceptance workflow still installs Python"
     exit 1
