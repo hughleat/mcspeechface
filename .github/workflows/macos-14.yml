@@ -34,38 +34,7 @@ jobs:
         run: swift --version | grep -q 'Swift version 6\.'
 
       - name: Run complete acceptance suite
-        shell: bash
-        run: |
-          set -o pipefail
-          log="$RUNNER_TEMP/tiro-acceptance.log"
-          if ./scripts/test_all.sh 2>&1 | tee "$log"; then
-            exit 0
-          fi
-
-          {
-            echo "### Acceptance failure"
-            echo '```text'
-            grep -E '✘|recorded an issue|Expectation failed|Caught error|error:' "$log" \
-              | tail -80 || true
-            echo '```'
-            echo "### End of log"
-            echo '```text'
-            tail -80 "$log"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          message="$(
-            grep -E '✘|recorded an issue|Expectation failed|Caught error|error:' "$log" \
-              | tail -80 || true
-          )"
-          if [[ -z "$message" ]]; then
-            message="$(tail -40 "$log")"
-          fi
-          message="${message//'%'/'%25'}"
-          message="${message//$'\r'/'%0D'}"
-          message="${message//$'\n'/'%0A'}"
-          printf '::error title=Acceptance suite failed::%s\n' "$message"
-          exit 1
+        run: ./scripts/run_ci_acceptance.sh
 
       - name: Retain tested DMG
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

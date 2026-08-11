@@ -13,7 +13,7 @@ else
 fi
 
 PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/native/Info.plist")"
-BUILD_NUMBER="${2:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT/native/Info.plist")}"
+BUILD_NUMBER="${BETA_NUMBER:-${2:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT/native/Info.plist")}}"
 if [[ "$VERSION" != "$PLIST_VERSION" ]]; then
     echo "Tag version $VERSION does not match Info.plist version $PLIST_VERSION." >&2
     exit 1
