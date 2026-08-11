@@ -13,6 +13,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Launch Tiro at login", target: nil, action: nil)
     private let shortcutRecorder = ShortcutRecorderView()
     private let dictationPreferencesView = DictationPreferencesView()
+    private let transcriptEditingView: TranscriptEditingSettingsView
     private let snippetEditor: SnippetEditorView
     private let vocabularyEditor: VocabularyEditorView
     private let suggestionsView: VocabularySuggestionsView
@@ -28,7 +29,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var checkedReleaseURL: URL?
     private var navigationController: SettingsNavigationController?
 
-    init(service: TiroService) {
+    init(
+        service: TiroService,
+        transcriptEditingService: TranscriptEditingService = TranscriptEditingService()
+    ) {
+        transcriptEditingView = TranscriptEditingSettingsView(service: transcriptEditingService)
         vocabularyEditor = VocabularyEditorView(service: service)
         snippetEditor = SnippetEditorView(service: service)
         suggestionsView = VocabularySuggestionsView(service: service)
@@ -93,6 +98,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         modelComparisonView.cancelWork()
         snippetEditor.cancelWork()
         privacySettingsView.cancelWork()
+        transcriptEditingView.cancelWork()
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -103,6 +109,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         refreshModel()
         dictationPreferencesView.refresh()
         dictationPreferencesView.setModel(DictationModel.selected)
+        transcriptEditingView.refresh()
         snippetEditor.load()
         autoPasteButton.state = UserDefaults.standard.bool(forKey: "autoPaste") ? .on : .off
         soundFeedbackButton.state = UserDefaults.standard.bool(forKey: "soundFeedback") ? .on : .off
@@ -191,10 +198,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func makeGeneralView() -> NSView {
         let dictationLabel = sectionLabel("Dictation")
+        let correctionsLabel = sectionLabel("Spoken Corrections")
         let shortcutLabel = sectionLabel("Shortcut")
         let commandLineLabel = sectionLabel("Command Line")
         let stack = NSStackView(views: [
             dictationLabel, dictationPreferencesView,
+            correctionsLabel, transcriptEditingView,
             shortcutLabel, shortcutRecorder,
             autoPasteButton, soundFeedbackButton, launchAtLoginButton,
             commandLineLabel, commandLineToolView,
@@ -204,9 +213,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.alignment = .leading
         stack.spacing = 10
         stack.setCustomSpacing(20, after: dictationPreferencesView)
+        stack.setCustomSpacing(20, after: transcriptEditingView)
         stack.setCustomSpacing(18, after: shortcutRecorder)
         stack.setCustomSpacing(20, after: launchAtLoginButton)
         dictationPreferencesView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        transcriptEditingView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         shortcutRecorder.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         commandLineToolView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return stack

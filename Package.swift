@@ -8,6 +8,7 @@ let package = Package(
     products: [
         .executable(name: "Tiro", targets: ["Tiro"]),
         .executable(name: "TiroCommand", targets: ["TiroCLI"]),
+        .library(name: "TiroEditing", targets: ["TiroEditing"]),
         .library(name: "TiroIPC", targets: ["TiroIPC"]),
         .library(name: "TiroRecognition", targets: ["TiroRecognition"]),
     ],
@@ -23,6 +24,10 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "TiroEditing",
+            path: "Sources/TiroEditing"
+        ),
+        .target(
             name: "TiroRecognition",
             dependencies: [
                 .product(name: "FluidAudio", package: "FluidAudio"),
@@ -32,7 +37,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Tiro",
-            dependencies: ["TiroIPC", "TiroRecognition"],
+            dependencies: ["TiroEditing", "TiroIPC", "TiroRecognition"],
             path: "Sources/Tiro"
         ),
         .target(
@@ -73,6 +78,11 @@ let package = Package(
                 "TranscriptExportTests.swift",
                 "UpdateCheckerTests.swift",
             ]
+        ),
+        .testTarget(
+            name: "TiroEditingTests",
+            dependencies: ["TiroEditing"],
+            path: "tests/TiroEditingTests"
         ),
         .testTarget(
             name: "TiroRecognitionTests",

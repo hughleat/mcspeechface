@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import ApplicationServices
+import TiroEditing
 import TiroIPC
 import TiroRecognition
 import UniformTypeIdentifiers
@@ -20,6 +21,7 @@ import UniformTypeIdentifiers
     private let hotkeys = HotkeyManager()
     private let destinationTracker = DestinationTracker()
     private let pasteCoordinator = PasteCoordinator()
+    private let transcriptEditingService = TranscriptEditingService()
     private let commandServer = TiroCommandSocketServer()
 #if TIRO_SPONSORSHIP_ENABLED
     private let supportPromptPolicy = SupportPromptPolicy()
@@ -27,6 +29,7 @@ import UniformTypeIdentifiers
 #endif
     private lazy var settingsWindow = makeSettingsWindow()
     private lazy var fileTranscriptionWindow = makeFileTranscriptionWindow()
+    private var transcriptReviewWindow: TranscriptReviewWindowController?
     private var onboardingWindow: OnboardingWindowController?
     private var statusItem: NSStatusItem!
     private var state: State = .idle
@@ -97,6 +100,7 @@ import UniformTypeIdentifiers
         transcriptionTask?.cancel()
         pasteRetryTask?.cancel()
         commandTranscriptionTask?.cancel()
+        transcriptReviewWindow?.cancel()
         hotkeys.stop()
         PasteEventGate.shared.stop()
         commandServer.stop()
@@ -524,7 +528,10 @@ import UniformTypeIdentifiers
     }
 
     private func makeSettingsWindow() -> SettingsWindowController {
-        let controller = SettingsWindowController(service: service)
+        let controller = SettingsWindowController(
+            service: service,
+            transcriptEditingService: transcriptEditingService
+        )
         controller.onModelChanged = { [weak self] model in
             self?.updateModelChecks()
             if self?.installedModelKeys.contains(model.key) == true {
@@ -904,24 +911,29 @@ import UniformTypeIdentifiers
         destinationSession = nil
         originApplication = nil
         var completionOverlay = OverlayState.copied
-        if !response.text.isEmpty {
+        let completedText = await textAfterSpokenCorrections(response)
+        guard !Task.isCancelled else {
+            finishCancelledTranscription()
+            return
+        }
+        if !completedText.isEmpty {
 #if TIRO_SPONSORSHIP_ENABLED
             supportPromptPolicy.recordSuccessfulTranscription()
             scheduleNextSupportPromptCheck(minimumDelay: 1)
 #endif
             if shouldAutoPaste, let destination {
                 do {
-                    let result = try await pasteCoordinator.paste(response.text, to: destination)
+                    let result = try await pasteCoordinator.paste(completedText, to: destination)
                     completionOverlay = result == .confirmed ? .pasted : .pasteSent
                     clearPasteRecovery()
                 } catch {
-                    copyToClipboard(response.text)
+                    copyToClipboard(completedText)
                     completionOverlay = .pasteFailed
-                    rememberPasteFailure(response.text, error: error)
+                    rememberPasteFailure(completedText, error: error)
                     NSLog("Could not auto-paste transcription: %@", error.localizedDescription)
                 }
             } else {
-                copyToClipboard(response.text)
+                copyToClipboard(completedText)
                 clearPasteRecovery()
             }
         }
@@ -935,6 +947,43 @@ import UniformTypeIdentifiers
         overlay.dismiss(after: 0.8)
         if DictationModel.selected == model {
             modelStatusItem.title = "Model: Ready"
+        }
+    }
+
+    private func textAfterSpokenCorrections(_ response: TranscriptionResponse) async -> String {
+        guard TranscriptEditingModel.selected != .off, !response.text.isEmpty else {
+            return response.text
+        }
+        do {
+            switch try await transcriptEditingService.proposeEdits(
+                to: response.text,
+                language: nil
+            ) {
+            case .unchanged:
+                return response.text
+            case .proposal(let proposal):
+                overlay.dismiss()
+                let reviewWindow = transcriptReviewWindow ?? TranscriptReviewWindowController()
+                transcriptReviewWindow = reviewWindow
+                let selected = await reviewWindow.review(proposal)
+                if selected != response.text {
+                    do {
+                        try await service.correctHistoryEntry(
+                            id: response.id,
+                            correctedText: selected
+                        )
+                    } catch {
+                        NSLog(
+                            "Could not save the accepted spoken correction: %@",
+                            error.localizedDescription
+                        )
+                    }
+                }
+                return selected
+            }
+        } catch {
+            NSLog("Could not analyse spoken corrections: %@", error.localizedDescription)
+            return response.text
         }
     }
 
