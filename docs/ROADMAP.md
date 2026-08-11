@@ -22,8 +22,9 @@ The first version should:
 - run entirely on the Mac;
 - treat Apple Foundation Models as one provider, not as a dependency of the
   transcript-editing pipeline;
-- offer a small curated library of downloadable third-party models with clear
-  source, licence, language, size, and hardware information;
+- launch with a small evaluated set of downloadable third-party models, then
+  grow into a broad catalogue with clear source, licence, language, size, and
+  hardware information;
 - download only the model the person explicitly selects and support removing it;
 - preserve the verbatim transcript alongside any proposed revision;
 - present changes for review rather than silently rewriting uncertain text;
@@ -47,10 +48,13 @@ all providers. The first providers to prototype are:
 Tiro should invoke the selected provider in-process, without requiring Python,
 MLX, Ollama, a local server, or an account. Third-party downloads should use the
 same staged installation, validation, disk-space checks, cancellation, and safe
-removal behaviour as speech models. The initial library should be curated rather
-than accepting arbitrary model URLs: Tiro needs to know that each model's
-licence, prompt format, tokenizer, output quality, and memory requirements are
-suitable. Importing compatible local GGUF files can be considered later.
+removal behaviour as speech models. Compatible models should be addable through
+verified catalogue metadata rather than provider-specific application code, so
+the library can grow without increasing architectural complexity. Catalogue
+entries must pin the source revision and describe the model's licence, prompt
+format, tokenizer, output quality, and memory requirements. Importing compatible
+local GGUF files or adding a model from a URL can be considered once Tiro can
+validate those properties safely.
 
 Questions to answer during prototyping:
 
