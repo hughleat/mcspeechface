@@ -49,6 +49,23 @@ struct LocalTranscriptEditingTests {
     }
 
     @Test
+    func reportsDownloadSpaceIncludingSafetyReserve() async throws {
+        let data = Data("small test model".utf8)
+        let fixture = try Fixture(data: data)
+        defer { fixture.remove() }
+        let store = LocalTranscriptEditingModelStore(
+            spec: fixture.spec,
+            root: fixture.modelsRoot,
+            downloader: FixtureDownloader(data: data)
+        )
+
+        let space = await store.downloadSpace()
+
+        #expect(space.requiredBytes == Int64(data.count) + 2_000_000_000)
+        #expect(space.availableBytes.map { $0 > 0 } ?? true)
+    }
+
+    @Test
     func parsesGroundedGGUFDecision() throws {
         let original = "Meet Tuesday. No, change Tuesday to Thursday."
         let output = #"""

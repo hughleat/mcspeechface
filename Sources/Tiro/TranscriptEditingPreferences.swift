@@ -1,7 +1,7 @@
 import Foundation
 import TiroEditing
 
-enum TranscriptEditingModel: String, CaseIterable, Sendable {
+enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
     case off
     case appleFoundation
     case qwenLocal
@@ -16,6 +16,22 @@ enum TranscriptEditingModel: String, CaseIterable, Sendable {
         }
     }
 
+    var detail: String {
+        switch self {
+        case .off: "Do not repair spoken self-corrections"
+        case .appleFoundation: "Provided by macOS · On-device"
+        case .qwenLocal: "Multilingual · On-device · \(downloadSizeDescription)"
+        }
+    }
+
+    var downloadSizeDescription: String {
+        guard self == .qwenLocal else { return "" }
+        return ByteCountFormatter.string(
+            fromByteCount: LocalTranscriptEditingModelSpec.qwen3Local.expectedBytes,
+            countStyle: .file
+        )
+    }
+
     static var selected: TranscriptEditingModel {
         get {
             UserDefaults.standard.string(forKey: defaultsKey)
@@ -28,6 +44,8 @@ enum TranscriptEditingModel: String, CaseIterable, Sendable {
 actor TranscriptEditingService {
     private var appleEditor: (any TranscriptEditor)?
     private var qwenEditor: (any TranscriptEditor)?
+    private var activeQwenRepairs = 0
+    private var localModelMutationInProgress = false
     private let localModelStore: LocalTranscriptEditingModelStore
     private let llamaExecutableURL: URL
 
@@ -62,7 +80,15 @@ actor TranscriptEditingService {
     ) async throws -> TranscriptEditDecision {
         let selection = TranscriptEditingModel.selected
         guard selection != .off else { return .unchanged }
-        return try await editor(for: selection).proposeEdits(
+        if selection == .qwenLocal, localModelMutationInProgress {
+            throw TranscriptEditingServiceError.modelOperationInProgress
+        }
+        let selectedEditor = try editor(for: selection)
+        if selection == .qwenLocal { activeQwenRepairs += 1 }
+        defer {
+            if selection == .qwenLocal { activeQwenRepairs -= 1 }
+        }
+        return try await selectedEditor.proposeEdits(
             for: TranscriptEditRequest(text: text, language: language)
         )
     }
@@ -71,11 +97,23 @@ actor TranscriptEditingService {
         await localModelStore.status()
     }
 
+    func localModelDownloadSpace() async -> LocalTranscriptEditingModelDownloadSpace {
+        await localModelStore.downloadSpace()
+    }
+
     func installLocalModel() async throws {
         try await localModelStore.install()
     }
 
     func deleteLocalModel() async throws {
+        guard activeQwenRepairs == 0 else {
+            throw TranscriptEditingServiceError.modelInUse
+        }
+        guard !localModelMutationInProgress else {
+            throw TranscriptEditingServiceError.modelOperationInProgress
+        }
+        localModelMutationInProgress = true
+        defer { localModelMutationInProgress = false }
         qwenEditor = nil
         try await localModelStore.delete()
     }
@@ -108,11 +146,15 @@ actor TranscriptEditingService {
 enum TranscriptEditingServiceError: LocalizedError {
     case disabled
     case requiresMacOS26
+    case modelInUse
+    case modelOperationInProgress
 
     var errorDescription: String? {
         switch self {
         case .disabled: "Spoken corrections are off."
         case .requiresMacOS26: "Apple Intelligence requires macOS 26 or later."
+        case .modelInUse: "Wait for the current transcript repair to finish before deleting this model."
+        case .modelOperationInProgress: "Wait for the correction model operation to finish."
         }
     }
 }

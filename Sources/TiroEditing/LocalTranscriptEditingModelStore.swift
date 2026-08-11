@@ -48,6 +48,15 @@ public enum LocalTranscriptEditingModelStatus: Equatable, Sendable {
     case installed(bytes: Int64)
 }
 
+public struct LocalTranscriptEditingModelDownloadSpace: Equatable, Sendable {
+    public let requiredBytes: Int64
+    public let availableBytes: Int64?
+
+    public var hasEnoughSpace: Bool {
+        availableBytes.map { $0 >= requiredBytes } ?? true
+    }
+}
+
 public enum LocalTranscriptEditingModelError: LocalizedError {
     case operationInProgress
     case unsafeModelsDirectory
@@ -139,6 +148,22 @@ public actor LocalTranscriptEditingModelStore {
         if operationInProgress { return .installing }
         return installedBytes().map(LocalTranscriptEditingModelStatus.installed)
             ?? .notInstalled
+    }
+
+    public func downloadSpace() -> LocalTranscriptEditingModelDownloadSpace {
+        var probe = root
+        while !fileManager.fileExists(atPath: probe.path) {
+            let parent = probe.deletingLastPathComponent()
+            guard parent.path != probe.path else { break }
+            probe = parent
+        }
+        let available = try? probe.resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+        ).volumeAvailableCapacityForImportantUsage
+        return LocalTranscriptEditingModelDownloadSpace(
+            requiredBytes: spec.expectedBytes + Self.safetyReserveBytes,
+            availableBytes: available.flatMap { $0 > 0 ? $0 : nil }
+        )
     }
 
     public func install() async throws {
@@ -233,15 +258,11 @@ public actor LocalTranscriptEditingModelStore {
     }
 
     private func ensureCapacity() throws {
-        let values = try root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        guard let available = values.volumeAvailableCapacityForImportantUsage,
-              available > 0 else {
-            return
-        }
-        let required = spec.expectedBytes + Self.safetyReserveBytes
-        guard available >= required else {
+        let space = downloadSpace()
+        guard let available = space.availableBytes else { return }
+        guard space.hasEnoughSpace else {
             throw LocalTranscriptEditingModelError.insufficientSpace(
-                required: required,
+                required: space.requiredBytes,
                 available: available
             )
         }

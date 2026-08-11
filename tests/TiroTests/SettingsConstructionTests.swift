@@ -56,6 +56,46 @@ struct SettingsConstructionTests {
         #expect(controller.window != nil)
     }
 
+    @Test @MainActor
+    func correctionModelsCanOnlyBeSelectedWhenReady() {
+        #expect(TranscriptEditingSettingsView.allowsSelection(
+            of: .off,
+            appleAvailable: false,
+            localStatus: .notInstalled,
+            operationInProgress: false
+        ))
+        #expect(!TranscriptEditingSettingsView.allowsSelection(
+            of: .appleFoundation,
+            appleAvailable: false,
+            localStatus: .notInstalled,
+            operationInProgress: false
+        ))
+        #expect(TranscriptEditingSettingsView.allowsSelection(
+            of: .appleFoundation,
+            appleAvailable: true,
+            localStatus: .notInstalled,
+            operationInProgress: false
+        ))
+        #expect(!TranscriptEditingSettingsView.allowsSelection(
+            of: .qwenLocal,
+            appleAvailable: true,
+            localStatus: .notInstalled,
+            operationInProgress: false
+        ))
+        #expect(TranscriptEditingSettingsView.allowsSelection(
+            of: .qwenLocal,
+            appleAvailable: true,
+            localStatus: .installed(bytes: 1_282_439_264),
+            operationInProgress: false
+        ))
+        #expect(!TranscriptEditingSettingsView.allowsSelection(
+            of: .off,
+            appleAvailable: true,
+            localStatus: .installed(bytes: 1_282_439_264),
+            operationInProgress: true
+        ))
+    }
+
     @Test
     func historyActionLabelsIncludeConciseTranscriptContext() {
         #expect(

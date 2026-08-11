@@ -46,7 +46,7 @@ final class SettingsTabbedContentView: NSView {
     private let container = NSView()
     private weak var visibleView: NSView?
 
-    init(tabs: [Tab]) {
+    init(tabs: [Tab], accessibilityLabel: String = "Page view") {
         self.tabs = tabs
         segmentedControl = NSSegmentedControl(
             labels: tabs.map(\.title),
@@ -55,6 +55,7 @@ final class SettingsTabbedContentView: NSView {
             action: nil
         )
         super.init(frame: .zero)
+        segmentedControl.setAccessibilityLabel(accessibilityLabel)
         buildContent()
     }
 
@@ -65,7 +66,6 @@ final class SettingsTabbedContentView: NSView {
         segmentedControl.selectedSegment = 0
         segmentedControl.target = self
         segmentedControl.action = #selector(selectionChanged)
-        segmentedControl.setAccessibilityLabel("Page view")
         segmentedControl.translatesAutoresizingMaskIntoConstraints = false
         container.translatesAutoresizingMaskIntoConstraints = false
         addSubview(segmentedControl)

@@ -172,9 +172,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let models = SettingsPageViewController(
             title: "Models",
             contentView: SettingsTabbedContentView(tabs: [
-                .init(title: "Model Library", view: modelManagementView),
-                .init(title: "Compare", view: modelComparisonView)
-            ])
+                .init(title: "Transcription", view: modelManagementView),
+                .init(title: "Corrections", view: transcriptEditingView),
+                .init(title: "Compare Transcription", view: modelComparisonView)
+            ], accessibilityLabel: "Model category")
         )
         let vocabulary = SettingsPageViewController(
             title: "Vocabulary",
@@ -211,12 +212,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func makeGeneralView() -> NSView {
         let dictationLabel = sectionLabel("Dictation")
-        let correctionsLabel = sectionLabel("Spoken Corrections")
         let shortcutLabel = sectionLabel("Shortcut")
         let commandLineLabel = sectionLabel("Command Line")
         let stack = NSStackView(views: [
             dictationLabel, dictationPreferencesView,
-            correctionsLabel, transcriptEditingView,
             shortcutLabel, shortcutRecorder,
             autoPasteButton, soundFeedbackButton, launchAtLoginButton,
             commandLineLabel, commandLineToolView,
@@ -226,11 +225,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.alignment = .leading
         stack.spacing = 10
         stack.setCustomSpacing(20, after: dictationPreferencesView)
-        stack.setCustomSpacing(20, after: transcriptEditingView)
         stack.setCustomSpacing(18, after: shortcutRecorder)
         stack.setCustomSpacing(20, after: launchAtLoginButton)
         dictationPreferencesView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        transcriptEditingView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         shortcutRecorder.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         commandLineToolView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return stack

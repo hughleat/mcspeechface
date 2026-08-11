@@ -247,16 +247,11 @@ final class ModelManagementView: NSStackView, NSTableViewDataSource, NSTableView
     ) -> NSView? {
         guard models.indices.contains(row) else { return nil }
         let identifier = NSUserInterfaceItemIdentifier("ModelRow")
-        let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? ModelRowView)
-            ?? ModelRowView(identifier: identifier)
-        cell.configure(
-            model: models[row],
-            mutationInProgress: modelUseInProgress || models.contains { $0.operation != nil },
-            modelUseInProgress: modelUseInProgress,
-            isSelectedModel: DictationModel.selected.key == models[row].key,
-            row: row,
-            target: self
-        )
+        let cell = (tableView.makeView(
+            withIdentifier: identifier,
+            owner: self
+        ) as? ModelLibraryRowView) ?? ModelLibraryRowView(identifier: identifier)
+        cell.configure(with: rowContent(for: models[row], row: row))
         return cell
     }
 
@@ -432,109 +427,33 @@ final class ModelManagementView: NSStackView, NSTableViewDataSource, NSTableView
     fileprivate static func fileSize(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
-}
 
-private final class ModelRowView: NSTableCellView {
-    private let nameLabel = NSTextField(labelWithString: "")
-    private let detailLabel = NSTextField(labelWithString: "")
-    private let statusLabel = NSTextField(labelWithString: "")
-    private let progress = NSProgressIndicator()
-    private let actionButton = NSButton()
-
-    init(identifier: NSUserInterfaceItemIdentifier) {
-        super.init(frame: .zero)
-        self.identifier = identifier
-        buildContent()
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    private func buildContent() {
-        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        nameLabel.lineBreakMode = .byTruncatingTail
-        detailLabel.font = .systemFont(ofSize: 11)
-        detailLabel.textColor = .secondaryLabelColor
-        detailLabel.lineBreakMode = .byTruncatingTail
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.alignment = .right
-
-        progress.style = .bar
-        progress.minValue = 0
-        progress.maxValue = 1
-        progress.controlSize = .small
-        progress.isDisplayedWhenStopped = false
-        progress.setAccessibilityLabel("Model operation progress")
-
-        let labels = NSStackView(views: [nameLabel, detailLabel])
-        labels.orientation = .vertical
-        labels.alignment = .leading
-        labels.spacing = 3
-        let trailing = NSStackView(views: [statusLabel, progress, actionButton])
-        trailing.orientation = .horizontal
-        trailing.alignment = .centerY
-        trailing.spacing = 8
-        labels.translatesAutoresizingMaskIntoConstraints = false
-        trailing.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(labels)
-        addSubview(trailing)
-        NSLayoutConstraint.activate([
-            labels.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            labels.centerYAnchor.constraint(equalTo: centerYAnchor),
-            labels.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -10),
-            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            trailing.centerYAnchor.constraint(equalTo: centerYAnchor),
-            progress.widthAnchor.constraint(equalToConstant: 88),
-            actionButton.widthAnchor.constraint(equalToConstant: 28),
-            actionButton.heightAnchor.constraint(equalToConstant: 28),
-        ])
-        nameLabel.widthAnchor.constraint(equalTo: labels.widthAnchor).isActive = true
-        detailLabel.widthAnchor.constraint(equalTo: labels.widthAnchor).isActive = true
-    }
-
-    func configure(
-        model: ManagedModel,
-        mutationInProgress: Bool,
-        modelUseInProgress: Bool,
-        isSelectedModel: Bool,
-        row: Int,
-        target: ModelManagementView
-    ) {
+    private func rowContent(for model: ManagedModel, row: Int) -> ModelLibraryRowView.Content {
+        let selected = DictationModel.selected.key == model.key
         let insufficientSpace = !model.installed
             && model.downloadSpace?.hasEnoughSpace == false
         let showsOperationError = model.operationError != nil && !insufficientSpace
-        nameLabel.stringValue = model.name
-        nameLabel.textColor = .labelColor
-        detailLabel.stringValue = detail(for: model)
-        detailLabel.textColor = showsOperationError ? .systemRed : .secondaryLabelColor
-        detailLabel.toolTip = showsOperationError || insufficientSpace
-            ? detailLabel.stringValue
-            : nil
-        statusLabel.stringValue = status(for: model, selected: isSelectedModel)
-        statusLabel.textColor = showsOperationError
-            ? .systemRed
-            : (model.usable ? .secondaryLabelColor : .tertiaryLabelColor)
-
-        configureProgress(for: model)
-        configureAction(
-            for: model,
-            mutationInProgress: mutationInProgress,
-            modelUseInProgress: modelUseInProgress,
-            selected: isSelectedModel,
-            row: row,
-            target: target
-        )
-
-        let selectionStatus = isSelectedModel
+        let detail = detail(for: model)
+        let status = status(for: model, selected: selected)
+        let selectionStatus = selected
             ? "Selected model"
             : (model.isSystemManaged
                 ? "Provided by macOS"
                 : (model.installed ? "Installed" : "Not installed"))
-        setAccessibilityLabel(model.name)
-        setAccessibilityValue(
-            "\(selectionStatus), \(detailLabel.stringValue), \(statusLabel.stringValue)"
+        return ModelLibraryRowView.Content(
+            name: model.name,
+            detail: detail,
+            detailColor: showsOperationError ? .systemRed : .secondaryLabelColor,
+            detailToolTip: showsOperationError || insufficientSpace ? detail : nil,
+            status: status,
+            statusColor: showsOperationError
+                ? .systemRed
+                : (model.usable ? .secondaryLabelColor : .tertiaryLabelColor),
+            progress: progress(for: model),
+            action: action(for: model, selected: selected, row: row),
+            isSelected: selected,
+            accessibilityValue: "\(selectionStatus), \(detail), \(status)"
         )
-        setAccessibilitySelected(isSelectedModel)
     }
 
     private func detail(for model: ManagedModel) -> String {
@@ -573,38 +492,35 @@ private final class ModelRowView: NSTableCellView {
         }
     }
 
-    private func configureProgress(for model: ManagedModel) {
+    private func progress(for model: ManagedModel) -> ModelLibraryRowView.ProgressState? {
         switch model.operation {
         case .downloading(let fraction):
-            progress.isHidden = false
-            progress.isIndeterminate = fraction == nil
-            progress.doubleValue = fraction ?? 0
-            progress.startAnimation(nil)
-            progress.setAccessibilityValue(fraction.map {
-                "\(Int(($0 * 100).rounded())) percent"
-            } ?? "Starting")
+            guard let fraction else {
+                return .indeterminate(accessibilityValue: "Starting")
+            }
+            return .determinate(
+                value: fraction,
+                accessibilityValue: "\(Int((fraction * 100).rounded())) percent"
+            )
         case .cancelling, .deleting:
-            progress.isHidden = false
-            progress.isIndeterminate = true
-            progress.startAnimation(nil)
-            progress.setAccessibilityValue(
-                model.operation?.isDeleting == true ? "Deleting" : "Cancelling"
+            return .indeterminate(
+                accessibilityValue: model.operation?.isDeleting == true
+                    ? "Deleting"
+                    : "Cancelling"
             )
         case nil:
-            progress.stopAnimation(nil)
-            progress.isHidden = true
-            progress.setAccessibilityValue(nil)
+            return nil
         }
     }
 
-    private func configureAction(
+    private func action(
         for model: ManagedModel,
-        mutationInProgress: Bool,
-        modelUseInProgress: Bool,
         selected: Bool,
-        row: Int,
-        target: ModelManagementView
-    ) {
+        row: Int
+    ) -> ModelLibraryRowView.Action? {
+        if (model.isSystemManaged && model.installed) || model.operation?.isDeleting == true {
+            return nil
+        }
         let isDelete = model.installed && !model.isSystemManaged
         let isActiveDownload = model.operation?.isDownloading == true
         let insufficientSpace = !model.installed
@@ -635,39 +551,36 @@ private final class ModelRowView: NSTableCellView {
             action = #selector(ModelManagementView.download(_:))
         }
 
-        actionButton.image = NSImage(
-            systemSymbolName: symbol,
-            accessibilityDescription: label
-        )
-        actionButton.imagePosition = .imageOnly
-        actionButton.bezelStyle = .texturedRounded
-        actionButton.isBordered = false
-        actionButton.tag = row
-        actionButton.target = target
-        actionButton.action = action
-        actionButton.isHidden = (model.isSystemManaged && model.installed)
-            || model.operation?.isDeleting == true
         let deletionBlocked = isDelete && (selected || model.loaded)
-        if case .downloading = model.operation {
-            actionButton.isEnabled = true
+        let mutationInProgress = modelUseInProgress || models.contains { $0.operation != nil }
+        let enabled = if case .downloading = model.operation {
+            true
         } else {
-            actionButton.isEnabled = model.operation == nil
+            model.operation == nil
                 && !mutationInProgress
                 && !deletionBlocked
                 && !insufficientSpace
         }
+        let toolTip: String
         if modelUseInProgress && !isActiveDownload {
-            actionButton.toolTip = "Wait for recording or transcription to finish"
+            toolTip = "Wait for recording or transcription to finish"
         } else if model.loaded && !selected {
-            actionButton.toolTip =
-                "The loaded model cannot be deleted until another model is used"
+            toolTip = "The loaded model cannot be deleted until another model is used"
         } else if isDelete && selected {
-            actionButton.toolTip = "Select another installed model before deleting"
+            toolTip = "Select another installed model before deleting"
         } else if insufficientSpace {
-            actionButton.toolTip = detail(for: model)
+            toolTip = detail(for: model)
         } else {
-            actionButton.toolTip = label
+            toolTip = label
         }
-        actionButton.setAccessibilityLabel(label)
+        return ModelLibraryRowView.Action(
+            label: label,
+            symbol: symbol,
+            isEnabled: enabled,
+            toolTip: toolTip,
+            tag: row,
+            target: self,
+            selector: action
+        )
     }
 }
