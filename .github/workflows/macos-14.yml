@@ -45,11 +45,22 @@ jobs:
           {
             echo "### Acceptance failure"
             echo '```text'
+            grep -E '✘|recorded an issue|Expectation failed|Caught error|error:' "$log" \
+              | tail -80 || true
+            echo '```'
+            echo "### End of log"
+            echo '```text'
             tail -80 "$log"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-          message="$(tail -40 "$log")"
+          message="$(
+            grep -E '✘|recorded an issue|Expectation failed|Caught error|error:' "$log" \
+              | tail -80 || true
+          )"
+          if [[ -z "$message" ]]; then
+            message="$(tail -40 "$log")"
+          fi
           message="${message//'%'/'%25'}"
           message="${message//$'\r'/'%0D'}"
           message="${message//$'\n'/'%0A'}"
