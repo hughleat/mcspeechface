@@ -5,8 +5,10 @@ committed features. Tiro's core remains fast, private, local transcription.
 
 ## Local Transcript Editing
 
-Explore an optional, locally installed language model that can interpret spoken
-self-corrections and propose edits to a completed transcript.
+Explore an optional local language model that can interpret spoken
+self-corrections and propose edits to a completed transcript. As with speech
+recognition, people should be able to choose between Apple's built-in model and
+models downloaded from other sources.
 
 Examples include:
 
@@ -17,7 +19,12 @@ Examples include:
 
 The first version should:
 
-- run entirely on the Mac and require an explicit model download;
+- run entirely on the Mac;
+- treat Apple Foundation Models as one provider, not as a dependency of the
+  transcript-editing pipeline;
+- offer a small curated library of downloadable third-party models with clear
+  source, licence, language, size, and hardware information;
+- download only the model the person explicitly selects and support removing it;
 - preserve the verbatim transcript alongside any proposed revision;
 - present changes for review rather than silently rewriting uncertain text;
 - distinguish editing instructions from words intended for the document;
@@ -30,9 +37,27 @@ proposed result, a concise explanation of the change, and accept, reject, or
 edit controls. Straightforward, high-confidence corrections could eventually
 support an opt-in automatic mode after the review workflow has proved reliable.
 
+The implementation should define a small transcript-editor protocol shared by
+all providers. The first providers to prototype are:
+
+- Apple's on-device Foundation Models framework, where available; and
+- a bundled native llama.cpp runtime for selected quantized GGUF models fetched
+  from pinned Hugging Face revisions.
+
+Tiro should invoke the selected provider in-process, without requiring Python,
+MLX, Ollama, a local server, or an account. Third-party downloads should use the
+same staged installation, validation, disk-space checks, cancellation, and safe
+removal behaviour as speech models. The initial library should be curated rather
+than accepting arbitrary model URLs: Tiro needs to know that each model's
+licence, prompt format, tokenizer, output quality, and memory requirements are
+suitable. Importing compatible local GGUF files can be considered later.
+
 Questions to answer during prototyping:
 
-- Which small Core ML language models are accurate enough on Apple Silicon?
+- Which small external language models are accurate enough on Apple Silicon?
+- What common provider contract supports Apple Foundation Models, GGUF models,
+  and possible future Core ML language models without exposing runtime details
+  to the transcription pipeline?
 - Should commands be interpreted within one recording, in a follow-up recording,
   or both?
 - How should Tiro resolve references such as "that name" or "the previous
