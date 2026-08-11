@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(FoundationModels)
 import FoundationModels
+#endif
 
 public enum AppleFoundationTranscriptEditorError: LocalizedError {
     case unavailable(String)
@@ -13,6 +15,7 @@ public enum AppleFoundationTranscriptEditorError: LocalizedError {
     }
 }
 
+#if canImport(FoundationModels)
 @available(macOS 26.0, *)
 public actor AppleFoundationTranscriptEditor: TranscriptEditor {
     public nonisolated let id = "apple-foundation-model"
@@ -139,3 +142,24 @@ public actor AppleFoundationTranscriptEditor: TranscriptEditor {
         return try GenerationSchema(root: decision, dependencies: [edit])
     }
 }
+#else
+@available(macOS 26.0, *)
+public actor AppleFoundationTranscriptEditor: TranscriptEditor {
+    public nonisolated let id = "apple-foundation-model"
+    public nonisolated let name = "Apple Intelligence"
+
+    public init() throws {}
+
+    public func availability() async -> TranscriptEditorAvailability {
+        .unavailable(reason: "This build does not include Apple Intelligence support.")
+    }
+
+    public func proposeEdits(
+        for request: TranscriptEditRequest
+    ) async throws -> TranscriptEditDecision {
+        throw AppleFoundationTranscriptEditorError.unavailable(
+            "This build does not include Apple Intelligence support."
+        )
+    }
+}
+#endif

@@ -93,7 +93,9 @@ fi
 
 rg -q -F 'permissions:' "$RELEASE_WORKFLOW"
 rg -q -F 'contents: write' "$RELEASE_WORKFLOW"
-rg -q -F 'runs-on: macos-14' "$RELEASE_WORKFLOW"
+rg -q -F 'runs-on: macos-15' "$RELEASE_WORKFLOW"
+rg -q -F 'DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer' "$RELEASE_WORKFLOW"
+rg -q -F "printf 'import FoundationModels\\n' | swiftc -typecheck -" "$RELEASE_WORKFLOW"
 rg -q -F 'run: brew install actionlint cmake ripgrep' "$RELEASE_WORKFLOW"
 rg -q -F 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' "$RELEASE_WORKFLOW"
 rg -q -F 'persist-credentials: false' "$RELEASE_WORKFLOW"

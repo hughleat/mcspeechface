@@ -15,10 +15,10 @@ concurrency:
 jobs:
   release:
     name: Build and publish community DMG
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
 
     steps:
       - name: Check out Tiro
@@ -31,6 +31,9 @@ jobs:
 
       - name: Verify Swift 6 toolchain
         run: swift --version | grep -q 'Swift version 6\.'
+
+      - name: Verify Apple Intelligence SDK
+        run: printf 'import FoundationModels\n' | swiftc -typecheck -
 
       - name: Validate release tag
         id: metadata
