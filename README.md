@@ -204,6 +204,7 @@ For a completely clean removal, you can also delete
 
 - [Use Tiro from the command line](docs/COMMAND_LINE.md)
 - [See what has changed](CHANGELOG.md)
+- [See ideas under consideration](docs/ROADMAP.md)
 - [Build Tiro from source](docs/DEVELOPMENT.md)
 - [Read the beta testing guide](docs/BETA_TESTING.md)
 - [Report a bug or suggest an improvement](https://github.com/hughleat/tiro/issues/new/choose)
