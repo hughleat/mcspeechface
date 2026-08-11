@@ -276,8 +276,8 @@ private final class ProcessExecution: @unchecked Sendable {
 
     private func wait(timeout: TimeInterval) async -> Bool {
         await withTaskGroup(of: Bool.self) { group in
-            group.addTask { [process] in
-                process.waitUntilExit()
+            group.addTask {
+                await self.waitForProcessExit()
                 return false
             }
             group.addTask {
@@ -289,6 +289,15 @@ private final class ProcessExecution: @unchecked Sendable {
             let result = await group.next() ?? false
             group.cancelAll()
             return result
+        }
+    }
+
+    private func waitForProcessExit() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async { [self] in
+                process.waitUntilExit()
+                continuation.resume()
+            }
         }
     }
 
