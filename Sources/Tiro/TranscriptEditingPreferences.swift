@@ -4,6 +4,7 @@ import TiroEditing
 enum TranscriptEditingModel: String, CaseIterable, Sendable {
     case off
     case appleFoundation
+    case qwenLocal
 
     static let defaultsKey = "transcriptEditingModel"
 
@@ -11,6 +12,7 @@ enum TranscriptEditingModel: String, CaseIterable, Sendable {
         switch self {
         case .off: "Off"
         case .appleFoundation: "Apple Intelligence"
+        case .qwenLocal: "Qwen 3 Local"
         }
     }
 
@@ -25,6 +27,23 @@ enum TranscriptEditingModel: String, CaseIterable, Sendable {
 
 actor TranscriptEditingService {
     private var appleEditor: (any TranscriptEditor)?
+    private var qwenEditor: (any TranscriptEditor)?
+    private let localModelStore: LocalTranscriptEditingModelStore
+    private let llamaExecutableURL: URL
+
+    init(
+        modelsRoot: URL = AppPaths.editingModelsDirectory,
+        llamaExecutableURL: URL = AppPaths.llamaHelperExecutable,
+        downloader: any TranscriptEditingModelDownloading =
+            URLSessionTranscriptEditingModelDownloader()
+    ) {
+        localModelStore = LocalTranscriptEditingModelStore(
+            spec: .qwen3Local,
+            root: modelsRoot,
+            downloader: downloader
+        )
+        self.llamaExecutableURL = llamaExecutableURL
+    }
 
     func availability(for model: TranscriptEditingModel) async -> TranscriptEditorAvailability {
         guard model != .off else {
@@ -48,6 +67,19 @@ actor TranscriptEditingService {
         )
     }
 
+    func localModelStatus() async -> LocalTranscriptEditingModelStatus {
+        await localModelStore.status()
+    }
+
+    func installLocalModel() async throws {
+        try await localModelStore.install()
+    }
+
+    func deleteLocalModel() async throws {
+        qwenEditor = nil
+        try await localModelStore.delete()
+    }
+
     private func editor(for model: TranscriptEditingModel) throws -> any TranscriptEditor {
         switch model {
         case .off:
@@ -59,6 +91,15 @@ actor TranscriptEditingService {
             if let appleEditor { return appleEditor }
             let editor = try AppleFoundationTranscriptEditor()
             appleEditor = editor
+            return editor
+        case .qwenLocal:
+            if let qwenEditor { return qwenEditor }
+            let editor = GGUFTranscriptEditor(
+                spec: .qwen3Local,
+                executableURL: llamaExecutableURL,
+                modelURL: localModelStore.modelURL
+            )
+            qwenEditor = editor
             return editor
         }
     }

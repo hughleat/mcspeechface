@@ -18,6 +18,11 @@ SPONSORSHIP_ENABLED=0
 DEPLOYMENT_TARGET="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$ROOT/native/Info.plist")"
 TARGET_ARCHITECTURE="arm64"
 DMG_TEMPLATE_SHA256="d4dde813f3fe08e56783a99a75ae4e729f2dc401f4eeb812bd658fcb0b90f277"
+LLAMA_RUNTIME_RELEASE="b9637"
+LLAMA_RUNTIME_COMMIT="aedb2a5"
+LLAMA_RUNTIME_SHA256="762283319feb3de30886dc850d42f0e426b06600e7f9639d34e06506597309ca"
+LLAMA_RUNTIME_URL="https://github.com/ggml-org/llama.cpp/archive/refs/tags/$LLAMA_RUNTIME_RELEASE.tar.gz"
+LLAMA_RUNTIME_CACHE="$ROOT/.build/LlamaRuntime"
 BUILD_LOCK="$ROOT/.build/native-build.lock"
 SUBMISSION_ARCHIVE=""
 DMG_MOUNT_POINT=""
@@ -209,6 +214,70 @@ sign_for_distribution() {
         --timestamp
 }
 
+prepare_llama_runtime() {
+    local archive="$LLAMA_RUNTIME_CACHE/llama-$LLAMA_RUNTIME_RELEASE-source.tar.gz"
+    local source="$LLAMA_RUNTIME_CACHE/llama-$LLAMA_RUNTIME_RELEASE-source"
+    local build="$LLAMA_RUNTIME_CACHE/llama-$LLAMA_RUNTIME_RELEASE-build"
+    local runtime="$LLAMA_RUNTIME_CACHE/llama-$LLAMA_RUNTIME_RELEASE-macos-arm64"
+    local partial="$archive.partial"
+    local extraction="$LLAMA_RUNTIME_CACHE/.extract-$LLAMA_RUNTIME_RELEASE"
+    local staging="$runtime.partial"
+    local digest
+
+    mkdir -p "$LLAMA_RUNTIME_CACHE"
+    if [[ -f "$archive" ]]; then
+        digest="$(shasum -a 256 "$archive" | awk '{ print $1 }')"
+        [[ "$digest" == "$LLAMA_RUNTIME_SHA256" ]] || rm -f "$archive"
+    fi
+    if [[ ! -f "$archive" ]]; then
+        rm -f "$partial"
+        curl -L --fail --silent --show-error "$LLAMA_RUNTIME_URL" -o "$partial"
+        digest="$(shasum -a 256 "$partial" | awk '{ print $1 }')"
+        [[ "$digest" == "$LLAMA_RUNTIME_SHA256" ]] \
+            || fail "llama.cpp runtime checksum does not match the pinned release"
+        mv "$partial" "$archive"
+    fi
+
+    if [[ ! -f "$source/CMakeLists.txt" ]]; then
+        rm -rf "$extraction" "$source"
+        mkdir -p "$extraction"
+        tar -xzf "$archive" -C "$extraction" --strip-components 1
+        mv "$extraction" "$source"
+    fi
+
+    if [[ ! -x "$runtime/tiro-llama" ]]; then
+        command -v cmake >/dev/null || fail "cmake is required to build the local editing runtime"
+        rm -rf "$build" "$runtime" "$staging"
+        cmake -S "$source" -B "$build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_NATIVE=OFF \
+            -DGGML_METAL=ON \
+            -DGGML_METAL_EMBED_LIBRARY=ON \
+            -DGGML_ACCELERATE=ON \
+            -DGGML_RPC=OFF \
+            -DGGML_OPENMP=OFF \
+            -DLLAMA_BUILD_NUMBER="${LLAMA_RUNTIME_RELEASE#b}" \
+            -DLLAMA_BUILD_COMMIT="$LLAMA_RUNTIME_COMMIT" \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_TOOLS=ON \
+            -DLLAMA_BUILD_COMMON=ON \
+            -DLLAMA_OPENSSL=OFF >&2
+        cmake --build "$build" --config Release --target llama-cli -j 4 >&2
+        mkdir -p "$staging"
+        cp "$build/bin/llama-cli" "$staging/tiro-llama"
+        cp "$source/LICENSE" "$staging/LICENSE"
+        chmod 755 "$staging/tiro-llama"
+        mv "$staging" "$runtime"
+        rm -rf "$build"
+    fi
+    print -r -- "$runtime"
+}
+
 create_archive() {
     local archive="$1"
     local partial="$archive.partial"
@@ -382,6 +451,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$ROOT/.build/release/Tiro" "$APP/Contents/MacOS/Tiro"
 cp "$ROOT/.build/release/TiroCommand" "$APP/Contents/Helpers/tiro"
 chmod 755 "$APP/Contents/Helpers/tiro"
+llama_runtime="$(prepare_llama_runtime)"
+llama_helper="$APP/Contents/Helpers/llama"
+mkdir -p "$llama_helper"
+cp "$llama_runtime/tiro-llama" "$llama_helper/tiro-llama"
+chmod 755 "$llama_helper/tiro-llama"
 cp "$ROOT/native/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/native/Assets/Tiro.icns" "$APP/Contents/Resources/Tiro.icns"
 mkdir -p "$APP/Contents/Resources/Licenses"
@@ -393,6 +467,8 @@ cp "$ROOT/.build/checkouts/argmax-oss-swift/LICENSE" \
     "$APP/Contents/Resources/Licenses/Argmax-OSS-MIT.txt"
 cp "$ROOT/.build/checkouts/argmax-oss-swift/NOTICES" \
     "$APP/Contents/Resources/Licenses/Argmax-OSS-NOTICES.txt"
+cp "$llama_runtime/LICENSE" \
+    "$APP/Contents/Resources/Licenses/llama.cpp-MIT.txt"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 if [[ -n "$RELEASE_TAG" ]]; then

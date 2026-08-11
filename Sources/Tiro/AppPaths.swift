@@ -105,6 +105,18 @@ enum AppPaths {
         applicationSupportDirectory.appendingPathComponent("Models/coreml", isDirectory: true)
     }
 
+    static var editingModelsDirectory: URL {
+        applicationSupportDirectory.appendingPathComponent("Models/editing", isDirectory: true)
+    }
+
+    static var llamaHelperExecutable: URL {
+        if let configuredPath = ProcessInfo.processInfo.environment["TIRO_LLAMA_EXECUTABLE"] {
+            return URL(fileURLWithPath: configuredPath)
+        }
+        return Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Helpers/llama/tiro-llama")
+    }
+
     static var historyFile: URL {
         dataDirectory.appendingPathComponent("history.jsonl")
     }

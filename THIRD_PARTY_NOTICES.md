@@ -20,4 +20,14 @@ WhisperKit downloads Core ML conversions from
 [whisperkit-coreml](https://huggingface.co/argmaxinc/whisperkit-coreml).
 Whisper was created by OpenAI and is distributed under the MIT License.
 
-Tiro is not affiliated with NVIDIA, FluidInference, Argmax, or OpenAI.
+Tiro uses [llama.cpp](https://github.com/ggml-org/llama.cpp), release b9637,
+under the MIT License for optional local transcript editing. Tiro distributions
+include the required native runtime and its license.
+
+At the user's request, Tiro can separately download
+[Qwen 3 1.7B GGUF](https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF),
+which is distributed under the Apache License 2.0. The model is not included in
+Tiro distributions.
+
+Tiro is not affiliated with NVIDIA, FluidInference, Argmax, OpenAI, ggml-org,
+or Qwen.

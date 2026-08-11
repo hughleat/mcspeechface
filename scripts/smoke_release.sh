@@ -108,6 +108,15 @@ CLI="$APP/Contents/Helpers/tiro"
 [[ -f "$CLI" && -x "$CLI" ]] || fail "Tiro command-line helper is missing or not executable"
 cmp -s "$APP/Contents/MacOS/Tiro" "$CLI" \
     && fail "command-line helper was replaced by the GUI executable"
+LLAMA_CLI="$APP/Contents/Helpers/llama/tiro-llama"
+[[ -f "$LLAMA_CLI" && -x "$LLAMA_CLI" ]] \
+    || fail "local transcript editing runtime is missing or not executable"
+runtime_dependencies="$(otool -L "$LLAMA_CLI" | tail -n +2 | awk '{ print $1 }' \
+    | rg -v '^(/System/Library/|/usr/lib/)' || true)"
+[[ -z "$runtime_dependencies" ]] \
+    || fail "local transcript editing runtime has non-system dependencies"
+"$LLAMA_CLI" --version >/dev/null 2>&1 \
+    || fail "local transcript editing runtime could not start"
 [[ -n "$(/usr/libexec/PlistBuddy -c 'Print :NSSpeechRecognitionUsageDescription' "$INFO")" ]] \
     || fail "Speech Recognition usage description is missing"
 [[ -f "$APP/Contents/Resources/Licenses/FluidAudio-Apache-2.0.txt" ]] \
@@ -116,11 +125,13 @@ cmp -s "$APP/Contents/MacOS/Tiro" "$CLI" \
     || fail "Argmax OSS license is missing"
 [[ -f "$APP/Contents/Resources/Licenses/Argmax-OSS-NOTICES.txt" ]] \
     || fail "Argmax OSS notices are missing"
+[[ -f "$APP/Contents/Resources/Licenses/llama.cpp-MIT.txt" ]] \
+    || fail "llama.cpp license is missing"
 [[ -z "$(find "$APP" -type f -name '*.py' -print -quit)" ]] \
     || fail "native release unexpectedly contains Python source"
 [[ -z "$(find "$APP" -iname '*mlx*' -print -quit)" ]] \
     || fail "native release unexpectedly contains MLX"
-[[ -z "$(find "$APP" \( -name '*.mlmodel' -o -name '*.mlmodelc' -o -name '*.mlpackage' \) -print -quit)" ]] \
+[[ -z "$(find "$APP" \( -name '*.mlmodel' -o -name '*.mlmodelc' -o -name '*.mlpackage' -o -name '*.gguf' \) -print -quit)" ]] \
     || fail "release unexpectedly contains model weights"
 plutil -lint "$INFO" >/dev/null
 
