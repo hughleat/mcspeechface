@@ -38,6 +38,7 @@ import UniformTypeIdentifiers
     private var pasteRecoveryItem: NSMenuItem!
     private var privacyNoticeItem: NSMenuItem!
     private var modelStatusItem: NSMenuItem!
+    private var updateAvailableItem: NSMenuItem!
     private var modelMenuItems: [NSMenuItem] = []
     private var installedModelKeys: Set<String> = []
     private var modelInventoryStatus = ModelInventoryStatus.loading
@@ -51,6 +52,8 @@ import UniformTypeIdentifiers
     private var commandTranscriptionTask: Task<TranscriptionResponse, Error>?
     private var externalOperationID: UUID?
     private var permissionTimer: Timer?
+    private var updateCheckTimer: Timer?
+    private var updateCheckTask: Task<Void, Never>?
 #if TIRO_SPONSORSHIP_ENABLED
     private var supportPromptTimer: Timer?
 #endif
@@ -69,7 +72,11 @@ import UniformTypeIdentifiers
 #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UserDefaults.standard.register(defaults: ["autoPaste": true, "soundFeedback": true])
+        UserDefaults.standard.register(defaults: [
+            "autoPaste": true,
+            "soundFeedback": true,
+            AutomaticUpdateCheckPolicy.enabledDefaultsKey: true,
+        ])
 #if TIRO_SPONSORSHIP_ENABLED
         supportPromptPolicy.registerLaunch()
 #endif
@@ -82,6 +89,8 @@ import UniformTypeIdentifiers
         prepareInstalledModel()
         if !UserDefaults.standard.bool(forKey: "setupCompleted") {
             showSetup()
+        } else {
+            scheduleAutomaticUpdateCheck()
         }
 #if TIRO_SPONSORSHIP_ENABLED
         if UserDefaults.standard.bool(forKey: "setupCompleted") {
@@ -92,6 +101,8 @@ import UniformTypeIdentifiers
 
     func applicationWillTerminate(_ notification: Notification) {
         permissionTimer?.invalidate()
+        updateCheckTimer?.invalidate()
+        updateCheckTask?.cancel()
 #if TIRO_SPONSORSHIP_ENABLED
         supportPromptTimer?.invalidate()
 #endif
@@ -167,6 +178,14 @@ import UniformTypeIdentifiers
         privacyNoticeItem.isHidden = !hasLegacyStorage
             || UserDefaults.standard.bool(forKey: "privacyMigrationNoticeReviewed")
         menu.addItem(privacyNoticeItem)
+        updateAvailableItem = NSMenuItem(
+            title: "Update Available...",
+            action: #selector(openAvailableUpdate),
+            keyEquivalent: ""
+        )
+        updateAvailableItem.target = self
+        updateAvailableItem.isHidden = true
+        menu.addItem(updateAvailableItem)
         let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -567,6 +586,16 @@ import UniformTypeIdentifiers
             self?.awaitingPrivacyReview = false
             UserDefaults.standard.set(true, forKey: "privacyMigrationNoticeReviewed")
             self?.privacyNoticeItem.isHidden = true
+        }
+        controller.onAutomaticUpdateChecksChanged = { [weak self] enabled in
+            if enabled {
+                self?.scheduleAutomaticUpdateCheck()
+            } else {
+                self?.updateCheckTimer?.invalidate()
+                self?.updateCheckTimer = nil
+                self?.updateCheckTask?.cancel()
+                self?.updateCheckTask = nil
+            }
         }
         return controller
     }
@@ -1125,6 +1154,7 @@ import UniformTypeIdentifiers
         controller.onDownloadCompleted = { [weak self] in self?.prepareInstalledModel() }
         controller.onComplete = { [weak self] in
             UserDefaults.standard.set(true, forKey: "setupCompleted")
+            self?.scheduleAutomaticUpdateCheck()
 #if TIRO_SPONSORSHIP_ENABLED
             self?.scheduleNextSupportPromptCheck()
 #endif
@@ -1136,6 +1166,90 @@ import UniformTypeIdentifiers
 #if TIRO_SPONSORSHIP_ENABLED
         handleSupportPromptCheck()
 #endif
+    }
+
+    private func scheduleAutomaticUpdateCheck(
+        minimumDelay: TimeInterval = 15
+    ) {
+        updateCheckTimer?.invalidate()
+        guard UserDefaults.standard.bool(
+            forKey: AutomaticUpdateCheckPolicy.enabledDefaultsKey
+        ), currentReleaseTag != nil else { return }
+        let lastCheck = UserDefaults.standard.object(
+            forKey: AutomaticUpdateCheckPolicy.lastSuccessfulCheckDefaultsKey
+        ) as? Date
+        let delay = AutomaticUpdateCheckPolicy.nextDelay(
+            lastSuccessfulCheck: lastCheck,
+            minimumDelay: minimumDelay
+        )
+        updateCheckTimer = Timer.scheduledTimer(
+            withTimeInterval: delay,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in self?.performAutomaticUpdateCheck() }
+        }
+    }
+
+    private func performAutomaticUpdateCheck() {
+        guard updateCheckTask == nil, let currentTag = currentReleaseTag else { return }
+        updateCheckTask = Task { [weak self] in
+            defer { self?.updateCheckTask = nil }
+            do {
+                let result = try await UpdateChecker.check(currentTag: currentTag)
+                try Task.checkCancellation()
+                UserDefaults.standard.set(
+                    Date(),
+                    forKey: AutomaticUpdateCheckPolicy.lastSuccessfulCheckDefaultsKey
+                )
+                self?.handleAutomaticUpdateResult(result)
+                self?.scheduleAutomaticUpdateCheck()
+            } catch is CancellationError {
+                return
+            } catch {
+                self?.scheduleAutomaticUpdateCheck(
+                    minimumDelay: AutomaticUpdateCheckPolicy.retryInterval
+                )
+            }
+        }
+    }
+
+    private func handleAutomaticUpdateResult(_ result: UpdateCheckResult) {
+        guard case .updateAvailable(let release) = result else {
+            updateAvailableItem.isHidden = true
+            return
+        }
+        updateAvailableItem.title = "Update Available: \(release.tagName)..."
+        updateAvailableItem.representedObject = release.pageURL
+        updateAvailableItem.isHidden = false
+
+        let defaults = UserDefaults.standard
+        guard state == .idle,
+              defaults.bool(forKey: "setupCompleted"),
+              defaults.string(
+                forKey: AutomaticUpdateCheckPolicy.lastNotifiedTagDefaultsKey
+              ) != release.tagName else { return }
+        defaults.set(
+            release.tagName,
+            forKey: AutomaticUpdateCheckPolicy.lastNotifiedTagDefaultsKey
+        )
+        let alert = NSAlert()
+        alert.messageText = "Tiro \(release.tagName) is available"
+        alert.informativeText = "Download the latest version from GitHub Releases."
+        alert.addButton(withTitle: "View Release")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(release.pageURL)
+        }
+    }
+
+    private var currentReleaseTag: String? {
+        Bundle.main.object(forInfoDictionaryKey: "TiroReleaseTag") as? String
+    }
+
+    @objc private func openAvailableUpdate(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.open(url)
     }
 
 #if TIRO_SPONSORSHIP_ENABLED

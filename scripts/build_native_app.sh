@@ -220,7 +220,7 @@ prepare_llama_runtime() {
     local build="$LLAMA_RUNTIME_CACHE/llama-$LLAMA_RUNTIME_RELEASE-build"
     local runtime="$LLAMA_RUNTIME_CACHE/llama-$LLAMA_RUNTIME_RELEASE-macos-arm64"
     local partial="$archive.partial"
-    local extraction="$LLAMA_RUNTIME_CACHE/.extract-$LLAMA_RUNTIME_RELEASE"
+    local extraction="$LLAMA_RUNTIME_CACHE/.extract-$LLAMA_RUNTIME_RELEASE-$$"
     local staging="$runtime.partial"
     local digest
 
@@ -241,8 +241,14 @@ prepare_llama_runtime() {
     if [[ ! -f "$source/CMakeLists.txt" ]]; then
         rm -rf "$extraction" "$source"
         mkdir -p "$extraction"
-        tar -xzf "$archive" -C "$extraction" --strip-components 1
-        mv "$extraction" "$source"
+        if ! tar -xzf "$archive" -C "$extraction" --strip-components 1; then
+            rm -rf "$extraction"
+            return 1
+        fi
+        if ! mv "$extraction" "$source"; then
+            rm -rf "$extraction"
+            return 1
+        fi
     fi
 
     if [[ ! -x "$runtime/tiro-llama" ]]; then

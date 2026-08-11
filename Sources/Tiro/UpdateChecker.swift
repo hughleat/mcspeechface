@@ -104,3 +104,21 @@ enum UpdateChecker {
         return latest > current ? .updateAvailable(release) : .current(release)
     }
 }
+
+enum AutomaticUpdateCheckPolicy {
+    static let enabledDefaultsKey = "automaticUpdateChecks"
+    static let lastSuccessfulCheckDefaultsKey = "lastSuccessfulUpdateCheck"
+    static let lastNotifiedTagDefaultsKey = "lastNotifiedUpdateTag"
+    static let interval: TimeInterval = 24 * 60 * 60
+    static let retryInterval: TimeInterval = 60 * 60
+
+    static func nextDelay(
+        lastSuccessfulCheck: Date?,
+        now: Date = Date(),
+        minimumDelay: TimeInterval = 15
+    ) -> TimeInterval {
+        guard let lastSuccessfulCheck else { return minimumDelay }
+        let remaining = interval - now.timeIntervalSince(lastSuccessfulCheck)
+        return max(minimumDelay, remaining)
+    }
+}

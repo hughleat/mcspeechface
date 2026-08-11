@@ -71,4 +71,21 @@ struct UpdateCheckerTests {
         }
         #expect(release.tagName == "v0.1.1")
     }
+
+    @Test
+    func automaticChecksRunDailyWithAStartupDelay() {
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        #expect(AutomaticUpdateCheckPolicy.nextDelay(
+            lastSuccessfulCheck: nil,
+            now: now
+        ) == 15)
+        #expect(AutomaticUpdateCheckPolicy.nextDelay(
+            lastSuccessfulCheck: now.addingTimeInterval(-60 * 60),
+            now: now
+        ) == 23 * 60 * 60)
+        #expect(AutomaticUpdateCheckPolicy.nextDelay(
+            lastSuccessfulCheck: now.addingTimeInterval(-2 * 24 * 60 * 60),
+            now: now
+        ) == 15)
+    }
 }

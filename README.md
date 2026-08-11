@@ -113,7 +113,7 @@ transcript is still copied to the clipboard if automatic paste fails.
 - **History off by default:** Tiro does not save transcript history or recordings on a new installation. If enabled, retention defaults to 30 days and can be set to 1, 7, 30, or 90 days, or forever, in **Settings > Privacy**. Retained audio can consume substantial disk space.
 - **Clipboard:** Successful auto-paste temporarily uses the clipboard, then restores its previous contents when Tiro can confirm the paste and the clipboard has not changed meanwhile. If auto-paste is off or fails, the transcript stays on the clipboard and may be available to other software or macOS Universal Clipboard.
 - **No tracking:** Tiro has no accounts, telemetry, advertising, or built-in crash reporting.
-- **Limited network use:** Tiro connects only when you request a model download or choose **Settings > About > Check for Updates**.
+- **Limited network use:** Tiro connects when you request a model download and, by default, checks GitHub Releases once a day for updates. Automatic checks can be turned off in **Settings > About**.
 
 Parakeet and speaker-identification models are fetched from public Hugging Face
 repositories through FluidAudio; Whisper models come from Argmax's public

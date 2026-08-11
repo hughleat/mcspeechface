@@ -4,6 +4,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onModelChanged: ((DictationModel) -> Void)?
     var onModelsChanged: (([ManagedModel]) -> Void)?
     var onAutoPasteChanged: ((Bool) -> Void)?
+    var onAutomaticUpdateChecksChanged: ((Bool) -> Void)?
     var onShortcutChanged: ((DictationShortcut) -> Void)?
     var onShortcutCaptureChanged: ((Bool, Set<UInt16>) -> Void)?
     var onPrivacySettingsLoaded: (() -> Void)?
@@ -23,7 +24,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let permissionSettingsView = PermissionSettingsView()
     private let commandLineToolView = CommandLineToolSettingsView()
     private let privacySettingsView: PrivacySettingsView
-    private let updateStatusLabel = NSTextField(wrappingLabelWithString: "Updates are checked only when you ask.")
+    private let automaticUpdateChecksButton = NSButton(
+        checkboxWithTitle: "Check for updates automatically",
+        target: nil,
+        action: nil
+    )
+    private let updateStatusLabel = NSTextField(wrappingLabelWithString: "")
     private let checkUpdatesButton = NSButton()
     private let openReleaseButton = NSButton()
     private var checkedReleaseURL: URL?
@@ -113,6 +119,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         snippetEditor.load()
         autoPasteButton.state = UserDefaults.standard.bool(forKey: "autoPaste") ? .on : .off
         soundFeedbackButton.state = UserDefaults.standard.bool(forKey: "soundFeedback") ? .on : .off
+        let automaticUpdates = UserDefaults.standard.bool(
+            forKey: AutomaticUpdateCheckPolicy.enabledDefaultsKey
+        )
+        automaticUpdateChecksButton.state = automaticUpdates ? .on : .off
+        updateStatusLabel.stringValue = automaticUpdates
+            ? "Tiro checks GitHub Releases once a day."
+            : "Updates are checked only when you ask."
         refreshLaunchAtLogin()
         vocabularyEditor.load()
         suggestionsView.refresh()
@@ -254,6 +267,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         row.spacing = 18
         let updatesLabel = sectionLabel("Updates")
         updateStatusLabel.textColor = .secondaryLabelColor
+        automaticUpdateChecksButton.target = self
+        automaticUpdateChecksButton.action = #selector(automaticUpdateChecksChanged)
         checkUpdatesButton.title = "Check for Updates"
         checkUpdatesButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
         checkUpdatesButton.imagePosition = .imageLeading
@@ -284,7 +299,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         helpButtons.orientation = .horizontal
         helpButtons.spacing = 8
 
-        let stack = NSStackView(views: [row, updatesLabel, updateStatusLabel, updateButtons, helpLabel, helpButtons, NSView()])
+        let stack = NSStackView(views: [
+            row, updatesLabel, automaticUpdateChecksButton, updateStatusLabel,
+            updateButtons, helpLabel, helpButtons, NSView(),
+        ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -345,6 +363,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             }
             self?.checkUpdatesButton.isEnabled = true
         }
+    }
+
+    @objc private func automaticUpdateChecksChanged() {
+        let enabled = automaticUpdateChecksButton.state == .on
+        UserDefaults.standard.set(
+            enabled,
+            forKey: AutomaticUpdateCheckPolicy.enabledDefaultsKey
+        )
+        showUpdateStatus(
+            enabled
+                ? "Tiro checks GitHub Releases once a day."
+                : "Updates are checked only when you ask."
+        )
+        onAutomaticUpdateChecksChanged?(enabled)
     }
 
     private func showUpdateResult(_ result: UpdateCheckResult) {
