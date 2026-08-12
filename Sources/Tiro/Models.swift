@@ -612,6 +612,7 @@ struct TranscriptionResponse {
     let audio_file: String?
     let transcription_seconds: Double
     let text: String
+    let language: String?
     let origin_bundle_id: String?
     let origin_app_name: String?
     let source_filename: String?

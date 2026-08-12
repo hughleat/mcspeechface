@@ -36,7 +36,7 @@ enum NativeSuggestionScope: String, Codable, Sendable {
 struct NativeTranscriptionOptions: Codable, Equatable, Sendable {
     var mode: NativeDictationMode = .standard
     var punctuation: NativePunctuationMode = .automatic
-    var language = "English"
+    var language: String? = "English"
 }
 
 struct NativePrivacySettings: Codable, Equatable, Sendable {

@@ -191,7 +191,7 @@ final class TiroService {
             mode: NativeDictationMode(rawValue: preferences.mode.rawValue) ?? .standard,
             punctuation: NativePunctuationMode(rawValue: preferences.punctuation.rawValue)
                 ?? .automatic,
-            language: preferences.language.title
+            language: Self.finalizationLanguage(for: preferences.language)
         )
         let segments: [TranscriptSegment]
         let rawText: String
@@ -261,11 +261,16 @@ final class TiroService {
             audio_file: entry.audioFile,
             transcription_seconds: entry.transcriptionSeconds,
             text: entry.text,
+            language: entry.language,
             origin_bundle_id: entry.originBundleID,
             origin_app_name: entry.originAppName,
             source_filename: entry.sourceFilename,
             segments: segments
         )
+    }
+
+    nonisolated static func finalizationLanguage(for language: DictationLanguage) -> String? {
+        language == .auto ? nil : language.title
     }
 
     func preload(

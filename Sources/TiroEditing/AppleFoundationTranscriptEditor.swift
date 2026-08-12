@@ -60,10 +60,11 @@ public actor AppleFoundationTranscriptEditor: TranscriptEditor {
             )
         }
         guard !request.text.isEmpty else { return .unchanged }
+        try TranscriptEditingPrompt.validate(request)
 
         let session = LanguageModelSession(
             model: model,
-            instructions: TranscriptEditingPrompt.instructions
+            instructions: TranscriptEditingPrompt.instructions(request)
         )
         let response = try await session.respond(
             to: TranscriptEditingPrompt.request(request),

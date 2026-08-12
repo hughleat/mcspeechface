@@ -41,6 +41,41 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
     }
 }
 
+struct TranscriptEditingPromptPreferences {
+    static let storageKey = "transcriptEditingPromptConfiguration"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func load() -> TranscriptEditingPromptConfiguration {
+        if let data = defaults.data(forKey: Self.storageKey),
+           let configuration = try? JSONDecoder().decode(
+               TranscriptEditingPromptConfiguration.self,
+               from: data
+           ),
+           (try? configuration.validateForSharedModels()) != nil {
+            return configuration
+        }
+        return .default
+    }
+
+    func save(_ configuration: TranscriptEditingPromptConfiguration) throws {
+        try configuration.validateForSharedModels()
+        guard configuration != .default else {
+            reset()
+            return
+        }
+        defaults.set(try JSONEncoder().encode(configuration), forKey: Self.storageKey)
+    }
+
+    func reset() {
+        defaults.removeObject(forKey: Self.storageKey)
+    }
+}
+
 actor TranscriptEditingService {
     private var appleEditor: (any TranscriptEditor)?
     private var qwenEditor: (any TranscriptEditor)?
@@ -75,8 +110,7 @@ actor TranscriptEditingService {
     }
 
     func proposeEdits(
-        to text: String,
-        language: String?
+        to response: TranscriptionResponse
     ) async throws -> TranscriptEditDecision {
         let selection = TranscriptEditingModel.selected
         guard selection != .off else { return .unchanged }
@@ -89,7 +123,21 @@ actor TranscriptEditingService {
             if selection == .qwenLocal { activeQwenRepairs -= 1 }
         }
         return try await selectedEditor.proposeEdits(
-            for: TranscriptEditRequest(text: text, language: language)
+            for: Self.request(
+                for: response,
+                promptConfiguration: TranscriptEditingPromptPreferences().load()
+            )
+        )
+    }
+
+    static func request(
+        for response: TranscriptionResponse,
+        promptConfiguration: TranscriptEditingPromptConfiguration
+    ) -> TranscriptEditRequest {
+        TranscriptEditRequest(
+            text: response.text,
+            language: response.language,
+            promptConfiguration: promptConfiguration
         )
     }
 

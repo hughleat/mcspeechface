@@ -14,6 +14,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     }
 
     private let service: TranscriptEditingService
+    private let promptPreferences: TranscriptEditingPromptPreferences
     private let table = NSTableView()
     private let storageLabel = NSTextField(labelWithString: "")
     private var localDownloadSpace: LocalTranscriptEditingModelDownloadSpace?
@@ -24,11 +25,16 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     ]
     private var refreshTask: Task<Void, Never>?
     private var operationTask: Task<Void, Never>?
+    private var promptEditorController: TranscriptEditingPromptEditorWindowController?
     private var refreshGeneration = 0
     private var isApplyingSelection = false
 
-    init(service: TranscriptEditingService) {
+    init(
+        service: TranscriptEditingService,
+        promptPreferences: TranscriptEditingPromptPreferences = .init()
+    ) {
         self.service = service
+        self.promptPreferences = promptPreferences
         super.init(frame: .zero)
         buildContent()
         refresh()
@@ -96,8 +102,23 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         storageLabel.textColor = .secondaryLabelColor
         storageLabel.alignment = .right
         storageLabel.isHidden = true
-        addArrangedSubview(storageLabel)
-        storageLabel.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        let promptsButton = NSButton(
+            title: "Shared Correction Prompts...",
+            target: self,
+            action: #selector(editPrompts)
+        )
+        promptsButton.image = NSImage(
+            systemSymbolName: "pencil",
+            accessibilityDescription: nil
+        )
+        promptsButton.imagePosition = .imageLeading
+        promptsButton.bezelStyle = .rounded
+        let footer = NSStackView(views: [promptsButton, NSView(), storageLabel])
+        footer.orientation = .horizontal
+        footer.alignment = .centerY
+        footer.spacing = 8
+        addArrangedSubview(footer)
+        footer.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -413,6 +434,25 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
                 downloadSpace: space,
                 announcement: announcement
             )
+        }
+    }
+
+    @objc private func editPrompts() {
+        guard promptEditorController == nil else {
+            promptEditorController?.showWindow(nil)
+            return
+        }
+        let controller = TranscriptEditingPromptEditorWindowController(
+            preferences: promptPreferences
+        )
+        controller.onDismiss = { [weak self] in
+            self?.promptEditorController = nil
+        }
+        promptEditorController = controller
+        if let parent = window, let editorWindow = controller.window {
+            parent.beginSheet(editorWindow)
+        } else {
+            controller.showWindow(nil)
         }
     }
 

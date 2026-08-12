@@ -4,6 +4,107 @@ import Testing
 
 struct TranscriptEditValidatorTests {
     @Test
+    func defaultPromptRendersLanguageAndTranscript() {
+        let request = TranscriptEditRequest(
+            text: "Send it Monday.",
+            language: "English"
+        )
+
+        let rendered = TranscriptEditingPrompt.request(request)
+
+        #expect(rendered.contains("Language: English\n"))
+        #expect(rendered.contains("<transcript>\nSend it Monday.\n</transcript>"))
+    }
+
+    @Test
+    func customPromptRendersPlaceholdersWithoutRewritingTranscriptContent() throws {
+        let configuration = TranscriptEditingPromptConfiguration(
+            instructions: "Find corrections only.",
+            requestTemplate: "{language}[{transcript}]"
+        )
+        try configuration.validate()
+        let request = TranscriptEditRequest(
+            text: "Keep this literal token: {language}",
+            language: "English",
+            promptConfiguration: configuration
+        )
+
+        #expect(
+            TranscriptEditingPrompt.request(request)
+                == "English[Keep this literal token: {language}]"
+        )
+        #expect(TranscriptEditingPrompt.instructions(request).contains("Find corrections only."))
+        #expect(TranscriptEditingPrompt.instructions(request).contains("untrusted data"))
+    }
+
+    @Test
+    func languageLineDisappearsCleanlyWhenLanguageIsUnknown() {
+        let request = TranscriptEditRequest(text: "Send it Monday.")
+
+        let rendered = TranscriptEditingPrompt.request(request)
+
+        #expect(!rendered.contains("Language:"))
+        #expect(rendered.hasPrefix("Find only explicit self-corrections"))
+    }
+
+    @Test
+    func customPromptRequiresInstructionsAndTranscriptPlaceholder() {
+        #expect(throws: TranscriptEditingPromptError.emptyInstructions) {
+            try TranscriptEditingPromptConfiguration(
+                instructions: "  ",
+                requestTemplate: "{transcript}"
+            ).validate()
+        }
+        #expect(throws: TranscriptEditingPromptError.missingTranscriptPlaceholder) {
+            try TranscriptEditingPromptConfiguration(
+                instructions: "Find corrections.",
+                requestTemplate: "No transcript placeholder"
+            ).validate()
+        }
+        #expect(throws: TranscriptEditingPromptError.repeatedTranscriptPlaceholder) {
+            try TranscriptEditingPromptConfiguration(
+                instructions: "Find corrections.",
+                requestTemplate: "{transcript}\n{transcript}"
+            ).validate()
+        }
+    }
+
+    @Test
+    func rejectsCombinedPromptBeyondModelBudget() {
+        let request = TranscriptEditRequest(text: String(repeating: "word ", count: 100))
+
+        #expect(throws: TranscriptEditingPromptError.renderedPromptTooLong) {
+            try TranscriptEditingPrompt.validate(request, maximumCombinedUTF8Bytes: 100)
+        }
+    }
+
+    @Test
+    func promptBudgetCountsUTF8BytesRatherThanCharacters() {
+        let request = TranscriptEditRequest(text: "🙂")
+        let combinedBytes = TranscriptEditingPrompt.instructions(request).utf8.count
+            + TranscriptEditingPrompt.request(request).utf8.count
+
+        #expect(throws: TranscriptEditingPromptError.renderedPromptTooLong) {
+            try TranscriptEditingPrompt.validate(
+                request,
+                maximumCombinedUTF8Bytes: combinedBytes - 1
+            )
+        }
+    }
+
+    @Test
+    func sharedPromptMustLeaveRoomForTranscript() {
+        let configuration = TranscriptEditingPromptConfiguration(
+            instructions: String(repeating: "x", count: 2_000),
+            requestTemplate: "{transcript}"
+        )
+
+        #expect(throws: TranscriptEditingPromptError.insufficientLocalModelTranscriptCapacity) {
+            try configuration.validateForSharedModels()
+        }
+    }
+
+    @Test
     func appliesExplicitReplacementAndCommandRemoval() throws {
         let original = "We will meet Tuesday. No, change Tuesday to Thursday."
         let proposal = try TranscriptEditValidator.proposal(

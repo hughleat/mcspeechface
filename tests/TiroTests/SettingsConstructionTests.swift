@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+import TiroEditing
 @testable import Tiro
 
 @Suite
@@ -97,6 +98,114 @@ struct SettingsConstructionTests {
     }
 
     @Test
+    func correctionPromptPreferencesRoundTripAndReset() throws {
+        let suiteName = "tiro-prompt-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = TranscriptEditingPromptPreferences(defaults: defaults)
+        let custom = TranscriptEditingPromptConfiguration(
+            instructions: "Use my explicit correction rules.",
+            requestTemplate: "Review this:\n{transcript}"
+        )
+
+        #expect(preferences.load() == .default)
+        try preferences.save(custom)
+        #expect(preferences.load() == custom)
+        #expect(defaults.data(forKey: TranscriptEditingPromptPreferences.storageKey) != nil)
+
+        preferences.reset()
+        #expect(preferences.load() == .default)
+    }
+
+    @Test
+    func invalidStoredCorrectionPromptFallsBackToDefaults() throws {
+        let suiteName = "tiro-invalid-prompt-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let invalid = TranscriptEditingPromptConfiguration(
+            instructions: "Instructions",
+            requestTemplate: "Missing placeholder"
+        )
+        defaults.set(
+            try JSONEncoder().encode(invalid),
+            forKey: TranscriptEditingPromptPreferences.storageKey
+        )
+
+        #expect(TranscriptEditingPromptPreferences(defaults: defaults).load() == .default)
+    }
+
+    @Test
+    func correctionPromptPreferencesRejectPromptsThatCrowdOutTranscripts() throws {
+        let suiteName = "tiro-oversized-prompt-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = TranscriptEditingPromptPreferences(defaults: defaults)
+        let crowded = TranscriptEditingPromptConfiguration(
+            instructions: String(repeating: "x", count: 2_000),
+            requestTemplate: "{transcript}"
+        )
+
+        #expect(throws: TranscriptEditingPromptError.insufficientLocalModelTranscriptCapacity) {
+            try preferences.save(crowded)
+        }
+        #expect(preferences.load() == .default)
+    }
+
+    @Test
+    func correctionRequestReceivesSelectedLanguageAndOmitsAutomaticLanguage() {
+        let english = transcriptionResponse(language: TiroService.finalizationLanguage(for: .english))
+        let automatic = transcriptionResponse(language: TiroService.finalizationLanguage(for: .auto))
+
+        #expect(TranscriptEditingService.request(
+            for: english,
+            promptConfiguration: .default
+        ).language == "English")
+        #expect(TranscriptEditingService.request(
+            for: automatic,
+            promptConfiguration: .default
+        ).language == nil)
+    }
+
+    @Test @MainActor
+    func correctionPromptEditorCanResetSavedOverrides() throws {
+        _ = NSApplication.shared
+        let suiteName = "tiro-prompt-editor-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = TranscriptEditingPromptPreferences(defaults: defaults)
+        try preferences.save(TranscriptEditingPromptConfiguration(
+            instructions: "Custom instructions",
+            requestTemplate: "Custom {transcript}"
+        ))
+        let controller = TranscriptEditingPromptEditorWindowController(
+            preferences: preferences
+        )
+        let contentView = try #require(controller.window?.contentView)
+        let buttons = allSubviews(of: NSButton.self, in: contentView)
+        let reset = try #require(buttons.first { $0.title == "Use Defaults" })
+        let save = try #require(buttons.first { $0.title == "Save" })
+
+        reset.performClick(nil)
+        save.performClick(nil)
+
+        #expect(preferences.load() == .default)
+        #expect(defaults.data(forKey: TranscriptEditingPromptPreferences.storageKey) == nil)
+    }
+
+    @Test @MainActor
+    func correctionPromptEditorTracksUnsavedChanges() throws {
+        _ = NSApplication.shared
+        let controller = TranscriptEditingPromptEditorWindowController()
+        let contentView = try #require(controller.window?.contentView)
+        let editor = try #require(allSubviews(of: NSTextView.self, in: contentView).first)
+
+        editor.string.append(" Changed")
+        controller.textDidChange(Notification(name: NSText.didChangeNotification, object: editor))
+
+        #expect(controller.window?.isDocumentEdited == true)
+    }
+
+    @Test
     func historyActionLabelsIncludeConciseTranscriptContext() {
         #expect(
             HistoryAccessibility.actionLabel(
@@ -168,6 +277,28 @@ struct SettingsConstructionTests {
         )
         #expect(fixture.installer.state == .conflict)
     }
+}
+
+@MainActor
+private func allSubviews<T: NSView>(of type: T.Type, in view: NSView) -> [T] {
+    view.subviews.compactMap { $0 as? T }
+        + view.subviews.flatMap { allSubviews(of: type, in: $0) }
+}
+
+private func transcriptionResponse(language: String?) -> TranscriptionResponse {
+    TranscriptionResponse(
+        id: "test",
+        timestamp: "2026-08-12T00:00:00Z",
+        model: "test-model",
+        audio_file: nil,
+        transcription_seconds: 1,
+        text: "Test transcript",
+        language: language,
+        origin_bundle_id: nil,
+        origin_app_name: nil,
+        source_filename: nil,
+        segments: []
+    )
 }
 
 private struct CommandLineInstallerFixture {

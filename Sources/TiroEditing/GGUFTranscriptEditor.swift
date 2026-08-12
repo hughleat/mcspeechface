@@ -73,7 +73,15 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             throw GGUFTranscriptEditorError.modelNotInstalled
         }
         guard !request.text.isEmpty else { return .unchanged }
-        guard request.text.count <= 12_000 else {
+        // A byte is the tokenizer's worst-case fallback token. This leaves room for the chat
+        // template and 700 output tokens inside Qwen's 4,096-token context.
+        do {
+            try TranscriptEditingPrompt.validate(
+                request,
+                maximumCombinedUTF8Bytes:
+                    TranscriptEditingPromptConfiguration.localModelMaximumInputUTF8Bytes
+            )
+        } catch TranscriptEditingPromptError.renderedPromptTooLong {
             throw GGUFTranscriptEditorError.transcriptTooLong
         }
 
@@ -151,7 +159,7 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
     ) -> [String] {
         [
             "--model", modelURL.path,
-            "--system-prompt", instructions,
+            "--system-prompt", TranscriptEditingPrompt.instructions(request),
             "--prompt", TranscriptEditingPrompt.request(request),
             "--grammar", jsonGrammar,
             "--conversation",
@@ -170,18 +178,6 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             "--log-disable",
         ]
     }
-
-    private static let instructions = TranscriptEditingPrompt.instructions + "\n\n" + """
-        When hasChanges is true, edits must contain both the requested replacement and removal of
-        the spoken command.
-        Never return hasChanges true with an empty edits array.
-
-        Example transcript: Send it Monday. Sorry, change Monday to Friday.
-        Example response: {"hasChanges":true,"explanation":"Changed the requested day.",
-        "edits":[{"exactText":"Monday","replacement":"Friday","occurrence":1},
-        {"exactText":" Sorry, change Monday to Friday.","replacement":"","occurrence":null}]}
-
-        """
 
     private static let jsonGrammar = #"""
         root ::= "{" ws "\"hasChanges\"" ws ":" ws boolean ws "," ws "\"explanation\"" ws ":" ws string ws "," ws "\"edits\"" ws ":" ws edits ws "}"

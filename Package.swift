@@ -51,7 +51,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TiroTests",
-            dependencies: ["Tiro"],
+            dependencies: ["Tiro", "TiroEditing"],
             path: "tests/TiroTests",
             exclude: [
                 "ModifierEventStateTests.swift",

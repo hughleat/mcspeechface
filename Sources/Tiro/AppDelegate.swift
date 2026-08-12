@@ -984,10 +984,7 @@ import UniformTypeIdentifiers
             return response.text
         }
         do {
-            switch try await transcriptEditingService.proposeEdits(
-                to: response.text,
-                language: nil
-            ) {
+            switch try await transcriptEditingService.proposeEdits(to: response) {
             case .unchanged:
                 return response.text
             case .proposal(let proposal):
