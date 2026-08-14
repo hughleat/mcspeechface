@@ -6,7 +6,8 @@ enum ModelComparisonHistoryLoadState: Equatable {
 
     var message: String {
         switch self {
-        case .loaded(0): return "No saved recordings are available."
+        case .loaded(0):
+            return "No saved recordings are available. Turn on Keep recordings in Privacy, then make a recording."
         case .loaded: return "No comparison results."
         case .failed(let detail): return "Could not load recordings.\n\(detail)"
         }
@@ -44,6 +45,7 @@ final class ModelComparisonView: NSStackView {
     private var historyTask: Task<Void, Never>?
     private var comparisonTask: Task<Void, Never>?
     private var comparisonID: String?
+    private var historyLoadState = ModelComparisonHistoryLoadState.loaded(entryCount: 0)
 
     init(service: TiroService) {
         self.service = service
@@ -100,6 +102,7 @@ final class ModelComparisonView: NSStackView {
         }
         rebuildModelChoices()
         updateCompareButton()
+        applyHistoryLoadState(historyLoadState)
     }
 
     private func buildContent() {
@@ -182,7 +185,12 @@ final class ModelComparisonView: NSStackView {
     }
 
     private func applyHistoryLoadState(_ state: ModelComparisonHistoryLoadState) {
+        historyLoadState = state
         rebuildRecordingPicker(toolTip: state.pickerToolTip)
+        guard installedModels.count >= 2 else {
+            showState("Install at least two transcription models to compare results.")
+            return
+        }
         if case .loaded(let entryCount) = state,
            entryCount > 0,
            !resultsStack.arrangedSubviews.isEmpty {

@@ -194,6 +194,28 @@ struct ModelManagementViewTests {
     }
 
     @Test @MainActor
+    func comparisonActionRemainsDiscoverableWithOneModel() throws {
+        _ = NSApplication.shared
+        let available = Array(
+            DictationModel.all.filter { $0.downloadSizeBytes != nil }.prefix(2)
+        )
+        #expect(available.count == 2)
+        guard available.count == 2 else { return }
+        let view = ModelManagementView(service: TiroService())
+        let button = try #require(allSubviews(of: NSButton.self, in: view).first {
+            $0.title == "Compare Installed Models…"
+        })
+        var comparisonRequests = 0
+        view.onCompareModels = { comparisonRequests += 1 }
+
+        view.apply([managedModel(available[0])])
+        #expect(button.isEnabled)
+        button.performClick(nil)
+        #expect(comparisonRequests == 1)
+        view.cancelWork()
+    }
+
+    @Test @MainActor
     func globalOperationStateRefreshesEveryRow() {
         let available = Array(
             DictationModel.all.filter { $0.downloadSizeBytes != nil }.prefix(2)
@@ -275,6 +297,12 @@ struct ModelManagementViewTests {
         return view.subviews.lazy.compactMap {
             firstSubview(of: type, in: $0)
         }.first
+    }
+
+    @MainActor
+    private func allSubviews<T: NSView>(of type: T.Type, in view: NSView) -> [T] {
+        view.subviews.compactMap { $0 as? T }
+            + view.subviews.flatMap { allSubviews(of: type, in: $0) }
     }
 
 }

@@ -333,6 +333,13 @@ struct DictationModel: Hashable {
     static func select(_ model: DictationModel) {
         UserDefaults.standard.set(model.key, forKey: "selectedModel")
     }
+
+    static func displayName(forStoredKey key: String) -> String {
+        if let model = catalog.first(where: { $0.key == key }) {
+            return model.name
+        }
+        return key.split(separator: "/").last.map(String.init) ?? key
+    }
 }
 
 struct ManagedModel: Hashable {

@@ -5,9 +5,11 @@ import Speech
 final class ModelManagementView: NSStackView, NSTableViewDataSource, NSTableViewDelegate {
     var onModelChanged: ((DictationModel) -> Void)?
     var onModelsChanged: (([ManagedModel]) -> Void)?
+    var onCompareModels: (() -> Void)?
 
     private let service: TiroService
     private let table = NSTableView()
+    private let compareButton = NSButton()
     private let storageLabel = NSTextField(labelWithString: "")
     private let stateLabel = NSTextField(labelWithString: "")
     private let stateProgress = NSProgressIndicator()
@@ -134,8 +136,22 @@ final class ModelManagementView: NSStackView, NSTableViewDataSource, NSTableView
         storageLabel.font = .systemFont(ofSize: 11)
         storageLabel.textColor = .secondaryLabelColor
         storageLabel.alignment = .right
-        addArrangedSubview(storageLabel)
-        storageLabel.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        compareButton.title = "Compare Installed Models…"
+        compareButton.image = NSImage(
+            systemSymbolName: "rectangle.split.2x1",
+            accessibilityDescription: nil
+        )
+        compareButton.imagePosition = .imageLeading
+        compareButton.bezelStyle = .rounded
+        compareButton.target = self
+        compareButton.action = #selector(compareModels)
+        compareButton.toolTip = "Transcribe one saved recording with multiple installed models"
+        let footer = NSStackView(views: [compareButton, NSView(), storageLabel])
+        footer.orientation = .horizontal
+        footer.alignment = .centerY
+        footer.spacing = 8
+        addArrangedSubview(footer)
+        footer.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
     }
 
     func apply(_ loaded: [ManagedModel]) {
@@ -182,6 +198,10 @@ final class ModelManagementView: NSStackView, NSTableViewDataSource, NSTableView
         }
         restoreSafeSelection()
         models.contains(where: { $0.operation != nil }) ? startPolling() : stopPolling()
+    }
+
+    @objc private func compareModels() {
+        onCompareModels?()
     }
 
     private func restoreSafeSelection() {

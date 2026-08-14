@@ -6,7 +6,7 @@ struct ModelComparisonViewTests {
     @Test
     func historyLoadingStatesDistinguishFailureFromEmptyHistory() {
         let empty = ModelComparisonHistoryLoadState.loaded(entryCount: 0)
-        #expect(empty.message == "No saved recordings are available.")
+        #expect(empty.message.contains("Turn on Keep recordings in Privacy"))
         #expect(empty.pickerToolTip == "No saved recordings are available")
         #expect(!empty.canRetry)
 

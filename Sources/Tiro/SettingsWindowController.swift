@@ -4,7 +4,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private enum ModelsTab {
         case transcription
         case corrections
-        case compare
     }
 
     var onModelChanged: ((DictationModel) -> Void)?
@@ -43,6 +42,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var navigationController: SettingsNavigationController?
     private var modelsTabbedView: SettingsTabbedContentView?
     private var modelTabOrder: [ModelsTab] = []
+    private var modelComparisonWindow: ModelComparisonWindowController?
 
     var selectedModelsTabTitle: String? { modelsTabbedView?.selectedTabTitle }
 
@@ -77,6 +77,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         modelManagementView.onModelsChanged = { [weak self, weak modelComparisonView] models in
             modelComparisonView?.setModels(models)
             self?.onModelsChanged?(models)
+        }
+        modelManagementView.onCompareModels = { [weak self] in
+            self?.showModelComparison()
         }
         transcriptEditingView.onModelChanged = { [weak self] model in
             self?.onCorrectionModelChanged?(model)
@@ -115,7 +118,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         shortcutRecorder.endCapture()
         modelManagementView.cancelWork()
-        modelComparisonView.cancelWork()
         snippetEditor.cancelWork()
         privacySettingsView.cancelWork()
         transcriptEditingView.cancelWork()
@@ -143,7 +145,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         refreshLaunchAtLogin()
         vocabularyEditor.load()
         suggestionsView.refresh()
-        modelComparisonView.refresh()
         refreshHistory()
         permissionSettingsView.refresh()
         privacySettingsView.refresh()
@@ -191,8 +192,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let general = SettingsPageViewController(title: "General", contentView: makeGeneralView())
         let modelTabDefinitions: [(ModelsTab, String, NSView)] = [
             (.transcription, "Transcription", modelManagementView),
-            (.corrections, "Corrections", transcriptEditingView),
-            (.compare, "Transcription Comparison", modelComparisonView)
+            (.corrections, "Corrections", transcriptEditingView)
         ]
         modelTabOrder = modelTabDefinitions.map(\.0)
         let modelTabs = SettingsTabbedContentView(
@@ -241,6 +241,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         guard let index = modelTabOrder.firstIndex(of: tab) else { return }
         showSettings(.models)
         modelsTabbedView?.selectTab(at: index)
+    }
+
+    private func showModelComparison() {
+        let controller: ModelComparisonWindowController
+        if let modelComparisonWindow {
+            controller = modelComparisonWindow
+        } else {
+            controller = ModelComparisonWindowController(comparisonView: modelComparisonView)
+            modelComparisonWindow = controller
+        }
+        controller.showWindow(nil)
     }
 
     private func makeGeneralView() -> NSView {
@@ -458,6 +469,43 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func refreshLaunchAtLogin() {
         launchAtLoginButton.state = LoginItemManager.isEnabled ? .on : .off
+    }
+}
+
+@MainActor
+private final class ModelComparisonWindowController: NSWindowController, NSWindowDelegate {
+    private let comparisonView: ModelComparisonView
+
+    init(comparisonView: ModelComparisonView) {
+        self.comparisonView = comparisonView
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 580),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Compare Transcription Models"
+        window.minSize = NSSize(width: 680, height: 480)
+        window.center()
+        super.init(window: window)
+        window.delegate = self
+        contentViewController = SettingsPageViewController(
+            title: "Compare Transcription Models",
+            contentView: comparisonView
+        )
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func showWindow(_ sender: Any?) {
+        comparisonView.refresh()
+        super.showWindow(sender)
+        window?.makeKeyAndOrderFront(sender)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        comparisonView.cancelWork()
     }
 }
 

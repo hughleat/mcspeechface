@@ -24,7 +24,7 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
             backing: .buffered,
             defer: false
         )
-        window.title = "Shared Correction Prompts"
+        window.title = "Correction Instructions"
         window.minSize = NSSize(width: 560, height: 490)
         super.init(window: window)
         window.delegate = self
@@ -54,9 +54,9 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
 
     private func buildContent() {
         guard let contentView = window?.contentView else { return }
-        let instructionsLabel = NSTextField(labelWithString: "Additional Instructions")
+        let instructionsLabel = NSTextField(labelWithString: "Instructions")
         instructionsLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        let templateLabel = NSTextField(labelWithString: "Transcript Template")
+        let templateLabel = NSTextField(labelWithString: "Model Request Template")
         templateLabel.font = .systemFont(ofSize: 13, weight: .medium)
 
         let instructionsScroll = makeEditor(
@@ -246,8 +246,8 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         guard !discardAlertVisible else { return }
         discardAlertVisible = true
         let alert = NSAlert()
-        alert.messageText = "Discard Prompt Changes?"
-        alert.informativeText = "Your unsaved prompt changes will be lost."
+        alert.messageText = "Discard Instruction Changes?"
+        alert.informativeText = "Your unsaved correction instructions will be lost."
         alert.addButton(withTitle: "Discard Changes")
         alert.addButton(withTitle: "Keep Editing")
         alert.beginSheetModal(for: window) { [weak self] response in

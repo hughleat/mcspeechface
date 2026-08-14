@@ -84,6 +84,12 @@ struct SettingsConstructionTests {
 
         controller.showTranscriptionModelsSettings()
         #expect(controller.selectedModelsTabTitle == "Transcription")
+
+        let segmentedControl = allSubviews(
+            of: NSSegmentedControl.self,
+            in: controller.window!.contentView!
+        ).first { $0.accessibilityLabel() == "Model category" }
+        #expect(segmentedControl?.segmentCount == 2)
     }
 
     @Test
@@ -227,6 +233,7 @@ struct SettingsConstructionTests {
         let controller = TranscriptEditingPromptEditorWindowController(
             preferences: preferences
         )
+        #expect(controller.window?.title == "Correction Instructions")
         let contentView = try #require(controller.window?.contentView)
         let buttons = allSubviews(of: NSButton.self, in: contentView)
         let reset = try #require(buttons.first { $0.title == "Use Defaults" })
@@ -237,6 +244,19 @@ struct SettingsConstructionTests {
 
         #expect(preferences.load() == .default)
         #expect(defaults.data(forKey: TranscriptEditingPromptPreferences.storageKey) == nil)
+    }
+
+    @Test @MainActor
+    func correctionInstructionsAreVisibleAsASetting() throws {
+        _ = NSApplication.shared
+        let view = TranscriptEditingSettingsView(service: TranscriptEditingService())
+        let labels = allSubviews(of: NSTextField.self, in: view).map(\.stringValue)
+        let editButton = allSubviews(of: NSButton.self, in: view).first { $0.title == "Edit…" }
+
+        #expect(labels.contains("Correction Instructions"))
+        #expect(editButton != nil)
+        #expect(editButton?.accessibilityLabel() == "Edit correction instructions")
+        view.cancelWork()
     }
 
     @Test @MainActor

@@ -62,4 +62,16 @@ struct DictationModelCatalogTests {
         #expect(DictationLanguage.filipino.whisperCode == "tl")
         #expect(DictationLanguage.english.appleLocaleIdentifier.hasPrefix("en"))
     }
+
+    @Test
+    func storedModelKeysHaveReadableDisplayNames() {
+        #expect(
+            DictationModel.displayName(forStoredKey: "coreml-parakeet-v3")
+                == "Parakeet 0.6B v3"
+        )
+        #expect(
+            DictationModel.displayName(forStoredKey: "legacy/vendor-model")
+                == "vendor-model"
+        )
+    }
 }
