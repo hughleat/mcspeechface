@@ -17,6 +17,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
 
     private let service: TranscriptEditingService
     private let promptPreferences: TranscriptEditingPromptPreferences
+    private let defaults: UserDefaults
     private let table = NSTableView()
     private let storageLabel = NSTextField(labelWithString: "")
     private var localDownloadSpace: LocalTranscriptEditingModelDownloadSpace?
@@ -33,10 +34,12 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
 
     init(
         service: TranscriptEditingService,
-        promptPreferences: TranscriptEditingPromptPreferences = .init()
+        promptPreferences: TranscriptEditingPromptPreferences = .init(),
+        defaults: UserDefaults = .standard
     ) {
         self.service = service
         self.promptPreferences = promptPreferences
+        self.defaults = defaults
         super.init(frame: .zero)
         buildContent()
         refresh()
@@ -54,16 +57,14 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         let generation = refreshGeneration
         states[.appleFoundation] = .checking
         if operationTask == nil { states[.qwenLocal] = .checking }
-        table.reloadData()
-        restoreSelection()
+        reloadTable()
         refreshTask = Task { [weak self, service] in
             async let snapshot = service.modelSnapshot()
             async let downloadSpace = service.localModelDownloadSpace()
             let results = await (snapshot, downloadSpace)
             guard !Task.isCancelled, self?.refreshGeneration == generation else { return }
             self?.apply(
-                appleAvailability: results.0.appleAvailability,
-                localStatus: results.0.localStatus,
+                snapshot: results.0,
                 downloadSpace: results.1
             )
         }
@@ -84,6 +85,8 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         table.headerView = nil
         table.dataSource = self
         table.delegate = self
+        table.target = self
+        table.action = #selector(selectClickedModel)
         table.rowHeight = 68
         table.intercellSpacing = NSSize(width: 0, height: 1)
         table.allowsEmptySelection = false
@@ -154,19 +157,25 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        applySelectedModel()
+    }
+
+    @objc private func selectClickedModel() {
+        applySelectedModel()
+    }
+
+    private func applySelectedModel() {
         guard !isApplyingSelection,
-              TranscriptEditingModel.allCases.indices.contains(table.selectedRow) else {
-            return
-        }
+              TranscriptEditingModel.allCases.indices.contains(table.selectedRow) else { return }
         let model = TranscriptEditingModel.allCases[table.selectedRow]
         guard isSelectable(model) else {
             restoreSelection()
             return
         }
-        TranscriptEditingModel.selected = model
+        guard selectedModel != model else { return }
+        selectedModel = model
         onModelChanged?(model)
-        table.reloadData()
-        selectRow(for: model)
+        reloadTable(selecting: model)
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
@@ -174,30 +183,28 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         return isSelectable(TranscriptEditingModel.allCases[row])
     }
 
-    private func apply(
-        appleAvailability: TranscriptEditorAvailability,
-        localStatus: LocalTranscriptEditingModelStatus,
+    func apply(
+        snapshot: TranscriptEditingModelSnapshot,
         downloadSpace: LocalTranscriptEditingModelDownloadSpace
     ) {
-        states[.appleFoundation] = switch appleAvailability {
+        states[.appleFoundation] = switch snapshot.appleAvailability {
         case .available: .available
         case .unavailable(let reason): .unavailable(reason)
         }
-        states[.qwenLocal] = .local(localStatus)
+        states[.qwenLocal] = .local(snapshot.localStatus)
         apply(downloadSpace: downloadSpace)
-        if !canRemainSelected(TranscriptEditingModel.selected) {
-            TranscriptEditingModel.selected = .off
+        if !canRemainSelected(selectedModel) {
+            selectedModel = .off
             onModelChanged?(.off)
             AccessibilityAnnouncements.post("Correction model set to Off.", from: table)
         }
-        table.reloadData()
-        restoreSelection()
+        reloadTable()
     }
 
     private func isSelectable(_ model: TranscriptEditingModel) -> Bool {
         switch states[model] {
         case .checking:
-            return operationTask == nil && model == TranscriptEditingModel.selected
+            return operationTask == nil && model == selectedModel
         default:
             let appleAvailable = states[.appleFoundation] == .available
             let localStatus = localModelStatus
@@ -242,23 +249,33 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     }
 
     private func restoreSelection() {
-        let selected = TranscriptEditingModel.selected
+        let selected = selectedModel
         selectRow(for: canRemainSelected(selected) ? selected : .off)
     }
 
     private func selectRow(for model: TranscriptEditingModel) {
         guard let row = TranscriptEditingModel.allCases.firstIndex(of: model),
               table.selectedRow != row else { return }
+        let wasApplyingSelection = isApplyingSelection
         isApplyingSelection = true
+        defer { isApplyingSelection = wasApplyingSelection }
         table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        isApplyingSelection = false
+    }
+
+    private func reloadTable(selecting model: TranscriptEditingModel? = nil) {
+        let selection = model ?? (canRemainSelected(selectedModel) ? selectedModel : .off)
+        let wasApplyingSelection = isApplyingSelection
+        isApplyingSelection = true
+        defer { isApplyingSelection = wasApplyingSelection }
+        table.reloadData()
+        selectRow(for: selection)
     }
 
     private func rowContent(
         for model: TranscriptEditingModel,
         row: Int
     ) -> ModelLibraryRowView.Content {
-        let selected = model == TranscriptEditingModel.selected
+        let selected = model == selectedModel
         let state = states[model] ?? .checking
         let presentation = presentation(for: model, state: state, selected: selected)
         return ModelLibraryRowView.Content(
@@ -423,7 +440,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         guard operationTask == nil else { return }
         invalidateRefresh()
         states[.qwenLocal] = .local(.installing)
-        table.reloadData()
+        reloadTable()
         AccessibilityAnnouncements.post("Downloading Qwen 3 Local.", from: table)
         operationTask = Task { [weak self, service] in
             let finalState: ModelState
@@ -472,13 +489,13 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
 
     @objc private func cancelLocalModelDownload(_ sender: NSButton) {
         states[.qwenLocal] = .cancelling
-        table.reloadData()
+        reloadTable()
         announce("Cancelling Qwen 3 Local download.")
         operationTask?.cancel()
     }
 
     @objc private func deleteLocalModel(_ sender: NSButton) {
-        guard TranscriptEditingModel.selected != .qwenLocal, operationTask == nil else { return }
+        guard selectedModel != .qwenLocal, operationTask == nil else { return }
         let alert = NSAlert()
         alert.messageText = "Delete Qwen 3 Local?"
         alert.informativeText =
@@ -500,7 +517,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     private func performLocalModelDeletion() {
         invalidateRefresh()
         states[.qwenLocal] = .deleting
-        table.reloadData()
+        reloadTable()
         AccessibilityAnnouncements.post("Deleting Qwen 3 Local.", from: table)
         operationTask = Task { [weak self, service] in
             let finalState: ModelState
@@ -532,8 +549,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         states[.qwenLocal] = state
         apply(downloadSpace: downloadSpace)
         operationTask = nil
-        table.reloadData()
-        restoreSelection()
+        reloadTable()
         announce(announcement)
         resumeAppleAvailabilityCheckIfNeeded()
     }
@@ -568,6 +584,11 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         refreshTask = nil
     }
 
+    private var selectedModel: TranscriptEditingModel {
+        get { TranscriptEditingModel.load(from: defaults) }
+        set { TranscriptEditingModel.save(newValue, to: defaults) }
+    }
+
     private func resumeAppleAvailabilityCheckIfNeeded() {
         guard states[.appleFoundation] == .checking else { return }
         let generation = refreshGeneration
@@ -578,8 +599,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             case .available: .available
             case .unavailable(let reason): .unavailable(reason)
             }
-            self?.table.reloadData()
-            self?.restoreSelection()
+            self?.reloadTable()
         }
     }
 }

@@ -249,14 +249,49 @@ struct SettingsConstructionTests {
     @Test @MainActor
     func correctionInstructionsAreVisibleAsASetting() throws {
         _ = NSApplication.shared
-        let view = TranscriptEditingSettingsView(service: TranscriptEditingService())
+        let suiteName = "tiro-correction-selection-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let view = TranscriptEditingSettingsView(
+            service: TranscriptEditingService(),
+            defaults: defaults
+        )
+        view.cancelWork()
+        view.apply(
+            snapshot: TranscriptEditingModelSnapshot(
+                appleAvailability: .available,
+                localStatus: .installed(bytes: 1_282_439_264)
+            ),
+            downloadSpace: LocalTranscriptEditingModelDownloadSpace(
+                requiredBytes: 1,
+                availableBytes: 2
+            )
+        )
         let labels = allSubviews(of: NSTextField.self, in: view).map(\.stringValue)
         let editButton = allSubviews(of: NSButton.self, in: view).first { $0.title == "Edit…" }
+        let modelTable = try #require(allSubviews(of: NSTableView.self, in: view).first)
+        var selections: [TranscriptEditingModel] = []
+        view.onModelChanged = { selections.append($0) }
 
         #expect(labels.contains("Correction Instructions"))
         #expect(editButton != nil)
         #expect(editButton?.accessibilityLabel() == "Edit correction instructions")
-        view.cancelWork()
+        #expect(modelTable.target === view)
+        #expect(modelTable.action != nil)
+
+        let qwenRow = try #require(TranscriptEditingModel.allCases.firstIndex(of: .qwenLocal))
+        modelTable.selectRowIndexes(IndexSet(integer: qwenRow), byExtendingSelection: false)
+        #expect(TranscriptEditingModel.load(from: defaults) == .qwenLocal)
+        #expect(selections == [.qwenLocal])
+
+        TranscriptEditingModel.save(.off, to: defaults)
+        selections.removeAll()
+        _ = modelTable.sendAction(modelTable.action, to: modelTable.target)
+        #expect(TranscriptEditingModel.load(from: defaults) == .qwenLocal)
+        #expect(selections == [.qwenLocal])
+
+        _ = modelTable.sendAction(modelTable.action, to: modelTable.target)
+        #expect(selections == [.qwenLocal])
     }
 
     @Test @MainActor

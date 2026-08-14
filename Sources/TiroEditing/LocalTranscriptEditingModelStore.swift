@@ -52,6 +52,11 @@ public struct LocalTranscriptEditingModelDownloadSpace: Equatable, Sendable {
     public let requiredBytes: Int64
     public let availableBytes: Int64?
 
+    public init(requiredBytes: Int64, availableBytes: Int64?) {
+        self.requiredBytes = requiredBytes
+        self.availableBytes = availableBytes
+    }
+
     public var hasEnoughSpace: Bool {
         availableBytes.map { $0 >= requiredBytes } ?? true
     }

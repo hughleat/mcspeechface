@@ -33,11 +33,17 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
     }
 
     static var selected: TranscriptEditingModel {
-        get {
-            UserDefaults.standard.string(forKey: defaultsKey)
-                .flatMap(TranscriptEditingModel.init(rawValue:)) ?? .off
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) }
+        get { load(from: .standard) }
+        set { save(newValue, to: .standard) }
+    }
+
+    static func load(from defaults: UserDefaults) -> TranscriptEditingModel {
+        defaults.string(forKey: defaultsKey)
+            .flatMap(TranscriptEditingModel.init(rawValue:)) ?? .off
+    }
+
+    static func save(_ model: TranscriptEditingModel, to defaults: UserDefaults) {
+        defaults.set(model.rawValue, forKey: defaultsKey)
     }
 }
 
