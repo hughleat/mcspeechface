@@ -80,24 +80,23 @@ public actor AppleFoundationTranscriptEditor: TranscriptEditor {
             hasChanges: hasChanges,
             originalText: request.text,
             revisedText: revisedText,
-            explanation: explanation
+            explanation: explanation,
+            requiresGrounding: !request.promptConfiguration.isCustom
         )
     }
 
     private static func makeSchema() throws -> GenerationSchema {
         let decision = DynamicGenerationSchema(
             name: "TranscriptEditDecision",
-            description: "A conservative full-transcript correction decision.",
+            description: "Structured output with three required fields.",
             properties: [
                 .init(name: "hasChanges", schema: DynamicGenerationSchema(type: Bool.self)),
                 .init(
                     name: "explanation",
-                    description: "A short explanation, empty when hasChanges is false.",
                     schema: DynamicGenerationSchema(type: String.self)
                 ),
                 .init(
                     name: "revisedText",
-                    description: "The complete corrected transcript, or the original transcript when unchanged.",
                     schema: DynamicGenerationSchema(type: String.self)
                 ),
             ]

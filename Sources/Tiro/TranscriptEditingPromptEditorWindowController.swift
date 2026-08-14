@@ -8,8 +8,8 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
     var onDismiss: (() -> Void)?
 
     private let preferences: TranscriptEditingPromptPreferences
-    private let instructionsTextView = NSTextView()
-    private let templateTextView = NSTextView()
+    private let systemPromptTextView = NSTextView()
+    private let userPromptTextView = NSTextView()
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
     private var loadedConfiguration = TranscriptEditingPromptConfiguration.default
     private var isApplyingConfiguration = false
@@ -24,7 +24,7 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
             backing: .buffered,
             defer: false
         )
-        window.title = "Correction Instructions"
+        window.title = "Correction Prompts"
         window.minSize = NSSize(width: 560, height: 490)
         super.init(window: window)
         window.delegate = self
@@ -47,30 +47,35 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
     func textDidChange(_ notification: Notification) {
         guard !isApplyingConfiguration else { return }
         statusLabel.isHidden = true
-        instructionsTextView.setAccessibilityHelp(nil)
-        setTemplateAccessibilityHelp()
+        setPromptAccessibilityHelp()
         window?.isDocumentEdited = currentConfiguration != loadedConfiguration
     }
 
     private func buildContent() {
         guard let contentView = window?.contentView else { return }
-        let instructionsLabel = NSTextField(labelWithString: "Instructions")
-        instructionsLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        let templateLabel = NSTextField(labelWithString: "Model Request Template")
-        templateLabel.font = .systemFont(ofSize: 13, weight: .medium)
-
-        let instructionsScroll = makeEditor(
-            instructionsTextView,
-            accessibilityLabel: "Correction prompt instructions"
+        let systemPromptLabel = NSTextField(labelWithString: "System Prompt")
+        systemPromptLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        let systemPromptScroll = makeEditor(
+            systemPromptTextView,
+            accessibilityLabel: "Correction system prompt"
         )
-        let templateScroll = makeEditor(
-            templateTextView,
-            accessibilityLabel: "Correction transcript template"
+        let userPromptLabel = NSTextField(labelWithString: "User Prompt Template")
+        userPromptLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        let userPromptScroll = makeEditor(
+            userPromptTextView,
+            accessibilityLabel: "Correction user prompt template"
         )
-        setTemplateAccessibilityHelp()
+        setPromptAccessibilityHelp()
+        let riskLabel = NSTextField(
+            wrappingLabelWithString: "These are the complete prompts sent to the model. Custom "
+                + "prompts permit unrestricted rewrites, so results are always shown for review."
+        )
+        riskLabel.font = .systemFont(ofSize: 11)
+        riskLabel.textColor = .secondaryLabelColor
         let placeholderLabel = NSTextField(
-            labelWithString: "Placeholders: {transcript} required; {language} value; "
-                + "{languageLine} optional line"
+            wrappingLabelWithString: "The user prompt must contain {transcript}. {language} inserts the selected "
+                + "transcription language; {languageLine} inserts a complete Language line, or "
+                + "nothing when language is automatic."
         )
         placeholderLabel.font = .systemFont(ofSize: 11)
         placeholderLabel.textColor = .secondaryLabelColor
@@ -105,10 +110,11 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         buttons.alignment = .centerY
         buttons.spacing = 8
         let stack = NSStackView(views: [
-            instructionsLabel,
-            instructionsScroll,
-            templateLabel,
-            templateScroll,
+            systemPromptLabel,
+            systemPromptScroll,
+            userPromptLabel,
+            userPromptScroll,
+            riskLabel,
             placeholderLabel,
             statusLabel,
             buttons,
@@ -116,8 +122,8 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        stack.setCustomSpacing(16, after: instructionsScroll)
-        stack.setCustomSpacing(4, after: templateScroll)
+        stack.setCustomSpacing(14, after: systemPromptScroll)
+        stack.setCustomSpacing(4, after: userPromptScroll)
         stack.setCustomSpacing(12, after: placeholderLabel)
         stack.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(stack)
@@ -126,10 +132,12 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
             stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
-            instructionsScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            templateScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            instructionsScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180),
-            templateScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            systemPromptScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            systemPromptScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 220),
+            userPromptScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            userPromptScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 110),
+            riskLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            placeholderLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             buttons.widthAnchor.constraint(equalTo: stack.widthAnchor),
             statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
@@ -165,12 +173,11 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
 
     private func apply(_ configuration: TranscriptEditingPromptConfiguration) {
         isApplyingConfiguration = true
-        instructionsTextView.string = configuration.instructions
-        templateTextView.string = configuration.requestTemplate
+        systemPromptTextView.string = configuration.systemPrompt
+        userPromptTextView.string = configuration.userPromptTemplate
         isApplyingConfiguration = false
         statusLabel.isHidden = true
-        instructionsTextView.setAccessibilityHelp(nil)
-        setTemplateAccessibilityHelp()
+        setPromptAccessibilityHelp()
     }
 
     @objc private func resetDefaults() {
@@ -188,8 +195,8 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
 
     @objc private func save() {
         let configuration = TranscriptEditingPromptConfiguration(
-            instructions: instructionsTextView.string,
-            requestTemplate: templateTextView.string
+            systemPrompt: systemPromptTextView.string,
+            userPromptTemplate: userPromptTextView.string
         )
         do {
             try preferences.save(configuration)
@@ -204,15 +211,18 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
 
     private var currentConfiguration: TranscriptEditingPromptConfiguration {
         TranscriptEditingPromptConfiguration(
-            instructions: instructionsTextView.string,
-            requestTemplate: templateTextView.string
+            systemPrompt: systemPromptTextView.string,
+            userPromptTemplate: userPromptTextView.string
         )
     }
 
-    private func setTemplateAccessibilityHelp() {
-        templateTextView.setAccessibilityHelp(
-            "Include {transcript} exactly once. {language} inserts the language value, and "
-                + "{languageLine} inserts an optional labelled line."
+    private func setPromptAccessibilityHelp() {
+        systemPromptTextView.setAccessibilityHelp(
+            "Complete system prompt sent to every correction model."
+        )
+        userPromptTextView.setAccessibilityHelp(
+            "Complete user prompt. Include {transcript} exactly once. {language} inserts the "
+                + "selected language; {languageLine} inserts an optional labelled line."
         )
     }
 
@@ -223,14 +233,15 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         statusLabel.isHidden = false
         if let promptError = error as? TranscriptEditingPromptError {
             switch promptError {
-            case .emptyInstructions, .instructionsTooLong:
-                instructionsTextView.setAccessibilityHelp(message)
-                window?.makeFirstResponder(instructionsTextView)
+            case .emptySystemPrompt, .systemPromptTooLong,
+                    .transcriptPlaceholderInSystemPrompt:
+                systemPromptTextView.setAccessibilityHelp(message)
+                window?.makeFirstResponder(systemPromptTextView)
             case .missingTranscriptPlaceholder, .repeatedTranscriptPlaceholder,
-                    .templateTooLong, .renderedPromptTooLong,
+                    .userPromptTemplateTooLong, .renderedPromptTooLong,
                     .insufficientLocalModelTranscriptCapacity:
-                templateTextView.setAccessibilityHelp(message)
-                window?.makeFirstResponder(templateTextView)
+                userPromptTextView.setAccessibilityHelp(message)
+                window?.makeFirstResponder(userPromptTextView)
             }
         }
         AccessibilityAnnouncements.post(message, from: statusLabel)
@@ -246,8 +257,8 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         guard !discardAlertVisible else { return }
         discardAlertVisible = true
         let alert = NSAlert()
-        alert.messageText = "Discard Instruction Changes?"
-        alert.informativeText = "Your unsaved correction instructions will be lost."
+        alert.messageText = "Discard Prompt Changes?"
+        alert.informativeText = "Your unsaved correction prompts will be lost."
         alert.addButton(withTitle: "Discard Changes")
         alert.addButton(withTitle: "Keep Editing")
         alert.beginSheetModal(for: window) { [weak self] response in

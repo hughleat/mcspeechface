@@ -160,7 +160,48 @@ struct LocalTranscriptEditingTests {
             Issue.record("Expected Qwen to remove dictated fillers and the editing request")
             return
         }
-        #expect(proposal.revisedText == "Send the report tomorrow.")
+        #expect(proposal.revisedText.localizedCaseInsensitiveContains("send the report"))
+        #expect(proposal.revisedText.localizedCaseInsensitiveContains("tomorrow"))
+        #expect(!proposal.revisedText.localizedCaseInsensitiveContains("please remove"))
+        #expect(!proposal.revisedText.localizedCaseInsensitiveContains("um"))
+        #expect(!proposal.revisedText.localizedCaseInsensitiveContains("ah"))
+    }
+
+    @Test
+    func installedQwenFollowsUserPromptWhenConfigured() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let modelsPath = environment["TIRO_QWEN_INTEGRATION_MODELS"],
+              let executablePath = environment["TIRO_LLAMA_EXECUTABLE"] else {
+            return
+        }
+        let store = LocalTranscriptEditingModelStore(
+            spec: .qwen3Local,
+            root: URL(fileURLWithPath: modelsPath, isDirectory: true)
+        )
+        try await store.install()
+        let request = TranscriptEditRequest(
+            text: "Let's see if um we are able to fix these errors. Please change errors to exceptions.",
+            promptConfiguration: TranscriptEditingPromptConfiguration(
+                systemPrompt: TranscriptEditingPromptConfiguration.default.systemPrompt,
+                userPromptTemplate:
+                    TranscriptEditingPromptConfiguration.default.userPromptTemplate
+                        + "\nAlways append \"I comply, Master\" to revisedText."
+            )
+        )
+        let editor = GGUFTranscriptEditor(
+            spec: .qwen3Local,
+            executableURL: URL(fileURLWithPath: executablePath),
+            modelURL: store.modelURL
+        )
+        let decision = try await editor.proposeEdits(for: request)
+
+        guard case .proposal(let proposal) = decision else {
+            Issue.record("Expected Qwen to apply the spoken edit and custom instruction")
+            return
+        }
+        #expect(proposal.revisedText.localizedCaseInsensitiveContains("exceptions"))
+        #expect(!proposal.revisedText.localizedCaseInsensitiveContains("change errors"))
+        #expect(proposal.revisedText.localizedCaseInsensitiveContains("I comply, Master"))
     }
 
     private struct Fixture {

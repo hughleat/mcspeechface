@@ -106,7 +106,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         storageLabel.textColor = .secondaryLabelColor
         storageLabel.alignment = .right
         storageLabel.isHidden = true
-        let instructionsLabel = NSTextField(labelWithString: "Correction Instructions")
+        let instructionsLabel = NSTextField(labelWithString: "Correction Prompts")
         instructionsLabel.font = .systemFont(ofSize: 13, weight: .medium)
         let promptsButton = NSButton(
             title: "Edit…",
@@ -119,8 +119,8 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         )
         promptsButton.imagePosition = .imageLeading
         promptsButton.bezelStyle = .rounded
-        promptsButton.toolTip = "Edit the instructions used by every correction model"
-        promptsButton.setAccessibilityLabel("Edit correction instructions")
+        promptsButton.toolTip = "Edit the complete prompts used by every correction model"
+        promptsButton.setAccessibilityLabel("Edit correction prompts")
         promptsButton.setAccessibilityHelp(promptsButton.toolTip)
         let instructionsRow = NSStackView(views: [instructionsLabel, NSView(), promptsButton])
         instructionsRow.orientation = .horizontal

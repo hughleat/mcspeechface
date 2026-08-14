@@ -10,24 +10,22 @@ struct TranscriptEditValidatorTests {
             language: "English"
         )
 
-        let rendered = TranscriptEditingPrompt.request(request)
+        let systemPrompt = TranscriptEditingPrompt.instructions(request)
+        let userPrompt = TranscriptEditingPrompt.request(request)
 
-        #expect(rendered.contains("Language: English\n"))
-        #expect(rendered.contains("<transcript>\nSend it Monday.\n</transcript>"))
-        let instructions = TranscriptEditingPrompt.instructions(request)
-        #expect(instructions.contains("isolated \"um\", \"uh\", \"erm\", and \"ah\""))
-        #expect(instructions.contains("remove the ums and ahs"))
-        #expect(instructions.contains("commands that clearly ask to edit"))
-        #expect(instructions.contains("complete corrected transcript in revisedText"))
-        #expect(!instructions.contains("exactText"))
-        #expect(instructions.contains("not a list of edits"))
+        #expect(userPrompt.contains("Language: English\n"))
+        #expect(userPrompt.contains("<transcript>\nSend it Monday.\n</transcript>"))
+        #expect(systemPrompt.contains("isolated speech fillers"))
+        #expect(systemPrompt.contains("\"um\", \"uh\", \"erm\", and \"ah\""))
+        #expect(systemPrompt.contains("complete result in revisedText"))
+        #expect(systemPrompt.contains("change X to Y"))
     }
 
     @Test
     func customPromptRendersPlaceholdersWithoutRewritingTranscriptContent() throws {
         let configuration = TranscriptEditingPromptConfiguration(
-            instructions: "Find corrections only.",
-            requestTemplate: "{language}[{transcript}]"
+            systemPrompt: "Convert text written in {language}.",
+            userPromptTemplate: "Convert this: [{transcript}]"
         )
         try configuration.validate()
         let request = TranscriptEditRequest(
@@ -37,11 +35,13 @@ struct TranscriptEditValidatorTests {
         )
 
         #expect(
-            TranscriptEditingPrompt.request(request)
-                == "English[Keep this literal token: {language}]"
+            TranscriptEditingPrompt.instructions(request)
+                == "Convert text written in English."
         )
-        #expect(TranscriptEditingPrompt.instructions(request).contains("Find corrections only."))
-        #expect(TranscriptEditingPrompt.instructions(request).contains("untrusted data"))
+        #expect(
+            TranscriptEditingPrompt.request(request)
+                == "Convert this: [Keep this literal token: {language}]"
+        )
     }
 
     @Test
@@ -51,27 +51,33 @@ struct TranscriptEditValidatorTests {
         let rendered = TranscriptEditingPrompt.request(request)
 
         #expect(!rendered.contains("Language:"))
-        #expect(rendered.hasPrefix("Find spoken corrections"))
+        #expect(rendered.hasPrefix("Apply every applicable instruction"))
     }
 
     @Test
-    func customPromptRequiresInstructionsAndTranscriptPlaceholder() {
-        #expect(throws: TranscriptEditingPromptError.emptyInstructions) {
+    func customPromptRequiresContentAndTranscriptPlaceholder() {
+        #expect(throws: TranscriptEditingPromptError.emptySystemPrompt) {
             try TranscriptEditingPromptConfiguration(
-                instructions: "  ",
-                requestTemplate: "{transcript}"
+                systemPrompt: "  ",
+                userPromptTemplate: "{transcript}"
             ).validate()
         }
         #expect(throws: TranscriptEditingPromptError.missingTranscriptPlaceholder) {
             try TranscriptEditingPromptConfiguration(
-                instructions: "Find corrections.",
-                requestTemplate: "No transcript placeholder"
+                systemPrompt: "Find corrections.",
+                userPromptTemplate: "No transcript placeholder"
             ).validate()
         }
         #expect(throws: TranscriptEditingPromptError.repeatedTranscriptPlaceholder) {
             try TranscriptEditingPromptConfiguration(
-                instructions: "Find corrections.",
-                requestTemplate: "{transcript}\n{transcript}"
+                systemPrompt: "Find corrections.",
+                userPromptTemplate: "{transcript}\n{transcript}"
+            ).validate()
+        }
+        #expect(throws: TranscriptEditingPromptError.transcriptPlaceholderInSystemPrompt) {
+            try TranscriptEditingPromptConfiguration(
+                systemPrompt: "Find corrections in {transcript}.",
+                userPromptTemplate: "{transcript}"
             ).validate()
         }
     }
@@ -115,10 +121,22 @@ struct TranscriptEditValidatorTests {
     }
 
     @Test
+    func customPromptUsesTheSameBoundedResponseBudget() {
+        let request = TranscriptEditRequest(
+            text: "Short",
+            promptConfiguration: .init(
+                systemPrompt: "Transform the text.",
+                userPromptTemplate: "Transform: {transcript}"
+            )
+        )
+
+        #expect(TranscriptEditingPrompt.maximumResponseTokens(request) == 700)
+    }
+
+    @Test
     func promptBudgetCountsUTF8BytesRatherThanCharacters() {
         let request = TranscriptEditRequest(text: "🙂")
         let combinedBytes = TranscriptEditingPrompt.instructions(request).utf8.count
-            + TranscriptEditingPrompt.request(request).utf8.count
 
         #expect(throws: TranscriptEditingPromptError.renderedPromptTooLong) {
             try TranscriptEditingPrompt.validate(
@@ -131,6 +149,57 @@ struct TranscriptEditValidatorTests {
     @Test
     func defaultFullTextPromptLeavesRoomForLocalDictation() throws {
         try TranscriptEditingPromptConfiguration.default.validateForSharedModels()
+    }
+
+    @Test
+    func customPromptLeavesRoomForLocalDictation() throws {
+        try TranscriptEditingPromptConfiguration(
+            systemPrompt: """
+                Convert this text and always append "I comply, Master":
+                """,
+            userPromptTemplate: "<transcript>{transcript}</transcript>"
+        ).validateForSharedModels()
+    }
+
+    @Test
+    func legacyTwoPartPromptMigratesWithoutLosingUserInstructions() throws {
+        let legacy = Data(#"{"instructions":"Always append I comply, Master. Keep {transcript} and {language} literal.","requestTemplate":"Convert <transcript>{transcript}</transcript>"}"#.utf8)
+
+        let configuration = try JSONDecoder().decode(
+            TranscriptEditingPromptConfiguration.self,
+            from: legacy
+        )
+
+        try configuration.validateForSharedModels()
+        #expect(configuration.isCustom)
+        #expect(
+            configuration.systemPrompt
+                == TranscriptEditingPromptConfiguration.default.systemPrompt
+        )
+        #expect(configuration.userPromptTemplate.contains("Always append I comply, Master."))
+        #expect(configuration.userPromptTemplate.contains("{ transcript }"))
+        #expect(configuration.userPromptTemplate.contains("{ language }"))
+        #expect(configuration.userPromptTemplate.contains("<transcript>{transcript}</transcript>"))
+    }
+
+    @Test
+    func interimSinglePromptMigratesIntoTheUserRole() throws {
+        let stored = Data(#"{"promptTemplate":"Convert <transcript>{transcript}</transcript>"}"#.utf8)
+
+        let configuration = try JSONDecoder().decode(
+            TranscriptEditingPromptConfiguration.self,
+            from: stored
+        )
+
+        try configuration.validateForSharedModels()
+        #expect(
+            configuration.systemPrompt
+                == TranscriptEditingPromptConfiguration.default.systemPrompt
+        )
+        #expect(
+            configuration.userPromptTemplate
+                == "Convert <transcript>{transcript}</transcript>"
+        )
     }
 
     @Test
@@ -272,8 +341,8 @@ struct TranscriptEditValidatorTests {
     @Test
     func sharedPromptMustLeaveRoomForTranscript() {
         let configuration = TranscriptEditingPromptConfiguration(
-            instructions: String(repeating: "x", count: 2_000),
-            requestTemplate: "{transcript}"
+            systemPrompt: String(repeating: "x", count: 3_000),
+            userPromptTemplate: "{transcript}"
         )
 
         #expect(throws: TranscriptEditingPromptError.insufficientLocalModelTranscriptCapacity) {
@@ -298,6 +367,33 @@ struct TranscriptEditValidatorTests {
         #expect(proposal.originalText == original)
         #expect(proposal.revisedText == "We will meet Thursday.")
         #expect(proposal.explanation == "Changed the requested day.")
+    }
+
+    @Test
+    func sharedDecisionAllowsTransformationsRequestedByCustomPrompts() throws {
+        let original = "Let's fix these errors."
+        let revised = "Let's fix these exceptions. I comply, Master."
+
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.decision(
+                hasChanges: true,
+                originalText: original,
+                revisedText: revised,
+                explanation: "Applied custom instructions."
+            )
+        }
+        let decision = try TranscriptEditValidator.decision(
+            hasChanges: true,
+            originalText: original,
+            revisedText: revised,
+            explanation: "Applied custom instructions.",
+            requiresGrounding: false
+        )
+        guard case .proposal(let proposal) = decision else {
+            Issue.record("Expected custom instructions to produce a proposal")
+            return
+        }
+        #expect(proposal.revisedText == revised)
     }
 
     @Test

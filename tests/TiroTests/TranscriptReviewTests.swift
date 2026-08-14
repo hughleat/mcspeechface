@@ -22,6 +22,10 @@ struct TranscriptReviewTests {
         #expect(!TranscriptReviewPreference.whenChanged.shouldReview(textChanged: false))
         #expect(TranscriptReviewPreference.whenChanged.shouldReview(textChanged: true))
         #expect(TranscriptReviewPreference.always.shouldReview(textChanged: false))
+        #expect(TranscriptReviewPreference.never.shouldReview(
+            textChanged: false,
+            usesCustomPrompt: true
+        ))
     }
 
     @Test func differenceLocatesChangedWordsInBothVersions() {

@@ -157,8 +157,8 @@ struct SettingsConstructionTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let preferences = TranscriptEditingPromptPreferences(defaults: defaults)
         let custom = TranscriptEditingPromptConfiguration(
-            instructions: "Use my explicit correction rules.",
-            requestTemplate: "Review this:\n{transcript}"
+            systemPrompt: "Use my explicit correction rules.",
+            userPromptTemplate: "Review this:\n{transcript}"
         )
 
         #expect(preferences.load() == .default)
@@ -176,8 +176,8 @@ struct SettingsConstructionTests {
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let invalid = TranscriptEditingPromptConfiguration(
-            instructions: "Instructions",
-            requestTemplate: "Missing placeholder"
+            systemPrompt: "Instructions",
+            userPromptTemplate: "Missing placeholder"
         )
         defaults.set(
             try JSONEncoder().encode(invalid),
@@ -194,8 +194,8 @@ struct SettingsConstructionTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let preferences = TranscriptEditingPromptPreferences(defaults: defaults)
         let crowded = TranscriptEditingPromptConfiguration(
-            instructions: String(repeating: "x", count: 2_000),
-            requestTemplate: "{transcript}"
+            systemPrompt: String(repeating: "x", count: 3_000),
+            userPromptTemplate: "{transcript}"
         )
 
         #expect(throws: TranscriptEditingPromptError.insufficientLocalModelTranscriptCapacity) {
@@ -227,13 +227,13 @@ struct SettingsConstructionTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let preferences = TranscriptEditingPromptPreferences(defaults: defaults)
         try preferences.save(TranscriptEditingPromptConfiguration(
-            instructions: "Custom instructions",
-            requestTemplate: "Custom {transcript}"
+            systemPrompt: "Custom instructions",
+            userPromptTemplate: "Custom {transcript}"
         ))
         let controller = TranscriptEditingPromptEditorWindowController(
             preferences: preferences
         )
-        #expect(controller.window?.title == "Correction Instructions")
+        #expect(controller.window?.title == "Correction Prompts")
         let contentView = try #require(controller.window?.contentView)
         let buttons = allSubviews(of: NSButton.self, in: contentView)
         let reset = try #require(buttons.first { $0.title == "Use Defaults" })
@@ -244,6 +244,22 @@ struct SettingsConstructionTests {
 
         #expect(preferences.load() == .default)
         #expect(defaults.data(forKey: TranscriptEditingPromptPreferences.storageKey) == nil)
+    }
+
+    @Test
+    func correctionPromptPreferencesLoadLegacyCustomPrompts() throws {
+        let suiteName = "tiro-legacy-prompt-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let legacy = Data(#"{"instructions":"Append marker and keep {transcript} literal.","requestTemplate":"Review {transcript}"}"#.utf8)
+        defaults.set(legacy, forKey: TranscriptEditingPromptPreferences.storageKey)
+
+        let configuration = TranscriptEditingPromptPreferences(defaults: defaults).load()
+
+        #expect(configuration.isCustom)
+        #expect(configuration.userPromptTemplate.contains("Append marker"))
+        #expect(configuration.userPromptTemplate.contains("{ transcript }"))
+        #expect(configuration.userPromptTemplate.contains("Review {transcript}"))
     }
 
     @Test @MainActor
@@ -273,9 +289,9 @@ struct SettingsConstructionTests {
         var selections: [TranscriptEditingModel] = []
         view.onModelChanged = { selections.append($0) }
 
-        #expect(labels.contains("Correction Instructions"))
+        #expect(labels.contains("Correction Prompts"))
         #expect(editButton != nil)
-        #expect(editButton?.accessibilityLabel() == "Edit correction instructions")
+        #expect(editButton?.accessibilityLabel() == "Edit correction prompts")
         #expect(modelTable.target === view)
         #expect(modelTable.action != nil)
 

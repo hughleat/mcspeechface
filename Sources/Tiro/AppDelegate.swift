@@ -1045,12 +1045,15 @@ import UniformTypeIdentifiers
     ) async -> String? {
         var revisedText = response.text
         var explanation = ""
+        var usedCustomPrompt = false
         if TranscriptEditingModel.selected != .off, !response.text.isEmpty {
             state = .correcting
             menuToggleItem.title = "Correcting…"
             overlay.show(.correcting)
             do {
-                if case .proposal(let proposal) = try await transcriptEditingService.proposeEdits(to: response) {
+                let result = try await transcriptEditingService.proposeEdits(to: response)
+                usedCustomPrompt = result.usedCustomPrompt
+                if case .proposal(let proposal) = result.decision {
                     revisedText = proposal.revisedText
                     explanation = proposal.explanation
                 }
@@ -1071,7 +1074,10 @@ import UniformTypeIdentifiers
             action: willPaste ? .paste : .copy
         )
         let selectedText: String
-        if TranscriptReviewPreference.load().shouldReview(textChanged: draft.textChanged) {
+        if TranscriptReviewPreference.load().shouldReview(
+            textChanged: draft.textChanged,
+            usesCustomPrompt: usedCustomPrompt
+        ) {
             overlay.dismiss()
             let reviewWindow = transcriptReviewWindow ?? TranscriptReviewWindowController()
             transcriptReviewWindow = reviewWindow

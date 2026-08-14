@@ -98,6 +98,11 @@ struct TranscriptEditingModelSnapshot: Equatable, Sendable {
     }
 }
 
+struct TranscriptEditingResult: Sendable {
+    let decision: TranscriptEditDecision
+    let usedCustomPrompt: Bool
+}
+
 actor TranscriptEditingService {
     private var appleEditor: (any TranscriptEditor)?
     private var qwenEditor: (any TranscriptEditor)?
@@ -133,9 +138,11 @@ actor TranscriptEditingService {
 
     func proposeEdits(
         to response: TranscriptionResponse
-    ) async throws -> TranscriptEditDecision {
+    ) async throws -> TranscriptEditingResult {
         let selection = TranscriptEditingModel.selected
-        guard selection != .off else { return .unchanged }
+        guard selection != .off else {
+            return TranscriptEditingResult(decision: .unchanged, usedCustomPrompt: false)
+        }
         if selection == .qwenLocal, localModelMutationInProgress {
             throw TranscriptEditingServiceError.modelOperationInProgress
         }
@@ -144,11 +151,13 @@ actor TranscriptEditingService {
         defer {
             if selection == .qwenLocal { activeQwenRepairs -= 1 }
         }
-        return try await selectedEditor.proposeEdits(
-            for: Self.request(
-                for: response,
-                promptConfiguration: TranscriptEditingPromptPreferences().load()
-            )
+        let promptConfiguration = TranscriptEditingPromptPreferences().load()
+        let decision = try await selectedEditor.proposeEdits(
+            for: Self.request(for: response, promptConfiguration: promptConfiguration)
+        )
+        return TranscriptEditingResult(
+            decision: decision,
+            usedCustomPrompt: promptConfiguration.isCustom
         )
     }
 

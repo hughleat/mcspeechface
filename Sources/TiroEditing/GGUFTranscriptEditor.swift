@@ -90,10 +90,18 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             arguments: Self.arguments(modelURL: modelURL, request: request),
             timeout: 90
         )
-        return try Self.decision(from: output, originalText: request.text)
+        return try Self.decision(
+            from: output,
+            originalText: request.text,
+            requiresGrounding: !request.promptConfiguration.isCustom
+        )
     }
 
-    static func decision(from output: String, originalText: String) throws -> TranscriptEditDecision {
+    static func decision(
+        from output: String,
+        originalText: String,
+        requiresGrounding: Bool = true
+    ) throws -> TranscriptEditDecision {
         let response = jsonObjectData(in: output).lazy.compactMap {
             try? JSONDecoder().decode(GeneratedDecision.self, from: $0)
         }.first
@@ -104,7 +112,8 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             hasChanges: response.hasChanges,
             originalText: originalText,
             revisedText: response.revisedText,
-            explanation: response.explanation
+            explanation: response.explanation,
+            requiresGrounding: requiresGrounding
         )
     }
 
