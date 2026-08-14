@@ -54,6 +54,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     private let explanationLabel = NSTextField(wrappingLabelWithString: "")
     private let textView = NSTextView()
     private let acceptButton = NSButton()
+    private weak var surfaceView: NSView?
     private var continuation: CheckedContinuation<TranscriptReviewResult, Never>?
     private var draft: TranscriptReviewDraft?
     private var revisedText = ""
@@ -73,6 +74,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.level = .statusBar
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         super.init(window: panel)
@@ -85,6 +87,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     func review(_ draft: TranscriptReviewDraft) async -> TranscriptReviewResult {
         guard continuation == nil else { return .cancelled }
         self.draft = draft
+        updateSurfaceAppearance()
         revisedText = draft.revisedText
         statusLabel.stringValue = draft.action.statusTitle
         acceptButton.title = draft.action.buttonTitle
@@ -128,13 +131,15 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     }
 
     private func makeContentView() -> NSView {
-        let root = NSVisualEffectView()
-        root.material = .hudWindow
-        root.blendingMode = .behindWindow
-        root.state = .active
+        let root = NSView()
+        root.appearance = NSAppearance(named: .darkAqua)
         root.wantsLayer = true
-        root.layer?.cornerRadius = 10
+        root.layer?.backgroundColor = Self.surfaceColor(
+            reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        ).cgColor
+        root.layer?.cornerRadius = 9
         root.layer?.masksToBounds = true
+        surfaceView = root
 
         let statusDot = NSView()
         statusDot.wantsLayer = true
@@ -214,6 +219,13 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         acceptButton.target = self
         acceptButton.action = #selector(acceptReview)
         acceptButton.bezelStyle = .rounded
+        acceptButton.bezelColor = NSColor(
+            calibratedRed: 0.07,
+            green: 0.34,
+            blue: 0.15,
+            alpha: 1
+        )
+        acceptButton.contentTintColor = .white
         acceptButton.keyEquivalent = "\r"
         acceptButton.keyEquivalentModifierMask = .command
         acceptButton.setAccessibilityLabel("Accept and paste transcription")
@@ -246,10 +258,21 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         return root
     }
 
+    static func surfaceColor(reduceTransparency: Bool) -> NSColor {
+        NSColor(calibratedWhite: 0.08, alpha: reduceTransparency ? 1 : 0.94)
+    }
+
+    private func updateSurfaceAppearance() {
+        surfaceView?.layer?.backgroundColor = Self.surfaceColor(
+            reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        ).cgColor
+    }
+
     private func configureIconButton(_ button: NSButton, symbol: String, toolTip: String) {
         button.title = ""
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: toolTip)
-        button.bezelStyle = .texturedRounded
+        button.isBordered = false
+        button.contentTintColor = NSColor.white.withAlphaComponent(0.86)
         button.toolTip = toolTip
     }
 

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Tiro
@@ -55,6 +56,31 @@ struct TranscriptReviewTests {
         #expect(DictationWorkflowState.reviewing.handlesEscape)
         #expect(!DictationWorkflowState.committing.handlesEscape)
         #expect(DictationWorkflowState.committing.commandName == "committing")
+    }
+
+    @Test @MainActor
+    func reviewPanelAlwaysUsesTheDarkOverlayAppearance() throws {
+        _ = NSApplication.shared
+        let controller = TranscriptReviewWindowController()
+        let translucent = TranscriptReviewWindowController.surfaceColor(reduceTransparency: false)
+        let opaque = TranscriptReviewWindowController.surfaceColor(reduceTransparency: true)
+        let backgroundColor = try #require(controller.window?.contentView?.layer?.backgroundColor)
+        let appliedColor = try #require(NSColor(cgColor: backgroundColor))
+        let expectedColor = TranscriptReviewWindowController.surfaceColor(
+            reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        )
+        var white: CGFloat = 0
+        var alpha: CGFloat = 0
+
+        #expect(controller.window?.appearance?.name == .darkAqua)
+        #expect(controller.window?.contentView?.appearance?.name == .darkAqua)
+        #expect(appliedColor == expectedColor)
+        translucent.getWhite(&white, alpha: &alpha)
+        #expect(abs(white - 0.08) < 0.001)
+        #expect(abs(alpha - 0.94) < 0.001)
+        opaque.getWhite(&white, alpha: &alpha)
+        #expect(abs(white - 0.08) < 0.001)
+        #expect(abs(alpha - 1) < 0.001)
     }
 
     private func words(in text: String, ranges: [NSRange]) -> [String] {
