@@ -70,7 +70,7 @@ struct LocalTranscriptEditingTests {
         let original = "Meet Tuesday. No, change Tuesday to Thursday."
         let output = #"""
             model: Qwen {startup metadata}
-            {"hasChanges":true,"explanation":"Changed the requested day.","edits":[{"exactText":"Tuesday","replacement":"Thursday","occurrence":1},{"exactText":" No, change Tuesday to Thursday.","replacement":"","occurrence":null}]}
+            {"hasChanges":true,"explanation":"Changed the requested day.","revisedText":"Meet Thursday."}
             Exiting...
             """#
 
@@ -87,13 +87,31 @@ struct LocalTranscriptEditingTests {
     }
 
     @Test
-    func rejectsUngroundedGGUFDecision() {
+    func treatsClaimedButUnchangedGGUFRevisionAsUnchanged() throws {
         let output = #"""
-            {"hasChanges":true,"explanation":"Changed text.","edits":[{"exactText":"Friday","replacement":"Thursday","occurrence":null}]}
+            {"hasChanges":true,"explanation":"Changed text.","revisedText":"Meet Tuesday."}
             """#
 
-        #expect(throws: TranscriptEditValidationError.missingSource("Friday")) {
-            try GGUFTranscriptEditor.decision(from: output, originalText: "Meet Tuesday.")
+        #expect(try GGUFTranscriptEditor.decision(
+            from: output,
+            originalText: "Meet Tuesday."
+        ) == .unchanged)
+    }
+
+    @Test
+    func rejectsUnrelatedOrExpansiveFullTextRevision() {
+        let unrelated = #"""
+            {"hasChanges":true,"explanation":"Changed text.","revisedText":"Completely unrelated hallucination."}
+            """#
+        let expansive = #"""
+            {"hasChanges":true,"explanation":"Changed text.","revisedText":"Meet Tuesday, then continue with a long collection of invented details that were never dictated by the user."}
+            """#
+
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try GGUFTranscriptEditor.decision(from: unrelated, originalText: "Meet Tuesday.")
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try GGUFTranscriptEditor.decision(from: expansive, originalText: "Meet Tuesday.")
         }
     }
 
@@ -123,7 +141,7 @@ struct LocalTranscriptEditingTests {
         )
         try await store.install()
         let request = TranscriptEditRequest(
-            text: "Meet Tuesday. No, change Tuesday to Thursday."
+            text: "Um, send the report, ah, tomorrow. Please remove the ums and ahs."
         )
         let output = try await FoundationTranscriptEditingProcessRunner().run(
             executableURL: URL(fileURLWithPath: executablePath),
@@ -139,10 +157,10 @@ struct LocalTranscriptEditingTests {
         )
 
         guard case .proposal(let proposal) = decision else {
-            Issue.record("Expected Qwen to recognize the explicit spoken correction")
+            Issue.record("Expected Qwen to remove dictated fillers and the editing request")
             return
         }
-        #expect(proposal.revisedText == "Meet Thursday.")
+        #expect(proposal.revisedText == "Send the report tomorrow.")
     }
 
     private struct Fixture {

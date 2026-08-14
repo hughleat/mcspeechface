@@ -740,7 +740,7 @@ import UniformTypeIdentifiers
         case .idle: startRecording()
         case .starting: cancelRecording()
         case .recording: stopRecording()
-        case .transcribing: break
+        case .transcribing, .correcting: break
         case .reviewing: transcriptReviewWindow?.accept()
         case .committing: break
         }
@@ -892,7 +892,7 @@ import UniformTypeIdentifiers
             transcriptReviewWindow?.cancel()
             return
         }
-        if state == .transcribing {
+        if state == .transcribing || state == .correcting {
             transcriptionTask?.cancel()
             transcriptionID = nil
             finishCancelledTranscription()
@@ -1046,6 +1046,9 @@ import UniformTypeIdentifiers
         var revisedText = response.text
         var explanation = ""
         if TranscriptEditingModel.selected != .off, !response.text.isEmpty {
+            state = .correcting
+            menuToggleItem.title = "Correcting…"
+            overlay.show(.correcting)
             do {
                 if case .proposal(let proposal) = try await transcriptEditingService.proposeEdits(to: response) {
                     revisedText = proposal.revisedText

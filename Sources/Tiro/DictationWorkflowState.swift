@@ -3,6 +3,7 @@ enum DictationWorkflowState: Equatable {
     case starting
     case recording
     case transcribing
+    case correcting
     case reviewing
     case committing
 
@@ -12,6 +13,7 @@ enum DictationWorkflowState: Equatable {
         case .starting: "starting"
         case .recording: "recording"
         case .transcribing: "transcribing"
+        case .correcting: "correcting"
         case .reviewing: "reviewing"
         case .committing: "committing"
         }
@@ -19,7 +21,7 @@ enum DictationWorkflowState: Equatable {
 
     var handlesEscape: Bool {
         switch self {
-        case .starting, .recording, .transcribing, .reviewing: true
+        case .starting, .recording, .transcribing, .correcting, .reviewing: true
         case .idle, .committing: false
         }
     }

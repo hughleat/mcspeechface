@@ -104,13 +104,20 @@ struct ErrorRecoveryTests {
     @Test
     func everyOverlayStateHasAConciseAnnouncement() {
         let states: [OverlayState] = [
-            .recording, .startingUp, .transcribing, .pasted, .pasteSent, .copied,
+            .recording, .startingUp, .transcribing, .correcting, .pasted, .pasteSent, .copied,
             .noSpeech, .modelBusy, .pasteFailed, .error,
         ]
         for state in states {
             #expect(!state.announcement.isEmpty)
             #expect(state.announcement.count < 60)
         }
+    }
+
+    @Test
+    func processingStagesHaveDistinctStatusText() {
+        #expect(OverlayState.transcribing.label == "Transcribing")
+        #expect(OverlayState.correcting.label == "Correcting")
+        #expect(OverlayState.transcribing.announcement != OverlayState.correcting.announcement)
     }
 
     @Test

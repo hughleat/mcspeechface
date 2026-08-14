@@ -14,6 +14,10 @@ struct TranscriptEditValidatorTests {
 
         #expect(rendered.contains("Language: English\n"))
         #expect(rendered.contains("<transcript>\nSend it Monday.\n</transcript>"))
+        let instructions = TranscriptEditingPrompt.instructions(request)
+        #expect(instructions.contains("isolated \"um\", \"uh\", \"erm\", and \"ah\""))
+        #expect(instructions.contains("remove the ums and ahs"))
+        #expect(instructions.contains("commands that clearly ask to edit"))
     }
 
     @Test
@@ -44,7 +48,7 @@ struct TranscriptEditValidatorTests {
         let rendered = TranscriptEditingPrompt.request(request)
 
         #expect(!rendered.contains("Language:"))
-        #expect(rendered.hasPrefix("Find only explicit self-corrections"))
+        #expect(rendered.hasPrefix("Find spoken corrections"))
     }
 
     @Test
@@ -90,6 +94,119 @@ struct TranscriptEditValidatorTests {
                 maximumCombinedUTF8Bytes: combinedBytes - 1
             )
         }
+    }
+
+    @Test
+    func defaultFullTextPromptLeavesRoomForLocalDictation() throws {
+        try TranscriptEditingPromptConfiguration.default.validateForSharedModels()
+    }
+
+    @Test
+    func fullTextRevisionMustRemainGroundedInTheDictation() throws {
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: "Um, send the report, ah, tomorrow. Please remove the ums and ahs.",
+            revisedText: "Send the report tomorrow."
+        )
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Send the report tomorrow.",
+                revisedText: "Here is an unrelated answer about something else entirely."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Please send the report to Janne tomorrow morning.",
+                revisedText: "Please send the novel to Alice after lunch."
+            )
+        }
+    }
+
+    @Test
+    func fullTextGroundingSupportsLanguagesWithoutSpaces() throws {
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: "我明天去北经。",
+            revisedText: "我明天去北京。"
+        )
+    }
+
+    @Test
+    func fullTextGroundingRejectsMeaningChangingDeletion() {
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Please do not send the confidential report.",
+                revisedText: "Please send the report."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "This entire sentence should remain intact.",
+                revisedText: "sentence"
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Do not send the confidential report. Change Tuesday to Thursday.",
+                revisedText: "Thursday"
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Climate change leads to flooding.",
+                revisedText: "Climate"
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "We met at noon. Go back home after the meeting.",
+                revisedText: "We met at noon."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "There was rain, nothing unusual happened.",
+                revisedText: "There was rain."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Do not send the confidential report. Send the invoice to Alice, sorry, send the invoice to Bob.",
+                revisedText: "Send the invoice to Bob."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Do not send the confidential report, sorry.",
+                revisedText: "Do"
+            )
+        }
+    }
+
+    @Test
+    func fullTextGroundingAllowsFillerAndRequestedDeletion() throws {
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: "Um, uh, send it tomorrow, ah.",
+            revisedText: "Send it tomorrow."
+        )
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: "Send it tomorrow. Please remove the ums and ahs.",
+            revisedText: "Send it tomorrow."
+        )
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: "We meet Tuesday. No, change Tuesday to Thursday.",
+            revisedText: "We meet Thursday."
+        )
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: "Send the report to Alice in London, sorry, send the invoice to Bob in Paris.",
+            revisedText: "Send the invoice to Bob in Paris."
+        )
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: "Keep this sentence. Send the invoice to Alice, sorry, send the invoice to Bob.",
+            revisedText: "Keep this sentence. Send the invoice to Bob."
+        )
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: "You know, send it tomorrow.",
+            revisedText: "Send it tomorrow."
+        )
     }
 
     @Test
@@ -150,6 +267,21 @@ struct TranscriptEditValidatorTests {
         )
 
         #expect(proposal.revisedText == "Tuesday follows Thursday.")
+    }
+
+    @Test
+    func ignoresSuperfluousOccurrenceWhenSourceIsUnambiguous() throws {
+        let proposal = try TranscriptEditValidator.proposal(
+            for: "Please remove the ums and ahs.",
+            edits: [TranscriptEditOperation(
+                exactText: "Please remove the ums and ahs.",
+                replacement: "",
+                occurrence: 2
+            )],
+            explanation: "Removed the spoken editing request."
+        )
+
+        #expect(proposal.revisedText.isEmpty)
     }
 
     @Test

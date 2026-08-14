@@ -4,6 +4,7 @@ enum OverlayState: Equatable {
     case recording
     case startingUp
     case transcribing
+    case correcting
     case pasted
     case pasteSent
     case copied
@@ -17,6 +18,7 @@ enum OverlayState: Equatable {
         case .recording: return "Recording"
         case .startingUp: return "Tiro is starting"
         case .transcribing: return "Transcribing"
+        case .correcting: return "Correcting"
         case .pasted: return "Pasted"
         case .pasteSent: return "Paste sent"
         case .copied: return "Copied"
@@ -30,7 +32,7 @@ enum OverlayState: Equatable {
     var color: NSColor {
         switch self {
         case .recording, .error: return NSColor.systemRed
-        case .startingUp, .transcribing, .pasteSent, .noSpeech, .modelBusy, .pasteFailed:
+        case .startingUp, .transcribing, .correcting, .pasteSent, .noSpeech, .modelBusy, .pasteFailed:
             return NSColor.systemOrange
         case .pasted, .copied: return NSColor.systemGreen
         }
@@ -41,6 +43,7 @@ enum OverlayState: Equatable {
         case .recording: return "Tiro is recording."
         case .startingUp: return "Tiro is starting. Try dictating again shortly."
         case .transcribing: return "Tiro is transcribing."
+        case .correcting: return "Tiro is correcting the transcript."
         case .pasted: return "Dictation pasted."
         case .pasteSent: return "Paste sent."
         case .copied: return "Dictation copied to the clipboard."

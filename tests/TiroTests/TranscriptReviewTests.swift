@@ -54,6 +54,8 @@ struct TranscriptReviewTests {
 
     @Test func committingCannotBeCancelledAfterAcceptance() {
         #expect(DictationWorkflowState.reviewing.handlesEscape)
+        #expect(DictationWorkflowState.correcting.handlesEscape)
+        #expect(DictationWorkflowState.correcting.commandName == "correcting")
         #expect(!DictationWorkflowState.committing.handlesEscape)
         #expect(DictationWorkflowState.committing.commandName == "committing")
     }
@@ -83,8 +85,39 @@ struct TranscriptReviewTests {
         #expect(abs(alpha - 1) < 0.001)
     }
 
+    @Test @MainActor
+    func presentedPasteButtonIsEnabledAndAcceptsTheReviewedText() async throws {
+        _ = NSApplication.shared
+        let controller = TranscriptReviewWindowController()
+        let draft = TranscriptReviewDraft(
+            originalText: "Um, send it tomorrow.",
+            revisedText: "Send it tomorrow.",
+            explanation: "Removed a filler.",
+            audioURL: nil,
+            duration: 1,
+            action: .paste
+        )
+        let review = Task { @MainActor in await controller.review(draft) }
+        await Task.yield()
+
+        let pasteButton = try #require(allSubviews(of: NSButton.self, in: controller.window?.contentView)
+            .first { $0.title == "Paste" })
+        #expect(controller.isReviewing)
+        #expect(pasteButton.isEnabled)
+        pasteButton.performClick(nil)
+
+        #expect(await review.value == .accepted("Send it tomorrow."))
+    }
+
     private func words(in text: String, ranges: [NSRange]) -> [String] {
         let value = text as NSString
         return ranges.map(value.substring(with:))
+    }
+
+    @MainActor
+    private func allSubviews<T: NSView>(of type: T.Type, in root: NSView?) -> [T] {
+        guard let root else { return [] }
+        return ((root as? T).map { [$0] } ?? [])
+            + root.subviews.flatMap { allSubviews(of: type, in: $0) }
     }
 }

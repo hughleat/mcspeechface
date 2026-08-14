@@ -91,6 +91,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         revisedText = draft.revisedText
         statusLabel.stringValue = draft.action.statusTitle
         acceptButton.title = draft.action.buttonTitle
+        acceptButton.isEnabled = true
         acceptButton.setAccessibilityLabel("Accept and \(draft.action.buttonTitle.lowercased()) transcription")
         durationLabel.stringValue = Self.timeText(draft.duration)
         playbackSlider.doubleValue = 0
@@ -219,13 +220,15 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         acceptButton.target = self
         acceptButton.action = #selector(acceptReview)
         acceptButton.bezelStyle = .rounded
+        acceptButton.font = .systemFont(ofSize: 13, weight: .semibold)
         acceptButton.bezelColor = NSColor(
-            calibratedRed: 0.07,
-            green: 0.34,
-            blue: 0.15,
+            calibratedRed: 0.12,
+            green: 0.47,
+            blue: 0.24,
             alpha: 1
         )
         acceptButton.contentTintColor = .white
+        acceptButton.isEnabled = true
         acceptButton.keyEquivalent = "\r"
         acceptButton.keyEquivalentModifierMask = .command
         acceptButton.setAccessibilityLabel("Accept and paste transcription")

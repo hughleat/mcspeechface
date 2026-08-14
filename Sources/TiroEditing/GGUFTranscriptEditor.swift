@@ -76,7 +76,7 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
         // A byte is the tokenizer's worst-case fallback token. This leaves room for the chat
         // template and 700 output tokens inside Qwen's 4,096-token context.
         do {
-            try TranscriptEditingPrompt.validate(
+            try TranscriptEditingPrompt.validateFullText(
                 request,
                 maximumCombinedUTF8Bytes:
                     TranscriptEditingPromptConfiguration.localModelMaximumInputUTF8Bytes
@@ -100,17 +100,17 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
         guard let response else {
             throw GGUFTranscriptEditorError.invalidResponse
         }
-        guard response.hasChanges else { return .unchanged }
-        let edits = response.edits.map {
-            TranscriptEditOperation(
-                exactText: $0.exactText,
-                replacement: $0.replacement,
-                occurrence: $0.occurrence
-            )
-        }
+        guard response.hasChanges, response.revisedText != originalText else { return .unchanged }
+        try TranscriptEditValidator.validateFullTextRevision(
+            originalText: originalText,
+            revisedText: response.revisedText
+        )
         return .proposal(try TranscriptEditValidator.proposal(
             for: originalText,
-            edits: edits,
+            edits: [TranscriptEditOperation(
+                exactText: originalText,
+                replacement: response.revisedText
+            )],
             explanation: response.explanation
         ))
     }
@@ -159,7 +159,7 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
     ) -> [String] {
         [
             "--model", modelURL.path,
-            "--system-prompt", TranscriptEditingPrompt.instructions(request),
+            "--system-prompt", TranscriptEditingPrompt.fullTextInstructions(request),
             "--prompt", TranscriptEditingPrompt.request(request),
             "--grammar", jsonGrammar,
             "--conversation",
@@ -180,11 +180,8 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
     }
 
     private static let jsonGrammar = #"""
-        root ::= "{" ws "\"hasChanges\"" ws ":" ws boolean ws "," ws "\"explanation\"" ws ":" ws string ws "," ws "\"edits\"" ws ":" ws edits ws "}"
+        root ::= "{" ws "\"hasChanges\"" ws ":" ws boolean ws "," ws "\"explanation\"" ws ":" ws string ws "," ws "\"revisedText\"" ws ":" ws string ws "}"
         boolean ::= "true" | "false"
-        edits ::= "[" ws (edit (ws "," ws edit)*)? ws "]"
-        edit ::= "{" ws "\"exactText\"" ws ":" ws string ws "," ws "\"replacement\"" ws ":" ws string ws "," ws "\"occurrence\"" ws ":" ws (integer | "null") ws "}"
-        integer ::= [1-9] [0-9]*
         string ::= "\"" char* "\""
         char ::= [^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" hex hex hex hex)
         hex ::= [0-9a-fA-F]
@@ -194,13 +191,7 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
     private struct GeneratedDecision: Decodable {
         let hasChanges: Bool
         let explanation: String
-        let edits: [GeneratedEdit]
-    }
-
-    private struct GeneratedEdit: Decodable {
-        let exactText: String
-        let replacement: String
-        let occurrence: Int?
+        let revisedText: String
     }
 }
 
