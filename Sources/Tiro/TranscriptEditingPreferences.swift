@@ -76,6 +76,22 @@ struct TranscriptEditingPromptPreferences {
     }
 }
 
+struct TranscriptEditingModelSnapshot: Equatable, Sendable {
+    let appleAvailability: TranscriptEditorAvailability
+    let localStatus: LocalTranscriptEditingModelStatus
+
+    func canSelect(_ model: TranscriptEditingModel) -> Bool {
+        switch model {
+        case .off:
+            true
+        case .appleFoundation:
+            appleAvailability == .available
+        case .qwenLocal:
+            if case .installed = localStatus { true } else { false }
+        }
+    }
+}
+
 actor TranscriptEditingService {
     private var appleEditor: (any TranscriptEditor)?
     private var qwenEditor: (any TranscriptEditor)?
@@ -143,6 +159,15 @@ actor TranscriptEditingService {
 
     func localModelStatus() async -> LocalTranscriptEditingModelStatus {
         await localModelStore.status()
+    }
+
+    func modelSnapshot() async -> TranscriptEditingModelSnapshot {
+        async let appleAvailability = availability(for: .appleFoundation)
+        async let localStatus = localModelStore.status()
+        return await TranscriptEditingModelSnapshot(
+            appleAvailability: appleAvailability,
+            localStatus: localStatus
+        )
     }
 
     func localModelDownloadSpace() async -> LocalTranscriptEditingModelDownloadSpace {

@@ -58,6 +58,53 @@ struct SettingsConstructionTests {
     }
 
     @Test @MainActor
+    func settingsTabsCanBeSelectedProgrammatically() {
+        _ = NSApplication.shared
+        let tabs = SettingsTabbedContentView(tabs: [
+            .init(title: "First", view: NSView()),
+            .init(title: "Second", view: NSView())
+        ])
+
+        tabs.selectTab(at: 1)
+        #expect(tabs.selectedTabIndex == 1)
+        #expect(tabs.selectedTabTitle == "Second")
+
+        tabs.selectTab(at: 8)
+        #expect(tabs.selectedTabIndex == 1)
+    }
+
+    @Test @MainActor
+    func modelSettingsRoutesSelectTheirNamedTabs() {
+        _ = NSApplication.shared
+        let controller = SettingsWindowController(service: TiroService())
+        defer { controller.close() }
+
+        controller.showCorrectionModelsSettings()
+        #expect(controller.selectedModelsTabTitle == "Corrections")
+
+        controller.showTranscriptionModelsSettings()
+        #expect(controller.selectedModelsTabTitle == "Transcription")
+    }
+
+    @Test
+    func correctionModelSnapshotUsesCanonicalLocalStatus() {
+        let incomplete = TranscriptEditingModelSnapshot(
+            appleAvailability: .unavailable(reason: "Unavailable"),
+            localStatus: .notInstalled
+        )
+        #expect(incomplete.canSelect(.off))
+        #expect(!incomplete.canSelect(.appleFoundation))
+        #expect(!incomplete.canSelect(.qwenLocal))
+
+        let ready = TranscriptEditingModelSnapshot(
+            appleAvailability: .available,
+            localStatus: .installed(bytes: 1)
+        )
+        #expect(ready.canSelect(.appleFoundation))
+        #expect(ready.canSelect(.qwenLocal))
+    }
+
+    @Test @MainActor
     func correctionModelsCanOnlyBeSelectedWhenReady() {
         #expect(TranscriptEditingSettingsView.allowsSelection(
             of: .off,

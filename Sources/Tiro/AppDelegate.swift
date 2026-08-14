@@ -40,10 +40,13 @@ import UniformTypeIdentifiers
     private var modelStatusItem: NSMenuItem!
     private var updateAvailableItem: NSMenuItem!
     private var modelMenuItems: [NSMenuItem] = []
+    private var correctionModelMenuItems: [NSMenuItem] = []
+    private var availableCorrectionModels: Set<TranscriptEditingModel> = [.off]
     private var installedModelKeys: Set<String> = []
     private var modelInventoryStatus = ModelInventoryStatus.loading
     private var modelStartupTask: Task<Void, Never>?
     private var modelSelectionTask: Task<Void, Never>?
+    private var correctionModelRefreshTask: Task<Void, Never>?
     private var transcriptionTask: Task<Void, Never>?
     private var transcriptionID: UUID?
     private var recordingModelUseReserved = false
@@ -108,6 +111,7 @@ import UniformTypeIdentifiers
 #endif
         modelStartupTask?.cancel()
         modelSelectionTask?.cancel()
+        correctionModelRefreshTask?.cancel()
         transcriptionTask?.cancel()
         pasteRetryTask?.cancel()
         commandTranscriptionTask?.cancel()
@@ -128,7 +132,7 @@ import UniformTypeIdentifiers
         menu.addItem(menuToggleItem)
 
         let transcribeFile = NSMenuItem(
-            title: "Transcribe Audio File...",
+            title: "Transcribe Audio File…",
             action: #selector(showFileTranscription),
             keyEquivalent: "o"
         )
@@ -137,17 +141,52 @@ import UniformTypeIdentifiers
 
         let modelMenu = NSMenu()
         for model in DictationModel.all {
-            let item = NSMenuItem(title: "\(model.name) — \(model.detail)", action: #selector(selectModel(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: model.name, action: #selector(selectModel(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = model.key
             modelMenu.addItem(item)
             modelMenuItems.append(item)
         }
-        let modelItem = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
+        modelMenu.addItem(.separator())
+        let manageTranscriptionModels = NSMenuItem(
+            title: "Manage Transcription Models…",
+            action: #selector(showTranscriptionModelsSettings),
+            keyEquivalent: ""
+        )
+        manageTranscriptionModels.target = self
+        modelMenu.addItem(manageTranscriptionModels)
+        let modelItem = NSMenuItem(title: "Transcription Model", action: nil, keyEquivalent: "")
         modelItem.submenu = modelMenu
         menu.addItem(modelItem)
         updateModelChecks()
-        modelStatusItem = NSMenuItem(title: "Model: Loading…", action: nil, keyEquivalent: "")
+
+        let correctionModelMenu = NSMenu()
+        for model in TranscriptEditingModel.allCases {
+            let item = NSMenuItem(
+                title: model.title,
+                action: #selector(selectCorrectionModel(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = model.rawValue
+            correctionModelMenu.addItem(item)
+            correctionModelMenuItems.append(item)
+        }
+        correctionModelMenu.addItem(.separator())
+        let manageCorrectionModels = NSMenuItem(
+            title: "Manage Correction Models…",
+            action: #selector(showCorrectionModelsSettings),
+            keyEquivalent: ""
+        )
+        manageCorrectionModels.target = self
+        correctionModelMenu.addItem(manageCorrectionModels)
+        let correctionModelItem = NSMenuItem(title: "Correction Model", action: nil, keyEquivalent: "")
+        correctionModelItem.submenu = correctionModelMenu
+        menu.addItem(correctionModelItem)
+        updateCorrectionModelChecks()
+        refreshCorrectionModelMenu()
+
+        modelStatusItem = NSMenuItem(title: "Transcription: Loading…", action: nil, keyEquivalent: "")
         modelStatusItem.isEnabled = false
         menu.addItem(modelStatusItem)
 
@@ -168,7 +207,7 @@ import UniformTypeIdentifiers
         pasteRecoveryItem.isHidden = true
         menu.addItem(pasteRecoveryItem)
         privacyNoticeItem = NSMenuItem(
-            title: "Review Updated Privacy Settings...",
+            title: "Review Updated Privacy Settings…",
             action: #selector(reviewPrivacySettings),
             keyEquivalent: ""
         )
@@ -179,7 +218,7 @@ import UniformTypeIdentifiers
             || UserDefaults.standard.bool(forKey: "privacyMigrationNoticeReviewed")
         menu.addItem(privacyNoticeItem)
         updateAvailableItem = NSMenuItem(
-            title: "Update Available...",
+            title: "Update Available…",
             action: #selector(openAvailableUpdate),
             keyEquivalent: ""
         )
@@ -554,11 +593,15 @@ import UniformTypeIdentifiers
         controller.onModelChanged = { [weak self] model in
             self?.updateModelChecks()
             if self?.installedModelKeys.contains(model.key) == true {
-                self?.modelStatusItem.title = "Model: Loads on First Dictation"
+                self?.modelStatusItem.title = "Transcription: Loads on First Dictation"
             }
         }
         controller.onModelsChanged = { [weak self] models in
             self?.applyModelInventory(models)
+        }
+        controller.onCorrectionModelChanged = { [weak self] _ in
+            self?.updateCorrectionModelChecks()
+            self?.refreshCorrectionModelMenu()
         }
         controller.onShortcutChanged = { [weak self] shortcut in
             guard let self else { return }
@@ -744,7 +787,7 @@ import UniformTypeIdentifiers
 #endif
         switch modelInventoryStatus {
         case .loading:
-            modelStatusItem.title = "Model: Checking Installed Models..."
+            modelStatusItem.title = "Transcription: Checking Installed Models…"
             overlay.show(.startingUp)
             overlay.dismiss(after: 1.2)
             releaseRecordingModelUse()
@@ -754,7 +797,7 @@ import UniformTypeIdentifiers
             presentRecovery(ErrorRecovery.presentation(for: .modelServiceUnavailable))
             return false
         case .missing:
-            modelStatusItem.title = "Model: Download One in Settings"
+            modelStatusItem.title = "Transcription: Download One in Settings"
             releaseRecordingModelUse()
             presentRecovery(ErrorRecovery.presentation(for: .missingModel))
             return false
@@ -975,7 +1018,7 @@ import UniformTypeIdentifiers
         overlay.show(completionOverlay)
         overlay.dismiss(after: 0.8)
         if DictationModel.selected == model {
-            modelStatusItem.title = "Model: Ready"
+            modelStatusItem.title = "Transcription: Ready"
         }
     }
 
@@ -1082,6 +1125,14 @@ import UniformTypeIdentifiers
         settingsWindow.showWindow(nil)
     }
 
+    @objc private func showTranscriptionModelsSettings() {
+        settingsWindow.showTranscriptionModelsSettings()
+    }
+
+    @objc private func showCorrectionModelsSettings() {
+        settingsWindow.showCorrectionModelsSettings()
+    }
+
     @objc private func showFileTranscription() {
         guard UserDefaults.standard.bool(forKey: "setupCompleted") else {
             showSetup()
@@ -1165,6 +1216,12 @@ import UniformTypeIdentifiers
 #endif
     }
 
+    func menuWillOpen(_ menu: NSMenu) {
+        updateModelChecks()
+        updateCorrectionModelChecks()
+        refreshCorrectionModelMenu()
+    }
+
     private func scheduleAutomaticUpdateCheck(
         minimumDelay: TimeInterval = 15
     ) {
@@ -1215,7 +1272,7 @@ import UniformTypeIdentifiers
             updateAvailableItem.isHidden = true
             return
         }
-        updateAvailableItem.title = "Update Available: \(release.tagName)..."
+        updateAvailableItem.title = "Update Available: \(release.tagName)…"
         updateAvailableItem.representedObject = release.pageURL
         updateAvailableItem.isHidden = false
 
@@ -1296,8 +1353,11 @@ import UniformTypeIdentifiers
 
     @objc private func selectModel(_ sender: NSMenuItem) {
         guard let key = sender.representedObject as? String,
-              installedModelKeys.contains(key),
               let model = DictationModel.all.first(where: { $0.key == key }) else { return }
+        guard installedModelKeys.contains(key) else {
+            settingsWindow.showTranscriptionModelsSettings()
+            return
+        }
         do {
             try service.select(model: model)
         } catch {
@@ -1306,7 +1366,7 @@ import UniformTypeIdentifiers
         }
         updateModelChecks()
         settingsWindow.refreshModel()
-        modelStatusItem.title = "Model: Loads on First Dictation"
+        modelStatusItem.title = "Transcription: Loads on First Dictation"
         modelSelectionTask?.cancel()
         modelSelectionTask = Task { [weak self] in
             guard let self else { return }
@@ -1323,20 +1383,62 @@ import UniformTypeIdentifiers
         }
     }
 
+    @objc private func selectCorrectionModel(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let model = TranscriptEditingModel(rawValue: rawValue) else { return }
+        guard availableCorrectionModels.contains(model) else {
+            settingsWindow.showCorrectionModelsSettings()
+            return
+        }
+        TranscriptEditingModel.selected = model
+        updateCorrectionModelChecks()
+        settingsWindow.refreshCorrectionModel()
+    }
+
     private func updateModelChecks() {
         let selected = DictationModel.selected
         for item in modelMenuItems {
             let key = item.representedObject as? String
             let isInstalled = key.map(installedModelKeys.contains) ?? false
-            item.isEnabled = isInstalled && !service.modelUseInProgress
+            if let key, let model = DictationModel.all.first(where: { $0.key == key }) {
+                item.title = isInstalled ? model.name : "\(model.name) (Set Up…)"
+            }
+            item.isEnabled = !service.modelUseInProgress
             item.state = isInstalled && key == selected.key ? .on : .off
         }
         menuToggleItem.isEnabled = installedModelKeys.contains(selected.key)
     }
 
+    private func updateCorrectionModelChecks() {
+        let selected = TranscriptEditingModel.selected
+        for item in correctionModelMenuItems {
+            guard let rawValue = item.representedObject as? String,
+                  let model = TranscriptEditingModel(rawValue: rawValue) else { continue }
+            let available = availableCorrectionModels.contains(model)
+            item.title = available || model == .off ? model.title : "\(model.title) (Set Up…)"
+            item.isEnabled = true
+            item.state = model == selected ? .on : .off
+        }
+    }
+
+    private func refreshCorrectionModelMenu() {
+        correctionModelRefreshTask?.cancel()
+        correctionModelRefreshTask = Task { [weak self, transcriptEditingService] in
+            let snapshot = await transcriptEditingService.modelSnapshot()
+            guard !Task.isCancelled, let self else { return }
+            let available = Set(TranscriptEditingModel.allCases.filter(snapshot.canSelect))
+            availableCorrectionModels = available
+            if !available.contains(TranscriptEditingModel.selected) {
+                TranscriptEditingModel.selected = .off
+                settingsWindow.refreshCorrectionModel()
+            }
+            updateCorrectionModelChecks()
+        }
+    }
+
     private func prepareInstalledModel() {
         modelInventoryStatus = .loading
-        modelStatusItem.title = "Model: Checking Installed Models…"
+        modelStatusItem.title = "Transcription: Checking Installed Models…"
         modelStartupTask?.cancel()
         modelStartupTask = Task { [weak self] in
             guard let self else { return }
@@ -1344,19 +1446,19 @@ import UniformTypeIdentifiers
                 let models = await service.models()
                 guard !Task.isCancelled else { return }
                 guard let model = applyModelInventory(models) else {
-                    modelStatusItem.title = "Model: None Installed"
+                    modelStatusItem.title = "Transcription: None Installed"
                     return
                 }
-                modelStatusItem.title = "Model: Loading…"
+                modelStatusItem.title = "Transcription: Loading…"
                 try await service.preload(model: model)
                 guard !Task.isCancelled else { return }
                 if DictationModel.selected == model {
-                    modelStatusItem.title = "Model: Ready"
+                    modelStatusItem.title = "Transcription: Ready"
                 }
             } catch {
                 guard !Task.isCancelled else { return }
                 modelInventoryStatus = modelInventoryStatus.afterPreparationFailure
-                modelStatusItem.title = "Model: Installed Models Unavailable"
+                modelStatusItem.title = "Transcription: Installed Models Unavailable"
                 updateModelChecks()
                 NSLog("Could not prepare an installed model: %@", error.localizedDescription)
             }
@@ -1375,14 +1477,14 @@ import UniformTypeIdentifiers
         updateModelChecks()
         guard installedModelKeys.contains(selected.key) else {
             modelInventoryStatus = .missing
-            modelStatusItem.title = "Model: None Installed"
+            modelStatusItem.title = "Transcription: None Installed"
             return nil
         }
         modelInventoryStatus = .available
         if models.first(where: { $0.key == selected.key })?.loaded == true {
-            modelStatusItem.title = "Model: Ready"
+            modelStatusItem.title = "Transcription: Ready"
         } else {
-            modelStatusItem.title = "Model: Loads on First Dictation"
+            modelStatusItem.title = "Transcription: Loads on First Dictation"
         }
         return selected
     }

@@ -1,8 +1,15 @@
 import AppKit
 
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    private enum ModelsTab {
+        case transcription
+        case corrections
+        case compare
+    }
+
     var onModelChanged: ((DictationModel) -> Void)?
     var onModelsChanged: (([ManagedModel]) -> Void)?
+    var onCorrectionModelChanged: ((TranscriptEditingModel) -> Void)?
     var onAutoPasteChanged: ((Bool) -> Void)?
     var onAutomaticUpdateChecksChanged: ((Bool) -> Void)?
     var onShortcutChanged: ((DictationShortcut) -> Void)?
@@ -34,6 +41,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let openReleaseButton = NSButton()
     private var checkedReleaseURL: URL?
     private var navigationController: SettingsNavigationController?
+    private var modelsTabbedView: SettingsTabbedContentView?
+    private var modelTabOrder: [ModelsTab] = []
+
+    var selectedModelsTabTitle: String? { modelsTabbedView?.selectedTabTitle }
 
     init(
         service: TiroService,
@@ -66,6 +77,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         modelManagementView.onModelsChanged = { [weak self, weak modelComparisonView] models in
             modelComparisonView?.setModels(models)
             self?.onModelsChanged?(models)
+        }
+        transcriptEditingView.onModelChanged = { [weak self] model in
+            self?.onCorrectionModelChanged?(model)
         }
         permissionSettingsView.onPermissionChanged = { [weak modelManagementView] in
             modelManagementView?.refresh()
@@ -137,13 +151,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func showGeneralSettings() { showSettings(.general) }
-    func showModelsSettings() { showSettings(.models) }
+    func showModelsSettings() { showTranscriptionModelsSettings() }
+    func showTranscriptionModelsSettings() { showModelsTab(.transcription) }
+    func showCorrectionModelsSettings() { showModelsTab(.corrections) }
     func showPermissionsSettings() { showSettings(.permissions) }
     func showPrivacySettings() { showSettings(.privacy) }
 
     func refreshModel() {
         dictationPreferencesView.setModel(DictationModel.selected)
         modelManagementView.refresh()
+    }
+
+    func refreshCorrectionModel() {
+        transcriptEditingView.refresh()
     }
 
     func refreshHistory() {
@@ -169,13 +189,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         launchAtLoginButton.action = #selector(launchAtLoginChanged)
 
         let general = SettingsPageViewController(title: "General", contentView: makeGeneralView())
+        let modelTabDefinitions: [(ModelsTab, String, NSView)] = [
+            (.transcription, "Transcription", modelManagementView),
+            (.corrections, "Corrections", transcriptEditingView),
+            (.compare, "Transcription Comparison", modelComparisonView)
+        ]
+        modelTabOrder = modelTabDefinitions.map(\.0)
+        let modelTabs = SettingsTabbedContentView(
+            tabs: modelTabDefinitions.map { .init(title: $0.1, view: $0.2) },
+            accessibilityLabel: "Model category"
+        )
+        modelsTabbedView = modelTabs
         let models = SettingsPageViewController(
             title: "Models",
-            contentView: SettingsTabbedContentView(tabs: [
-                .init(title: "Transcription", view: modelManagementView),
-                .init(title: "Corrections", view: transcriptEditingView),
-                .init(title: "Compare Transcription", view: modelComparisonView)
-            ], accessibilityLabel: "Model category")
+            contentView: modelTabs
         )
         let vocabulary = SettingsPageViewController(
             title: "Vocabulary",
@@ -208,6 +235,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     func showSettings(_ section: SettingsSection) {
         showWindow(nil)
         navigationController?.show(section)
+    }
+
+    private func showModelsTab(_ tab: ModelsTab) {
+        guard let index = modelTabOrder.firstIndex(of: tab) else { return }
+        showSettings(.models)
+        modelsTabbedView?.selectTab(at: index)
     }
 
     private func makeGeneralView() -> NSView {

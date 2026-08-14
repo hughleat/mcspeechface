@@ -46,6 +46,11 @@ final class SettingsTabbedContentView: NSView {
     private let container = NSView()
     private weak var visibleView: NSView?
 
+    private(set) var selectedTabIndex = 0
+    var selectedTabTitle: String? {
+        tabs.indices.contains(selectedTabIndex) ? tabs[selectedTabIndex].title : nil
+    }
+
     init(tabs: [Tab], accessibilityLabel: String = "Page view") {
         self.tabs = tabs
         segmentedControl = NSSegmentedControl(
@@ -79,15 +84,22 @@ final class SettingsTabbedContentView: NSView {
             container.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
             container.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
-        showTab(at: 0)
+        selectTab(at: 0)
     }
 
     @objc private func selectionChanged() {
-        showTab(at: segmentedControl.selectedSegment)
+        showTab(at: segmentedControl.selectedSegment, announce: false)
     }
 
-    private func showTab(at index: Int) {
+    func selectTab(at index: Int) {
+        showTab(at: index, announce: true)
+    }
+
+    private func showTab(at index: Int, announce: Bool) {
         guard tabs.indices.contains(index) else { return }
+        let changed = selectedTabIndex != index
+        selectedTabIndex = index
+        segmentedControl.selectedSegment = index
         visibleView?.removeFromSuperview()
         let next = tabs[index].view
         next.translatesAutoresizingMaskIntoConstraints = false
@@ -99,6 +111,9 @@ final class SettingsTabbedContentView: NSView {
             next.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
         visibleView = next
+        if changed && announce {
+            NSAccessibility.post(element: segmentedControl, notification: .valueChanged)
+        }
     }
 }
 

@@ -3,6 +3,8 @@ import TiroEditing
 
 @MainActor
 final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, NSTableViewDelegate {
+    var onModelChanged: ((TranscriptEditingModel) -> Void)?
+
     private enum ModelState: Equatable {
         case checking
         case available
@@ -55,15 +57,14 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         table.reloadData()
         restoreSelection()
         refreshTask = Task { [weak self, service] in
-            async let appleAvailability = service.availability(for: .appleFoundation)
-            async let localStatus = service.localModelStatus()
+            async let snapshot = service.modelSnapshot()
             async let downloadSpace = service.localModelDownloadSpace()
-            let results = await (appleAvailability, localStatus, downloadSpace)
+            let results = await (snapshot, downloadSpace)
             guard !Task.isCancelled, self?.refreshGeneration == generation else { return }
             self?.apply(
-                appleAvailability: results.0,
-                localStatus: results.1,
-                downloadSpace: results.2
+                appleAvailability: results.0.appleAvailability,
+                localStatus: results.0.localStatus,
+                downloadSpace: results.1
             )
         }
     }
@@ -103,7 +104,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         storageLabel.alignment = .right
         storageLabel.isHidden = true
         let promptsButton = NSButton(
-            title: "Shared Correction Prompts...",
+            title: "Shared Correction Prompts…",
             target: self,
             action: #selector(editPrompts)
         )
@@ -152,6 +153,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             return
         }
         TranscriptEditingModel.selected = model
+        onModelChanged?(model)
         table.reloadData()
         selectRow(for: model)
     }
@@ -174,6 +176,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         apply(downloadSpace: downloadSpace)
         if !canRemainSelected(TranscriptEditingModel.selected) {
             TranscriptEditingModel.selected = .off
+            onModelChanged?(.off)
             AccessibilityAnnouncements.post("Correction model set to Off.", from: table)
         }
         table.reloadData()
