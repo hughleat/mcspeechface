@@ -15,7 +15,7 @@ public enum GGUFTranscriptEditorError: LocalizedError {
         case .transcriptTooLong: "This transcript is too long for the local editing model."
         case .generationTimedOut: "The local editing model took too long to respond."
         case .generationFailed(let reason): "The local editing model failed: \(reason)"
-        case .invalidResponse: "The local editing model returned an invalid edit proposal."
+        case .invalidResponse: "The local editing model returned an invalid correction."
         }
     }
 }
@@ -73,13 +73,13 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             throw GGUFTranscriptEditorError.modelNotInstalled
         }
         guard !request.text.isEmpty else { return .unchanged }
-        // A byte is the tokenizer's worst-case fallback token. This leaves room for the chat
-        // template and 700 output tokens inside Qwen's 4,096-token context.
+        // Bound the prompt while the output allowance scales with the transcript, leaving the
+        // model room to return the complete revised text instead of a fixed-size fragment.
         do {
-            try TranscriptEditingPrompt.validateFullText(
+            try TranscriptEditingPrompt.validate(
                 request,
                 maximumCombinedUTF8Bytes:
-                    TranscriptEditingPromptConfiguration.localModelMaximumInputUTF8Bytes
+                    TranscriptEditingPrompt.localMaximumCombinedUTF8Bytes(request)
             )
         } catch TranscriptEditingPromptError.renderedPromptTooLong {
             throw GGUFTranscriptEditorError.transcriptTooLong
@@ -100,19 +100,12 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
         guard let response else {
             throw GGUFTranscriptEditorError.invalidResponse
         }
-        guard response.hasChanges, response.revisedText != originalText else { return .unchanged }
-        try TranscriptEditValidator.validateFullTextRevision(
+        return try TranscriptEditValidator.decision(
+            hasChanges: response.hasChanges,
             originalText: originalText,
-            revisedText: response.revisedText
-        )
-        return .proposal(try TranscriptEditValidator.proposal(
-            for: originalText,
-            edits: [TranscriptEditOperation(
-                exactText: originalText,
-                replacement: response.revisedText
-            )],
+            revisedText: response.revisedText,
             explanation: response.explanation
-        ))
+        )
     }
 
     private static func jsonObjectData(in output: String) -> [Data] {
@@ -159,7 +152,7 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
     ) -> [String] {
         [
             "--model", modelURL.path,
-            "--system-prompt", TranscriptEditingPrompt.fullTextInstructions(request),
+            "--system-prompt", TranscriptEditingPrompt.instructions(request),
             "--prompt", TranscriptEditingPrompt.request(request),
             "--grammar", jsonGrammar,
             "--conversation",
@@ -172,7 +165,7 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             "--simple-io",
             "--temperature", "0",
             "--ctx-size", "4096",
-            "--n-predict", "700",
+            "--n-predict", String(TranscriptEditingPrompt.maximumResponseTokens(request)),
             "--gpu-layers", "all",
             "--no-perf",
             "--log-disable",

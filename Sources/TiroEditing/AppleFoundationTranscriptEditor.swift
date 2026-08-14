@@ -5,12 +5,10 @@ import FoundationModels
 
 public enum AppleFoundationTranscriptEditorError: LocalizedError {
     case unavailable(String)
-    case invalidResponse
 
     public var errorDescription: String? {
         switch self {
         case .unavailable(let reason): reason
-        case .invalidResponse: "Apple Intelligence returned an invalid edit proposal."
         }
     }
 }
@@ -69,59 +67,27 @@ public actor AppleFoundationTranscriptEditor: TranscriptEditor {
         let response = try await session.respond(
             to: TranscriptEditingPrompt.request(request),
             schema: schema,
-            options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 700)
+            options: GenerationOptions(
+                sampling: .greedy,
+                maximumResponseTokens: TranscriptEditingPrompt.maximumResponseTokens(request)
+            )
         )
         let content = response.content
         let hasChanges = try content.value(Bool.self, forProperty: "hasChanges")
-        guard hasChanges else { return .unchanged }
         let explanation = try content.value(String.self, forProperty: "explanation")
-        let generatedEdits = try content.value(
-            [GeneratedContent].self,
-            forProperty: "edits"
-        )
-        let edits = try generatedEdits.map { generated in
-            TranscriptEditOperation(
-                exactText: try generated.value(String.self, forProperty: "exactText"),
-                replacement: try generated.value(String.self, forProperty: "replacement"),
-                occurrence: try generated.value(Int?.self, forProperty: "occurrence")
-            )
-        }
-        guard !edits.isEmpty else {
-            throw AppleFoundationTranscriptEditorError.invalidResponse
-        }
-        return .proposal(try TranscriptEditValidator.proposal(
-            for: request.text,
-            edits: edits,
+        let revisedText = try content.value(String.self, forProperty: "revisedText")
+        return try TranscriptEditValidator.decision(
+            hasChanges: hasChanges,
+            originalText: request.text,
+            revisedText: revisedText,
             explanation: explanation
-        ))
+        )
     }
 
     private static func makeSchema() throws -> GenerationSchema {
-        let edit = DynamicGenerationSchema(
-            name: "TranscriptEdit",
-            description: "One exact, source-grounded transcript edit.",
-            properties: [
-                .init(
-                    name: "exactText",
-                    description: "An exact substring copied from the transcript.",
-                    schema: DynamicGenerationSchema(type: String.self)
-                ),
-                .init(
-                    name: "replacement",
-                    description: "Replacement text, or an empty string to delete exactText.",
-                    schema: DynamicGenerationSchema(type: String.self)
-                ),
-                .init(
-                    name: "occurrence",
-                    description: "One-based occurrence when exactText appears more than once.",
-                    schema: DynamicGenerationSchema(type: Int.self),
-                    isOptional: true
-                ),
-            ]
-        )
         let decision = DynamicGenerationSchema(
             name: "TranscriptEditDecision",
-            description: "A conservative decision about explicit spoken corrections.",
+            description: "A conservative full-transcript correction decision.",
             properties: [
                 .init(name: "hasChanges", schema: DynamicGenerationSchema(type: Bool.self)),
                 .init(
@@ -130,17 +96,13 @@ public actor AppleFoundationTranscriptEditor: TranscriptEditor {
                     schema: DynamicGenerationSchema(type: String.self)
                 ),
                 .init(
-                    name: "edits",
-                    description: "Exact edits, empty when hasChanges is false.",
-                    schema: DynamicGenerationSchema(
-                        arrayOf: DynamicGenerationSchema(referenceTo: "TranscriptEdit"),
-                        minimumElements: 0,
-                        maximumElements: 24
-                    )
+                    name: "revisedText",
+                    description: "The complete corrected transcript, or the original transcript when unchanged.",
+                    schema: DynamicGenerationSchema(type: String.self)
                 ),
             ]
         )
-        return try GenerationSchema(root: decision, dependencies: [edit])
+        return try GenerationSchema(root: decision, dependencies: [])
     }
 }
 #else

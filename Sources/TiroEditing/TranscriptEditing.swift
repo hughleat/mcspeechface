@@ -22,8 +22,9 @@ public struct TranscriptEditingPromptConfiguration: Codable, Equatable, Sendable
     public static let languageLinePlaceholder = "{languageLine}"
     public static let maximumInstructionsLength = 4_000
     public static let maximumTemplateLength = 4_000
-    static let localModelMaximumInputUTF8Bytes = 3_100
-    private static let minimumLocalModelTranscriptUTF8Bytes = 1_200
+    static let localModelMaximumInputUTF8Bytes = 3_350
+    static let maximumCorrectionTranscriptUTF8Bytes = 3_500
+    private static let minimumLocalModelTranscriptUTF8Bytes = 700
 
     public static let `default` = TranscriptEditingPromptConfiguration(
         instructions: """
@@ -79,8 +80,8 @@ public struct TranscriptEditingPromptConfiguration: Codable, Equatable, Sendable
             language: String(repeating: "x", count: 64),
             promptConfiguration: self
         )
-        guard TranscriptEditingPrompt.fullTextCombinedUTF8ByteCount(request)
-                <= Self.localModelMaximumInputUTF8Bytes else {
+        guard TranscriptEditingPrompt.combinedUTF8ByteCount(request)
+                <= TranscriptEditingPrompt.localMaximumCombinedUTF8Bytes(request) else {
             throw TranscriptEditingPromptError.insufficientLocalModelTranscriptCapacity
         }
     }
@@ -122,34 +123,19 @@ public enum TranscriptEditingPromptError: LocalizedError, Equatable {
     }
 }
 
-public struct TranscriptEditOperation: Codable, Equatable, Sendable {
-    public let exactText: String
-    public let replacement: String
-    public let occurrence: Int?
-
-    public init(exactText: String, replacement: String, occurrence: Int? = nil) {
-        self.exactText = exactText
-        self.replacement = replacement
-        self.occurrence = occurrence
-    }
-}
-
 public struct TranscriptEditProposal: Equatable, Sendable {
     public let originalText: String
     public let revisedText: String
     public let explanation: String
-    public let edits: [TranscriptEditOperation]
 
     public init(
         originalText: String,
         revisedText: String,
-        explanation: String,
-        edits: [TranscriptEditOperation]
+        explanation: String
     ) {
         self.originalText = originalText
         self.revisedText = revisedText
         self.explanation = explanation
-        self.edits = edits
     }
 }
 
@@ -181,31 +167,20 @@ enum TranscriptEditingPrompt {
         """
 
     private static let outputInstructions = """
-        When proposing changes, include requested replacements, permitted filler removals, and
-        removal of the spoken editing command. Never report changes without at least one edit. Use
-        a one-based occurrence only when exactText appears more than once. Every exactText value
-        must be copied exactly from the transcript. Match case exactly and include adjacent
-        punctuation or spacing when its removal is needed. Never select a filler as a substring of
-        another word.
-        """
-
-    private static let fullTextOutputInstructions = """
         Return the complete corrected transcript in revisedText, not a list of edits. Spoken editing
         commands are instructions about the surrounding dictation, not output text: apply them and
         remove them completely rather than preserving or rephrasing them. Preserve all other text.
+        Preserve meaningful hesitation or qualification such as "I think". Remove "you know" only
+        when it is an empty filler, such as at the start followed by a comma. Clean up punctuation
+        and spacing around every removal.
         When no valid change is needed, set hasChanges to false and return the original transcript
-        unchanged. Never leave punctuation that only surrounded a removed filler. For "Um, send
-        the report, ah, tomorrow. Please remove the ums and ahs.", revisedText is exactly "Send the
-        report tomorrow.".
+        unchanged. For "Um, send the report, ah, tomorrow. Please remove the ums and ahs.",
+        revisedText is exactly "Send the report tomorrow.". For "Call Yana tomorrow. Sorry, I mean
+        Janne.", revisedText is exactly "Call Janne tomorrow.".
         """
 
     static func instructions(_ request: TranscriptEditRequest) -> String {
         [safetyInstructions, request.promptConfiguration.instructions, outputInstructions]
-            .joined(separator: "\n\n")
-    }
-
-    static func fullTextInstructions(_ request: TranscriptEditRequest) -> String {
-        [safetyInstructions, request.promptConfiguration.instructions, fullTextOutputInstructions]
             .joined(separator: "\n\n")
     }
 
@@ -221,18 +196,12 @@ enum TranscriptEditingPrompt {
         maximumCombinedUTF8Bytes: Int? = nil
     ) throws {
         try request.promptConfiguration.validate()
-        if let maximumCombinedUTF8Bytes,
-           combinedUTF8ByteCount(request) > maximumCombinedUTF8Bytes {
+        guard request.text.utf8.count
+                <= TranscriptEditingPromptConfiguration.maximumCorrectionTranscriptUTF8Bytes else {
             throw TranscriptEditingPromptError.renderedPromptTooLong
         }
-    }
-
-    static func validateFullText(
-        _ request: TranscriptEditRequest,
-        maximumCombinedUTF8Bytes: Int
-    ) throws {
-        try request.promptConfiguration.validate()
-        guard fullTextCombinedUTF8ByteCount(request) <= maximumCombinedUTF8Bytes else {
+        if let maximumCombinedUTF8Bytes,
+           combinedUTF8ByteCount(request) > maximumCombinedUTF8Bytes {
             throw TranscriptEditingPromptError.renderedPromptTooLong
         }
     }
@@ -241,33 +210,28 @@ enum TranscriptEditingPrompt {
         instructions(request).utf8.count + self.request(request).utf8.count
     }
 
-    static func fullTextCombinedUTF8ByteCount(_ request: TranscriptEditRequest) -> Int {
-        fullTextInstructions(request).utf8.count + self.request(request).utf8.count
+    static func maximumResponseTokens(_ request: TranscriptEditRequest) -> Int {
+        min(4_096, max(700, request.text.utf8.count + 256))
+    }
+
+    static func localMaximumCombinedUTF8Bytes(_ request: TranscriptEditRequest) -> Int {
+        min(
+            TranscriptEditingPromptConfiguration.localModelMaximumInputUTF8Bytes,
+            4_096 - maximumResponseTokens(request) - 64
+        )
     }
 }
 
 public enum TranscriptEditValidationError: LocalizedError, Equatable {
     case emptyTranscript
-    case tooManyEdits
-    case invalidEdit
-    case missingSource(String)
-    case ambiguousSource(String)
-    case invalidOccurrence(String)
-    case overlappingEdits
-    case unchangedResult
+    case explanationTooLong
     case resultTooLong
     case ungroundedRevision
 
     public var errorDescription: String? {
         switch self {
         case .emptyTranscript: "The transcript is empty."
-        case .tooManyEdits: "The proposal contains too many edits."
-        case .invalidEdit: "The proposal contains an invalid edit."
-        case .missingSource(let text): "The proposed source text was not found: \(text)"
-        case .ambiguousSource(let text): "The proposed source text occurs more than once: \(text)"
-        case .invalidOccurrence(let text): "The proposed occurrence does not exist: \(text)"
-        case .overlappingEdits: "The proposal contains overlapping edits."
-        case .unchangedResult: "The proposal does not change the transcript."
+        case .explanationTooLong: "The correction explanation is too long."
         case .resultTooLong: "The proposed transcript is too long."
         case .ungroundedRevision: "The proposed transcript is not grounded in the dictation."
         }
@@ -276,9 +240,30 @@ public enum TranscriptEditValidationError: LocalizedError, Equatable {
 
 public enum TranscriptEditValidator {
     private static let maximumTranscriptLength = 100_000
-    private static let maximumEditCount = 24
-    private static let maximumReplacementLength = 20_000
     private static let maximumExplanationLength = 1_000
+
+    public static func decision(
+        hasChanges: Bool,
+        originalText: String,
+        revisedText: String,
+        explanation: String
+    ) throws -> TranscriptEditDecision {
+        guard !originalText.isEmpty else { throw TranscriptEditValidationError.emptyTranscript }
+        guard originalText.count <= maximumTranscriptLength,
+              revisedText.count <= maximumTranscriptLength else {
+            throw TranscriptEditValidationError.resultTooLong
+        }
+        guard !hasChanges || explanation.count <= maximumExplanationLength else {
+            throw TranscriptEditValidationError.explanationTooLong
+        }
+        guard hasChanges, revisedText != originalText else { return .unchanged }
+        try validateFullTextRevision(originalText: originalText, revisedText: revisedText)
+        return .proposal(TranscriptEditProposal(
+            originalText: originalText,
+            revisedText: revisedText,
+            explanation: explanation
+        ))
+    }
 
     public static func validateFullTextRevision(
         originalText: String,
@@ -287,9 +272,9 @@ public enum TranscriptEditValidator {
         guard revisedText.count <= originalText.count + max(64, originalText.count / 4) else {
             throw TranscriptEditValidationError.ungroundedRevision
         }
-        let originalTokens = groundingTokens(originalText)
         let revisedTokens = groundingTokens(revisedText)
-        let protectedCandidates = protectedSourceTokenCandidates(from: originalText)
+        let protectedSource = protectedSourceTokenCandidates(from: originalText)
+        let protectedCandidates = protectedSource.candidates
             .map(contentTokens)
         guard !revisedTokens.isEmpty else {
             guard protectedCandidates.contains(where: \.isEmpty) else {
@@ -297,97 +282,9 @@ public enum TranscriptEditValidator {
             }
             return
         }
-        let sharedCount = orderedMatchCount(revisedTokens, in: originalTokens)
-        let unmatchedCount = revisedTokens.count - sharedCount
-        guard unmatchedCount <= max(1, revisedTokens.count / 4) else {
+        guard protectedCandidates.contains(contentTokens(revisedTokens)) else {
             throw TranscriptEditValidationError.ungroundedRevision
         }
-
-        let revisedContent = contentTokens(revisedTokens)
-        let retainsCandidate = protectedCandidates.contains { candidate in
-            let retainedCount = orderedMatchCount(revisedContent, in: candidate)
-            let deletedCount = candidate.count - retainedCount
-            return deletedCount <= max(1, candidate.count / 4)
-        }
-        guard retainsCandidate else {
-            throw TranscriptEditValidationError.ungroundedRevision
-        }
-    }
-
-    public static func proposal(
-        for originalText: String,
-        edits: [TranscriptEditOperation],
-        explanation: String
-    ) throws -> TranscriptEditProposal {
-        guard !originalText.isEmpty else { throw TranscriptEditValidationError.emptyTranscript }
-        guard originalText.count <= maximumTranscriptLength else {
-            throw TranscriptEditValidationError.resultTooLong
-        }
-        guard edits.count <= maximumEditCount else {
-            throw TranscriptEditValidationError.tooManyEdits
-        }
-        guard !edits.isEmpty else { throw TranscriptEditValidationError.unchangedResult }
-        guard explanation.count <= maximumExplanationLength else {
-            throw TranscriptEditValidationError.invalidEdit
-        }
-
-        let located = try edits.map { edit -> LocatedEdit in
-            guard !edit.exactText.isEmpty,
-                  edit.exactText != edit.replacement,
-                  edit.replacement.count <= maximumReplacementLength,
-                  edit.occurrence.map({ $0 > 0 }) ?? true else {
-                throw TranscriptEditValidationError.invalidEdit
-            }
-            let matches = ranges(of: edit.exactText, in: originalText)
-            guard !matches.isEmpty else {
-                throw TranscriptEditValidationError.missingSource(edit.exactText)
-            }
-            let range: Range<String.Index>
-            if matches.count == 1 {
-                range = matches[0]
-            } else if let occurrence = edit.occurrence {
-                guard matches.indices.contains(occurrence - 1) else {
-                    throw TranscriptEditValidationError.invalidOccurrence(edit.exactText)
-                }
-                range = matches[occurrence - 1]
-            } else {
-                throw TranscriptEditValidationError.ambiguousSource(edit.exactText)
-            }
-            return LocatedEdit(edit: edit, range: range)
-        }
-
-        let ordered = located.sorted { $0.range.lowerBound < $1.range.lowerBound }
-        for pair in zip(ordered, ordered.dropFirst()) where pair.0.range.overlaps(pair.1.range) {
-            throw TranscriptEditValidationError.overlappingEdits
-        }
-
-        var revisedText = originalText
-        for item in ordered.reversed() {
-            revisedText.replaceSubrange(item.range, with: item.edit.replacement)
-        }
-        guard revisedText != originalText else {
-            throw TranscriptEditValidationError.unchangedResult
-        }
-        guard revisedText.count <= maximumTranscriptLength else {
-            throw TranscriptEditValidationError.resultTooLong
-        }
-        return TranscriptEditProposal(
-            originalText: originalText,
-            revisedText: revisedText,
-            explanation: explanation,
-            edits: edits
-        )
-    }
-
-    private static func ranges(of needle: String, in text: String) -> [Range<String.Index>] {
-        var result: [Range<String.Index>] = []
-        var start = text.startIndex
-        while start < text.endIndex,
-              let range = text.range(of: needle, range: start..<text.endIndex) {
-            result.append(range)
-            start = range.upperBound
-        }
-        return result
     }
 
     private static func groundingTokens(_ text: String) -> [String] {
@@ -425,10 +322,6 @@ public enum TranscriptEditValidator {
         while index < tokens.endIndex {
             if nonsemanticFillers.contains(tokens[index]) {
                 index += 1
-            } else if tokens[index] == "you",
-                      tokens.index(after: index) < tokens.endIndex,
-                      tokens[tokens.index(after: index)] == "know" {
-                index += 2
             } else {
                 result.append(tokens[index])
                 index += 1
@@ -437,40 +330,7 @@ public enum TranscriptEditValidator {
         return result
     }
 
-    private static func orderedMatchCount(_ sought: [String], in source: [String]) -> Int {
-        var sourceIndex = source.startIndex
-        var count = 0
-        for token in sought {
-            guard sourceIndex < source.endIndex,
-                  let match = source[sourceIndex...].firstIndex(of: token) else {
-                continue
-            }
-            count += 1
-            sourceIndex = source.index(after: match)
-        }
-        return count
-    }
-
-    private static func protectedSourceTokenCandidates(from text: String) -> [[String]] {
-        if let marker = trailingDiscourseMarker(in: text),
-           !contentTokens(groundingTokens(String(text[marker.upperBound...]))).isEmpty {
-            let beforeMarker = text[..<marker.lowerBound]
-            let stablePrefix: Substring
-            if let boundary = beforeMarker.rangeOfCharacter(
-                from: CharacterSet(charactersIn: ".!?\n"),
-                options: .backwards
-            ) {
-                stablePrefix = beforeMarker[..<boundary.upperBound]
-            } else {
-                stablePrefix = beforeMarker[..<beforeMarker.startIndex]
-            }
-            let correctedCandidate = String(stablePrefix) + " " + String(text[marker.upperBound...])
-            return [
-                groundingTokens(String(beforeMarker)),
-                groundingTokens(correctedCandidate),
-            ]
-        }
-
+    private static func protectedSourceTokenCandidates(from text: String) -> ProtectedSource {
         let normalized = text.lowercased()
         let fillerRequests = [
             "please remove the ums and ahs",
@@ -483,7 +343,9 @@ public enum TranscriptEditValidator {
                normalized[range.upperBound...]
                 .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
                 .isEmpty {
-                return [groundingTokens(String(text[..<range.lowerBound]))]
+                return ProtectedSource(
+                    candidates: [sourceTokens(String(text[..<range.lowerBound]))]
+                )
             }
         }
 
@@ -504,11 +366,159 @@ public enum TranscriptEditValidator {
         ) {
             let suffix = normalized[boundary.upperBound...]
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if isEditRequestSuffix(suffix) {
-                return [groundingTokens(String(text[..<boundary.upperBound]))]
+            if let correction = trailingCorrection(in: suffix) {
+                let precedingText = String(text[..<boundary.upperBound])
+                switch correction {
+                case .instruction(let command):
+                    let precedingTokens = sourceTokens(precedingText)
+                    return ProtectedSource(
+                        candidates: [precedingTokens] + instructionCandidates(
+                            precedingTokens: precedingTokens,
+                            command: command
+                        )
+                    )
+                case .replacement(let replacement):
+                    let replacementTokens = groundingTokens(replacement)
+                    guard replacementTokens.count >= 3 else {
+                        return ProtectedSource(
+                            candidates: [sourceTokens(precedingText)]
+                        )
+                    }
+                    let earlierText = text[..<boundary.lowerBound]
+                    let stablePrefix: Substring
+                    if let earlierBoundary = earlierText.rangeOfCharacter(
+                        from: sentenceSeparators,
+                        options: .backwards
+                    ) {
+                        stablePrefix = text[..<earlierBoundary.upperBound]
+                    } else {
+                        stablePrefix = text[..<text.startIndex]
+                    }
+                    return ProtectedSource(
+                        candidates: [
+                            sourceTokens(precedingText),
+                            sourceTokens(String(stablePrefix) + " " + replacement),
+                        ]
+                    )
+                }
             }
         }
-        return [groundingTokens(text)]
+
+        if let marker = trailingDiscourseMarker(in: text),
+           !contentTokens(groundingTokens(String(text[marker.upperBound...]))).isEmpty {
+            let beforeMarker = text[..<marker.lowerBound]
+            guard isPlausibleInlineCorrection(
+                marker: String(text[marker]),
+                before: String(beforeMarker),
+                replacement: String(text[marker.upperBound...])
+            ) else {
+                return ProtectedSource(candidates: [sourceTokens(text)])
+            }
+            let stablePrefix: Substring
+            if let boundary = beforeMarker.rangeOfCharacter(
+                from: CharacterSet(charactersIn: ".!?\n"),
+                options: .backwards
+            ) {
+                stablePrefix = beforeMarker[..<boundary.upperBound]
+            } else {
+                stablePrefix = beforeMarker[..<beforeMarker.startIndex]
+            }
+            let correctedCandidate = String(stablePrefix) + " " + String(text[marker.upperBound...])
+            return ProtectedSource(
+                candidates: [
+                    sourceTokens(String(beforeMarker)),
+                    sourceTokens(correctedCandidate),
+                ]
+            )
+        }
+        return ProtectedSource(candidates: [sourceTokens(text)])
+    }
+
+    private static func sourceTokens(_ text: String) -> [String] {
+        var tokens = groundingTokens(text)
+        let leadingText = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if (leadingText.hasPrefix("you know,") || leadingText.hasPrefix("you know ,")),
+           tokens.starts(with: ["you", "know"]) {
+            tokens.removeFirst(2)
+        }
+        return tokens
+    }
+
+    private static func isPlausibleInlineCorrection(
+        marker: String,
+        before: String,
+        replacement: String
+    ) -> Bool {
+        let normalizedMarker = marker.lowercased()
+        guard normalizedMarker.contains("sorry") else { return true }
+        let replacementTokens = contentTokens(groundingTokens(replacement))
+        guard replacementTokens.count >= 2 else {
+            return false
+        }
+        let finalClause = before.split(whereSeparator: { ".!?\n".contains($0) }).last ?? ""
+        return containsSubsequence(
+            Array(replacementTokens.prefix(2)),
+            in: contentTokens(groundingTokens(String(finalClause)))
+        )
+    }
+
+    private static func containsSubsequence(_ sought: [String], in source: [String]) -> Bool {
+        guard !sought.isEmpty, sought.count <= source.count else { return false }
+        return source.indices.contains { start in
+            let end = source.index(start, offsetBy: sought.count, limitedBy: source.endIndex)
+            return end.map { Array(source[start..<$0]) == sought } ?? false
+        }
+    }
+
+    private static func instructionCandidates(
+        precedingTokens: [String],
+        command: String
+    ) -> [[String]] {
+        if command.hasPrefix("i mean ") {
+            let replacement = contentTokens(groundingTokens(String(command.dropFirst(7))))
+            guard !precedingTokens.isEmpty, !replacement.isEmpty else { return [] }
+            return precedingTokens.indices.map { index in
+                Array(precedingTokens[..<index])
+                    + replacement
+                    + Array(precedingTokens[precedingTokens.index(after: index)...])
+            }
+        }
+
+        let normalized = command
+            .replacingOccurrences(of: "go back and ", with: "")
+            .replacingOccurrences(of: "please ", with: "")
+        for (verb, separator) in [("change ", " to "), ("replace ", " with ")] {
+            guard normalized.hasPrefix(verb),
+                  let separatorRange = normalized.range(of: separator) else { continue }
+            let source = contentTokens(groundingTokens(String(
+                normalized[normalized.index(normalized.startIndex, offsetBy: verb.count)..<separatorRange.lowerBound]
+            )))
+            let replacement = contentTokens(groundingTokens(String(normalized[separatorRange.upperBound...])))
+            if let candidate = replacing(source, with: replacement, in: precedingTokens) {
+                return [candidate]
+            }
+        }
+        for verb in ["remove ", "delete "] where normalized.hasPrefix(verb) {
+            let source = contentTokens(groundingTokens(String(normalized.dropFirst(verb.count))))
+            if let candidate = replacing(source, with: [], in: precedingTokens) {
+                return [candidate]
+            }
+        }
+        return []
+    }
+
+    private static func replacing(
+        _ source: [String],
+        with replacement: [String],
+        in tokens: [String]
+    ) -> [String]? {
+        guard !source.isEmpty, source.count <= tokens.count else { return nil }
+        for start in tokens.indices {
+            guard let end = tokens.index(start, offsetBy: source.count, limitedBy: tokens.endIndex),
+                  Array(tokens[start..<end]) == source else { continue }
+            return Array(tokens[..<start]) + replacement + Array(tokens[end...])
+        }
+        return nil
     }
 
     private static func trailingDiscourseMarker(in text: String) -> Range<String.Index>? {
@@ -523,14 +533,31 @@ public enum TranscriptEditValidator {
         return Range(match.range, in: text)
     }
 
-    private static func isEditRequestSuffix(_ suffix: String) -> Bool {
-        let withoutLead = ["no,", "no ", "sorry,", "sorry ", "please "]
-            .first(where: suffix.hasPrefix)
-            .map {
-                suffix.dropFirst($0.count)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            } ?? suffix
-        let command = withoutLead.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    private static func trailingCorrection(in suffix: String) -> TrailingCorrection? {
+        var command = suffix.trimmingCharacters(
+            in: .whitespacesAndNewlines.union(.punctuationCharacters)
+        )
+        var hasNoLead = false
+        while let lead = ["no,", "no ", "sorry,", "sorry "]
+            .first(where: command.hasPrefix) {
+            command = command.dropFirst(lead.count)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            hasNoLead = hasNoLead || lead.hasPrefix("no")
+        }
+        if command.hasPrefix("i mean ") {
+            return .instruction(command)
+        }
+        let withoutPlease = command.hasPrefix("please ")
+            ? String(command.dropFirst("please ".count))
+            : command
+        if isEditInstruction(withoutPlease) {
+            return .instruction(withoutPlease)
+        }
+        guard hasNoLead, !command.isEmpty else { return nil }
+        return .replacement(command)
+    }
+
+    private static func isEditInstruction(_ command: String) -> Bool {
         let goesBackToEdit = command.hasPrefix("go back and change ")
             || command.hasPrefix("go back and replace ")
             || command.hasPrefix("go back and remove ")
@@ -543,6 +570,15 @@ public enum TranscriptEditValidator {
             || command == "remove that"
     }
 
+    private enum TrailingCorrection {
+        case instruction(String)
+        case replacement(String)
+    }
+
+    private struct ProtectedSource {
+        let candidates: [[String]]
+    }
+
     private static func isUnsegmentedScript(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x3040...0x30FF, // Japanese kana
@@ -553,10 +589,5 @@ public enum TranscriptEditValidator {
         default:
             false
         }
-    }
-
-    private struct LocatedEdit {
-        let edit: TranscriptEditOperation
-        let range: Range<String.Index>
     }
 }

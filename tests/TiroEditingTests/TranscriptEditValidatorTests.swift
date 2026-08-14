@@ -18,6 +18,9 @@ struct TranscriptEditValidatorTests {
         #expect(instructions.contains("isolated \"um\", \"uh\", \"erm\", and \"ah\""))
         #expect(instructions.contains("remove the ums and ahs"))
         #expect(instructions.contains("commands that clearly ask to edit"))
+        #expect(instructions.contains("complete corrected transcript in revisedText"))
+        #expect(!instructions.contains("exactText"))
+        #expect(instructions.contains("not a list of edits"))
     }
 
     @Test
@@ -83,6 +86,35 @@ struct TranscriptEditValidatorTests {
     }
 
     @Test
+    func rejectsTranscriptThatCannotFitInACompleteResponse() {
+        let request = TranscriptEditRequest(
+            text: String(
+                repeating: "x",
+                count: TranscriptEditingPromptConfiguration.maximumCorrectionTranscriptUTF8Bytes + 1
+            )
+        )
+
+        #expect(throws: TranscriptEditingPromptError.renderedPromptTooLong) {
+            try TranscriptEditingPrompt.validate(request)
+        }
+    }
+
+    @Test
+    func responseBudgetScalesWithTheTranscript() {
+        #expect(TranscriptEditingPrompt.maximumResponseTokens(.init(text: "Short")) == 700)
+        #expect(
+            TranscriptEditingPrompt.maximumResponseTokens(.init(text: String(repeating: "x", count: 1_000)))
+                == 1_256
+        )
+        let request = TranscriptEditRequest(text: String(repeating: "x", count: 1_000))
+        #expect(
+            TranscriptEditingPrompt.localMaximumCombinedUTF8Bytes(request)
+                + TranscriptEditingPrompt.maximumResponseTokens(request) + 64
+                == 4_096
+        )
+    }
+
+    @Test
     func promptBudgetCountsUTF8BytesRatherThanCharacters() {
         let request = TranscriptEditRequest(text: "🙂")
         let combinedBytes = TranscriptEditingPrompt.instructions(request).utf8.count
@@ -115,6 +147,18 @@ struct TranscriptEditValidatorTests {
         }
         #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
             try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Send Alice. No, change Alice to Janne.",
+                revisedText: "Send Bob."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "I made a mistake, sorry, I need more time.",
+                revisedText: "I need more time."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
                 originalText: "Please send the report to Janne tomorrow morning.",
                 revisedText: "Please send the novel to Alice after lunch."
             )
@@ -124,7 +168,7 @@ struct TranscriptEditValidatorTests {
     @Test
     func fullTextGroundingSupportsLanguagesWithoutSpaces() throws {
         try TranscriptEditValidator.validateFullTextRevision(
-            originalText: "我明天去北经。",
+            originalText: "我明天去北京，",
             revisedText: "我明天去北京。"
         )
     }
@@ -135,6 +179,24 @@ struct TranscriptEditValidatorTests {
             try TranscriptEditValidator.validateFullTextRevision(
                 originalText: "Please do not send the confidential report.",
                 revisedText: "Please send the report."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Do not send the report.",
+                revisedText: "Do now send the report."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "You know the answer.",
+                revisedText: "The answer."
+            )
+        }
+        #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
+            try TranscriptEditValidator.validateFullTextRevision(
+                originalText: "Do not send the report. Sorry about the delay and confusion.",
+                revisedText: "About the delay and confusion."
             )
         }
         #expect(throws: TranscriptEditValidationError.ungroundedRevision) {
@@ -182,31 +244,29 @@ struct TranscriptEditValidatorTests {
     }
 
     @Test
-    func fullTextGroundingAllowsFillerAndRequestedDeletion() throws {
-        try TranscriptEditValidator.validateFullTextRevision(
-            originalText: "Um, uh, send it tomorrow, ah.",
-            revisedText: "Send it tomorrow."
-        )
-        try TranscriptEditValidator.validateFullTextRevision(
-            originalText: "Send it tomorrow. Please remove the ums and ahs.",
-            revisedText: "Send it tomorrow."
-        )
-        try TranscriptEditValidator.validateFullTextRevision(
-            originalText: "We meet Tuesday. No, change Tuesday to Thursday.",
-            revisedText: "We meet Thursday."
-        )
-        try TranscriptEditValidator.validateFullTextRevision(
-            originalText: "Send the report to Alice in London, sorry, send the invoice to Bob in Paris.",
-            revisedText: "Send the invoice to Bob in Paris."
-        )
-        try TranscriptEditValidator.validateFullTextRevision(
-            originalText: "Keep this sentence. Send the invoice to Alice, sorry, send the invoice to Bob.",
-            revisedText: "Keep this sentence. Send the invoice to Bob."
-        )
-        try TranscriptEditValidator.validateFullTextRevision(
-            originalText: "You know, send it tomorrow.",
-            revisedText: "Send it tomorrow."
-        )
+    func fullTextGroundingAllowsFillerAndRequestedDeletion() {
+        let cases = [
+            ("fillers", "Um, uh, send it tomorrow, ah.", "Send it tomorrow."),
+            ("filler request", "Send it tomorrow. Please remove the ums and ahs.", "Send it tomorrow."),
+            ("explicit change", "We meet Tuesday. No, change Tuesday to Thursday.", "We meet Thursday."),
+            ("inline restart", "Send the report to Alice in London, sorry, send the invoice to Bob in Paris.", "Send the invoice to Bob in Paris."),
+            ("stable prefix", "Keep this sentence. Send the invoice to Alice, sorry, send the invoice to Bob.", "Keep this sentence. Send the invoice to Bob."),
+            ("empty filler phrase", "You know, send it tomorrow.", "Send it tomorrow."),
+            ("corrected name", "Call Yana tomorrow. Sorry, I mean Janne.", "Call Janne tomorrow."),
+            ("sentence restart", "Draft the email to Sara in Berlin. No, sorry, send the invoice to Bob in Paris instead.", "Send the invoice to Bob in Paris instead."),
+            ("restart with stable prefix", "Keep this sentence. Draft the email to Sara. No, sorry, send the invoice to Bob.", "Keep this sentence. Send the invoice to Bob."),
+        ]
+
+        for (name, original, revised) in cases {
+            do {
+                try TranscriptEditValidator.validateFullTextRevision(
+                    originalText: original,
+                    revisedText: revised
+                )
+            } catch {
+                Issue.record("Expected \(name) to be accepted, got \(error)")
+            }
+        }
     }
 
     @Test
@@ -222,106 +282,57 @@ struct TranscriptEditValidatorTests {
     }
 
     @Test
-    func appliesExplicitReplacementAndCommandRemoval() throws {
+    func sharedDecisionBuildsAFullTextProposal() throws {
         let original = "We will meet Tuesday. No, change Tuesday to Thursday."
-        let proposal = try TranscriptEditValidator.proposal(
-            for: original,
-            edits: [
-                TranscriptEditOperation(
-                    exactText: "Tuesday",
-                    replacement: "Thursday",
-                    occurrence: 1
-                ),
-                TranscriptEditOperation(
-                    exactText: " No, change Tuesday to Thursday.",
-                    replacement: ""
-                ),
-            ],
-            explanation: "Changed the explicitly corrected day."
+        let decision = try TranscriptEditValidator.decision(
+            hasChanges: true,
+            originalText: original,
+            revisedText: "We will meet Thursday.",
+            explanation: "Changed the requested day."
         )
 
+        guard case .proposal(let proposal) = decision else {
+            Issue.record("Expected a full-text proposal")
+            return
+        }
+        #expect(proposal.originalText == original)
         #expect(proposal.revisedText == "We will meet Thursday.")
+        #expect(proposal.explanation == "Changed the requested day.")
     }
 
     @Test
-    func requiresOccurrenceForRepeatedSourceText() {
-        #expect(throws: TranscriptEditValidationError.ambiguousSource("Tuesday")) {
-            try TranscriptEditValidator.proposal(
-                for: "Tuesday follows Tuesday.",
-                edits: [TranscriptEditOperation(exactText: "Tuesday", replacement: "Thursday")],
+    func sharedDecisionTreatsUnchangedResponsesAsUnchanged() throws {
+        #expect(try TranscriptEditValidator.decision(
+            hasChanges: false,
+            originalText: "Meet Tuesday.",
+            revisedText: "Unexpected replacement.",
+            explanation: ""
+        ) == .unchanged)
+        #expect(try TranscriptEditValidator.decision(
+            hasChanges: true,
+            originalText: "Meet Tuesday.",
+            revisedText: "Meet Tuesday.",
+            explanation: "Claimed a change."
+        ) == .unchanged)
+    }
+
+    @Test
+    func sharedDecisionRejectsInvalidBounds() {
+        #expect(throws: TranscriptEditValidationError.emptyTranscript) {
+            try TranscriptEditValidator.decision(
+                hasChanges: true,
+                originalText: "",
+                revisedText: "Text",
                 explanation: ""
             )
         }
-    }
-
-    @Test
-    func selectsRequestedOccurrence() throws {
-        let proposal = try TranscriptEditValidator.proposal(
-            for: "Tuesday follows Tuesday.",
-            edits: [TranscriptEditOperation(
-                exactText: "Tuesday",
-                replacement: "Thursday",
-                occurrence: 2
-            )],
-            explanation: "Changed the second occurrence."
-        )
-
-        #expect(proposal.revisedText == "Tuesday follows Thursday.")
-    }
-
-    @Test
-    func ignoresSuperfluousOccurrenceWhenSourceIsUnambiguous() throws {
-        let proposal = try TranscriptEditValidator.proposal(
-            for: "Please remove the ums and ahs.",
-            edits: [TranscriptEditOperation(
-                exactText: "Please remove the ums and ahs.",
-                replacement: "",
-                occurrence: 2
-            )],
-            explanation: "Removed the spoken editing request."
-        )
-
-        #expect(proposal.revisedText.isEmpty)
-    }
-
-    @Test
-    func rejectsMissingAndOverlappingSourceText() {
-        #expect(throws: TranscriptEditValidationError.missingSource("Friday")) {
-            try TranscriptEditValidator.proposal(
-                for: "Meet Tuesday.",
-                edits: [TranscriptEditOperation(exactText: "Friday", replacement: "Thursday")],
-                explanation: ""
+        #expect(throws: TranscriptEditValidationError.explanationTooLong) {
+            try TranscriptEditValidator.decision(
+                hasChanges: true,
+                originalText: "Meet Tuesday.",
+                revisedText: "Meet Thursday.",
+                explanation: String(repeating: "x", count: 1_001)
             )
         }
-        #expect(throws: TranscriptEditValidationError.overlappingEdits) {
-            try TranscriptEditValidator.proposal(
-                for: "Meet Tuesday afternoon.",
-                edits: [
-                    TranscriptEditOperation(exactText: "Tuesday", replacement: "Thursday"),
-                    TranscriptEditOperation(
-                        exactText: "Tuesday afternoon",
-                        replacement: "Thursday morning"
-                    ),
-                ],
-                explanation: ""
-            )
-        }
-    }
-
-    @Test
-    func supportsUnicodeExactText() throws {
-        let proposal = try TranscriptEditValidator.proposal(
-            for: "Send it to José. Sorry, send it to Janne.",
-            edits: [
-                TranscriptEditOperation(exactText: "José", replacement: "Janne"),
-                TranscriptEditOperation(
-                    exactText: " Sorry, send it to Janne.",
-                    replacement: ""
-                ),
-            ],
-            explanation: "Changed the recipient."
-        )
-
-        #expect(proposal.revisedText == "Send it to Janne.")
     }
 }
