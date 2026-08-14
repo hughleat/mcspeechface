@@ -20,6 +20,7 @@ enum DiagnosticsReport {
         Accessibility: \(AXIsProcessTrusted() ? "allowed" : "not allowed")
         Speech Recognition: \(speechStatus)
         Auto-paste: \(defaults.bool(forKey: "autoPaste") ? "enabled" : "disabled")
+        Review before pasting: \(TranscriptReviewPreference.load(from: defaults).title)
         Recording feedback: \(defaults.bool(forKey: "soundFeedback") ? "enabled" : "disabled")
         Launch at login: \(LoginItemManager.isEnabled ? "enabled" : "disabled")
 

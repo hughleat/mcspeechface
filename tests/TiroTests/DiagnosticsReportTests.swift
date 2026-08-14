@@ -18,6 +18,7 @@ struct DiagnosticsReportTests {
             "Accessibility:",
             "Speech Recognition:",
             "Auto-paste:",
+            "Review before pasting:",
             "Recording feedback:",
             "Launch at login:",
             "This report excludes transcripts, audio, clipboard contents, vocabulary, file paths, and application names.",

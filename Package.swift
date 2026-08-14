@@ -74,6 +74,7 @@ let package = Package(
                 "SettingsConstructionTests.swift",
                 "SettingsDeepLinkTests.swift",
                 "SupportPromptPolicyTests.swift",
+                "TranscriptReviewTests.swift",
                 "TranscriptionJobGateTests.swift",
                 "TranscriptExportTests.swift",
                 "UpdateCheckerTests.swift",

@@ -16,6 +16,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onPrivacySettingsLoaded: (() -> Void)?
 
     private let autoPasteButton = NSButton(checkboxWithTitle: "Paste after transcription", target: nil, action: nil)
+    private let reviewPreferenceButton = NSPopUpButton()
     private let soundFeedbackButton = NSButton(checkboxWithTitle: "Recording feedback", target: nil, action: nil)
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Launch Tiro at login", target: nil, action: nil)
     private let shortcutRecorder = ShortcutRecorderView()
@@ -134,6 +135,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         transcriptEditingView.refresh()
         snippetEditor.load()
         autoPasteButton.state = UserDefaults.standard.bool(forKey: "autoPaste") ? .on : .off
+        selectReviewPreference(TranscriptReviewPreference.load())
         soundFeedbackButton.state = UserDefaults.standard.bool(forKey: "soundFeedback") ? .on : .off
         let automaticUpdates = UserDefaults.standard.bool(
             forKey: AutomaticUpdateCheckPolicy.enabledDefaultsKey
@@ -184,6 +186,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         autoPasteButton.target = self
         autoPasteButton.action = #selector(autoPasteChanged)
+        reviewPreferenceButton.target = self
+        reviewPreferenceButton.action = #selector(reviewPreferenceChanged)
+        reviewPreferenceButton.removeAllItems()
+        reviewPreferenceButton.addItems(withTitles: TranscriptReviewPreference.allCases.map(\.title))
+        reviewPreferenceButton.setAccessibilityLabel("Review before pasting")
         soundFeedbackButton.target = self
         soundFeedbackButton.action = #selector(soundFeedbackChanged)
         launchAtLoginButton.target = self
@@ -261,7 +268,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let stack = NSStackView(views: [
             dictationLabel, dictationPreferencesView,
             shortcutLabel, shortcutRecorder,
-            autoPasteButton, soundFeedbackButton, launchAtLoginButton,
+            autoPasteButton, reviewPreferenceRow(), soundFeedbackButton, launchAtLoginButton,
             commandLineLabel, commandLineToolView,
             NSView()
         ])
@@ -359,6 +366,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return label
     }
 
+    private func reviewPreferenceRow() -> NSView {
+        let label = NSTextField(labelWithString: "Review before pasting")
+        let row = NSStackView(views: [label, NSView(), reviewPreferenceButton])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        row.widthAnchor.constraint(equalToConstant: 520).isActive = true
+        return row
+    }
+
+    private func selectReviewPreference(_ preference: TranscriptReviewPreference) {
+        guard let index = TranscriptReviewPreference.allCases.firstIndex(of: preference) else {
+            return
+        }
+        reviewPreferenceButton.selectItem(at: index)
+    }
+
     private static func versionText(version: String?, build: String?) -> String {
         switch (version, build) {
         case let (version?, build?) where version != build: return "Version \(version) (\(build))"
@@ -372,6 +396,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let enabled = autoPasteButton.state == .on
         UserDefaults.standard.set(enabled, forKey: "autoPaste")
         onAutoPasteChanged?(enabled)
+    }
+
+    @objc private func reviewPreferenceChanged() {
+        let preferences = TranscriptReviewPreference.allCases
+        guard preferences.indices.contains(reviewPreferenceButton.indexOfSelectedItem) else { return }
+        preferences[reviewPreferenceButton.indexOfSelectedItem].save()
     }
 
     @objc private func soundFeedbackChanged() {

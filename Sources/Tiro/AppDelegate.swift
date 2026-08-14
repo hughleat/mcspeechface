@@ -7,7 +7,6 @@ import TiroRecognition
 import UniformTypeIdentifiers
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private enum State { case idle, starting, recording, transcribing }
     private struct CommandRecording {
         let session: UUID
         let model: DictationModel
@@ -32,7 +31,7 @@ import UniformTypeIdentifiers
     private var transcriptReviewWindow: TranscriptReviewWindowController?
     private var onboardingWindow: OnboardingWindowController?
     private var statusItem: NSStatusItem!
-    private var state: State = .idle
+    private var state: DictationWorkflowState = .idle
     private var menuToggleItem: NSMenuItem!
     private var shortcutStatusItem: NSMenuItem!
     private var pasteRecoveryItem: NSMenuItem!
@@ -86,6 +85,7 @@ import UniformTypeIdentifiers
         UserDefaults.standard.register(defaults: [
             "autoPaste": true,
             "soundFeedback": true,
+            TranscriptReviewPreference.defaultsKey: TranscriptReviewPreference.whenChanged.rawValue,
             AutomaticUpdateCheckPolicy.enabledDefaultsKey: true,
         ])
 #if TIRO_SPONSORSHIP_ENABLED
@@ -542,12 +542,7 @@ import UniformTypeIdentifiers
     }
 
     private var commandState: String {
-        switch state {
-        case .idle: "idle"
-        case .starting: "starting"
-        case .recording: "recording"
-        case .transcribing: "transcribing"
-        }
+        state.commandName
     }
 
     private func commandSegments(_ segments: [TranscriptSegment]) -> [TiroCommandSegment] {
@@ -659,7 +654,10 @@ import UniformTypeIdentifiers
 
     private func configurePermissionsAndStart() {
         hotkeys.onTap = { [weak self] in self?.toggleRecording() }
-        hotkeys.onHoldStart = { [weak self] in self?.startRecording(playStartSound: false) == true }
+        hotkeys.onHoldStart = { [weak self] in
+            guard let self, self.transcriptReviewWindow?.isReviewing != true else { return false }
+            return self.startRecording(playStartSound: false)
+        }
         hotkeys.onHoldEnd = { [weak self] in self?.stopRecording() }
         hotkeys.onHoldCancel = { [weak self] in self?.cancelRecording() }
         hotkeys.onEscape = { [weak self] in self?.cancelRecording() }
@@ -667,8 +665,7 @@ import UniformTypeIdentifiers
             guard let self,
                   self.commandRecording == nil,
                   self.externalOperationID == nil else { return false }
-            return self.state == .starting || self.state == .recording
-                || self.state == .transcribing
+            return self.state.handlesEscape
         }
 
         installHotkeysWhenPermitted()
@@ -744,6 +741,8 @@ import UniformTypeIdentifiers
         case .starting: cancelRecording()
         case .recording: stopRecording()
         case .transcribing: break
+        case .reviewing: transcriptReviewWindow?.accept()
+        case .committing: break
         }
     }
 
@@ -862,7 +861,12 @@ import UniformTypeIdentifiers
                     )
                     try Task.checkCancellation()
                     guard self.transcriptionID == transcriptionID else { return }
-                    await complete(response, model: model)
+                    await complete(
+                        response,
+                        model: model,
+                        audioURL: wavURL,
+                        operationID: transcriptionID
+                    )
                 } catch is CancellationError {
                     if self.transcriptionID == transcriptionID {
                         finishCancelledTranscription()
@@ -884,6 +888,10 @@ import UniformTypeIdentifiers
 
     private func cancelRecording() {
         guard commandRecording == nil, externalOperationID == nil else { return }
+        if state == .reviewing {
+            transcriptReviewWindow?.cancel()
+            return
+        }
         if state == .transcribing {
             transcriptionTask?.cancel()
             transcriptionID = nil
@@ -954,37 +962,68 @@ import UniformTypeIdentifiers
         updateModelChecks()
     }
 
-    private func complete(_ response: TranscriptionResponse, model: DictationModel) async {
+    private func complete(
+        _ response: TranscriptionResponse,
+        model: DictationModel,
+        audioURL: URL,
+        operationID: UUID
+    ) async {
+        guard transcriptionID == operationID else { return }
         let destination = destinationSession
         destinationSession = nil
         originApplication = nil
         var completionOverlay = OverlayState.copied
-        let completedText = await textAfterSpokenCorrections(response)
-        guard !Task.isCancelled else {
+        guard let completedText = await reviewedText(
+            response,
+            audioURL: audioURL,
+            willPaste: shouldAutoPaste && destination != nil,
+            operationID: operationID
+        ) else {
+            guard transcriptionID == operationID else { return }
+            _ = await destination?.restore()
+            guard transcriptionID == operationID else { return }
             finishCancelledTranscription()
+            settingsWindow.refreshHistory()
             return
         }
-        if !completedText.isEmpty {
-#if TIRO_SPONSORSHIP_ENABLED
-            supportPromptPolicy.recordSuccessfulTranscription()
-            scheduleNextSupportPromptCheck(minimumDelay: 1)
-#endif
-            if shouldAutoPaste, let destination {
-                do {
-                    let result = try await pasteCoordinator.paste(completedText, to: destination)
-                    completionOverlay = result == .confirmed ? .pasted : .pasteSent
-                    clearPasteRecovery()
-                } catch {
-                    copyToClipboard(completedText)
-                    completionOverlay = .pasteFailed
-                    rememberPasteFailure(completedText, error: error)
-                    NSLog("Could not auto-paste transcription: %@", error.localizedDescription)
-                }
-            } else {
-                copyToClipboard(completedText)
-                clearPasteRecovery()
+        guard !Task.isCancelled, transcriptionID == operationID else { return }
+        state = .committing
+        menuToggleItem.title = "Finishing…"
+        if completedText != response.text {
+            do {
+                try await service.correctHistoryEntry(id: response.id, correctedText: completedText)
+            } catch is CancellationError {
+                return
+            } catch {
+                NSLog(
+                    "Could not save the accepted spoken correction: %@",
+                    error.localizedDescription
+                )
             }
         }
+        guard !Task.isCancelled, transcriptionID == operationID else { return }
+#if TIRO_SPONSORSHIP_ENABLED
+        supportPromptPolicy.recordSuccessfulTranscription()
+        scheduleNextSupportPromptCheck(minimumDelay: 1)
+#endif
+        if shouldAutoPaste, let destination {
+            do {
+                let result = try await pasteCoordinator.paste(completedText, to: destination)
+                completionOverlay = result == .confirmed ? .pasted : .pasteSent
+                clearPasteRecovery()
+            } catch {
+                copyToClipboard(completedText)
+                _ = await destination.restore()
+                completionOverlay = .pasteFailed
+                rememberPasteFailure(completedText, error: error)
+                NSLog("Could not auto-paste transcription: %@", error.localizedDescription)
+            }
+        } else {
+            copyToClipboard(completedText)
+            clearPasteRecovery()
+            _ = await destination?.restore()
+        }
+        guard transcriptionID == operationID else { return }
         state = .idle
         menuToggleItem.title = "Start Recording"
         statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Tiro")
@@ -998,38 +1037,57 @@ import UniformTypeIdentifiers
         }
     }
 
-    private func textAfterSpokenCorrections(_ response: TranscriptionResponse) async -> String {
-        guard TranscriptEditingModel.selected != .off, !response.text.isEmpty else {
-            return response.text
-        }
-        do {
-            switch try await transcriptEditingService.proposeEdits(to: response) {
-            case .unchanged:
-                return response.text
-            case .proposal(let proposal):
-                overlay.dismiss()
-                let reviewWindow = transcriptReviewWindow ?? TranscriptReviewWindowController()
-                transcriptReviewWindow = reviewWindow
-                let selected = await reviewWindow.review(proposal)
-                if selected != response.text {
-                    do {
-                        try await service.correctHistoryEntry(
-                            id: response.id,
-                            correctedText: selected
-                        )
-                    } catch {
-                        NSLog(
-                            "Could not save the accepted spoken correction: %@",
-                            error.localizedDescription
-                        )
-                    }
+    private func reviewedText(
+        _ response: TranscriptionResponse,
+        audioURL: URL,
+        willPaste: Bool,
+        operationID: UUID
+    ) async -> String? {
+        var revisedText = response.text
+        var explanation = ""
+        if TranscriptEditingModel.selected != .off, !response.text.isEmpty {
+            do {
+                if case .proposal(let proposal) = try await transcriptEditingService.proposeEdits(to: response) {
+                    revisedText = proposal.revisedText
+                    explanation = proposal.explanation
                 }
-                return selected
+            } catch is CancellationError {
+                return nil
+            } catch {
+                NSLog("Could not analyse spoken corrections: %@", error.localizedDescription)
             }
-        } catch {
-            NSLog("Could not analyse spoken corrections: %@", error.localizedDescription)
-            return response.text
         }
+        guard !Task.isCancelled, transcriptionID == operationID else { return nil }
+
+        let draft = TranscriptReviewDraft(
+            originalText: response.text,
+            revisedText: revisedText,
+            explanation: explanation,
+            audioURL: audioURL,
+            duration: response.transcription_seconds,
+            action: willPaste ? .paste : .copy
+        )
+        let selectedText: String
+        if TranscriptReviewPreference.load().shouldReview(textChanged: draft.textChanged) {
+            overlay.dismiss()
+            let reviewWindow = transcriptReviewWindow ?? TranscriptReviewWindowController()
+            transcriptReviewWindow = reviewWindow
+            state = .reviewing
+            menuToggleItem.title = willPaste ? "Paste Transcription" : "Copy Transcription"
+            switch await reviewWindow.review(draft) {
+            case .accepted(let text):
+                guard !Task.isCancelled, transcriptionID == operationID else { return nil }
+                selectedText = text
+            case .cancelled: return nil
+            }
+        } else {
+            selectedText = revisedText
+        }
+
+        guard !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return selectedText
     }
 
     private func presentError(_ error: Error) {
