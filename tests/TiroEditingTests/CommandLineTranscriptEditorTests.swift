@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import TiroEditing
 
+@Suite(.serialized)
 struct CommandLineTranscriptEditorTests {
     @Test
     func availabilityRequiresAnExecutableFile() async throws {
