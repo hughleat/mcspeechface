@@ -323,6 +323,19 @@ struct SettingsConstructionTests {
         #expect(controller.window?.isDocumentEdited == true)
     }
 
+    @Test @MainActor
+    func correctionPromptEditorsShareAResizableRememberedSplit() throws {
+        _ = NSApplication.shared
+        let controller = TranscriptEditingPromptEditorWindowController()
+        let contentView = try #require(controller.window?.contentView)
+        let splitView = try #require(allSubviews(of: NSSplitView.self, in: contentView).first)
+
+        #expect(splitView.isVertical == false)
+        #expect(splitView.arrangedSubviews.count == 2)
+        #expect(splitView.autosaveName == "CorrectionPromptEditorSplit")
+        #expect(allSubviews(of: NSTextView.self, in: splitView).count == 2)
+    }
+
     @Test
     func historyActionLabelsIncludeConciseTranscriptContext() {
         #expect(

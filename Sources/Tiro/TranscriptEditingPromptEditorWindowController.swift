@@ -1,6 +1,51 @@
 import AppKit
 import TiroEditing
 
+private final class PromptTextView: NSTextView {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.type == .keyDown,
+              let key = event.charactersIgnoringModifiers?.lowercased() else {
+            return super.performKeyEquivalent(with: event)
+        }
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        switch (key, modifiers) {
+        case ("a", [.command]):
+            selectAll(nil)
+        case ("c", [.command]):
+            copy(nil)
+        case ("x", [.command]):
+            cut(nil)
+        case ("v", [.command]):
+            paste(nil)
+        case ("z", [.command]):
+            guard undoManager?.canUndo == true else {
+                return super.performKeyEquivalent(with: event)
+            }
+            undoManager?.undo()
+        case ("z", [.command, .shift]):
+            guard undoManager?.canRedo == true else {
+                return super.performKeyEquivalent(with: event)
+            }
+            undoManager?.redo()
+        case ("f", [.command]):
+            showFindPanel(.showFindInterface)
+        case ("g", [.command]):
+            showFindPanel(.nextMatch)
+        case ("g", [.command, .shift]):
+            showFindPanel(.previousMatch)
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+        return true
+    }
+
+    private func showFindPanel(_ action: NSTextFinder.Action) {
+        let sender = NSMenuItem()
+        sender.tag = action.rawValue
+        performFindPanelAction(sender)
+    }
+}
+
 @MainActor
 final class TranscriptEditingPromptEditorWindowController: NSWindowController,
     NSWindowDelegate,
@@ -8,8 +53,8 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
     var onDismiss: (() -> Void)?
 
     private let preferences: TranscriptEditingPromptPreferences
-    private let systemPromptTextView = NSTextView()
-    private let userPromptTextView = NSTextView()
+    private let systemPromptTextView = PromptTextView()
+    private let userPromptTextView = PromptTextView()
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
     private var loadedConfiguration = TranscriptEditingPromptConfiguration.default
     private var isApplyingConfiguration = false
@@ -65,6 +110,12 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
             userPromptTextView,
             accessibilityLabel: "Correction user prompt template"
         )
+        let splitView = makeEditorSplitView(
+            systemLabel: systemPromptLabel,
+            systemEditor: systemPromptScroll,
+            userLabel: userPromptLabel,
+            userEditor: userPromptScroll
+        )
         setPromptAccessibilityHelp()
         let riskLabel = NSTextField(
             wrappingLabelWithString: "These are the complete prompts sent to the model. Custom "
@@ -110,10 +161,7 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         buttons.alignment = .centerY
         buttons.spacing = 8
         let stack = NSStackView(views: [
-            systemPromptLabel,
-            systemPromptScroll,
-            userPromptLabel,
-            userPromptScroll,
+            splitView,
             riskLabel,
             placeholderLabel,
             statusLabel,
@@ -122,8 +170,7 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        stack.setCustomSpacing(14, after: systemPromptScroll)
-        stack.setCustomSpacing(4, after: userPromptScroll)
+        stack.setCustomSpacing(4, after: splitView)
         stack.setCustomSpacing(12, after: placeholderLabel)
         stack.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(stack)
@@ -132,15 +179,41 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
             stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
-            systemPromptScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            systemPromptScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 220),
-            userPromptScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            userPromptScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 110),
+            splitView.widthAnchor.constraint(equalTo: stack.widthAnchor),
             riskLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             placeholderLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             buttons.widthAnchor.constraint(equalTo: stack.widthAnchor),
             statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
+        window?.initialFirstResponder = systemPromptTextView
+        systemPromptTextView.nextKeyView = userPromptTextView
+        userPromptTextView.nextKeyView = resetButton
+    }
+
+    private func makeEditorSplitView(
+        systemLabel: NSTextField,
+        systemEditor: NSScrollView,
+        userLabel: NSTextField,
+        userEditor: NSScrollView
+    ) -> NSSplitView {
+        func makePane(label: NSTextField, editor: NSScrollView) -> NSStackView {
+            let pane = NSStackView(views: [label, editor])
+            pane.orientation = .vertical
+            pane.alignment = .leading
+            pane.spacing = 8
+            editor.widthAnchor.constraint(equalTo: pane.widthAnchor).isActive = true
+            pane.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+            return pane
+        }
+
+        let splitView = NSSplitView()
+        splitView.isVertical = false
+        splitView.dividerStyle = .thin
+        splitView.autosaveName = "CorrectionPromptEditorSplit"
+        splitView.addArrangedSubview(makePane(label: systemLabel, editor: systemEditor))
+        splitView.addArrangedSubview(makePane(label: userLabel, editor: userEditor))
+        splitView.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
+        return splitView
     }
 
     private func makeEditor(
@@ -148,7 +221,10 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         accessibilityLabel: String
     ) -> NSScrollView {
         textView.isRichText = false
+        textView.isEditable = true
+        textView.isSelectable = true
         textView.allowsUndo = true
+        textView.usesFindPanel = true
         textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.textContainerInset = NSSize(width: 6, height: 6)
         textView.isVerticallyResizable = true
@@ -162,6 +238,8 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.documentView = textView
+        textView.frame = scrollView.contentView.bounds
+        textView.autoresizingMask = [.width]
         return scrollView
     }
 

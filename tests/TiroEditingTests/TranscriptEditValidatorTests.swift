@@ -15,10 +15,11 @@ struct TranscriptEditValidatorTests {
 
         #expect(userPrompt.contains("Language: English\n"))
         #expect(userPrompt.contains("<transcript>\nSend it Monday.\n</transcript>"))
-        #expect(systemPrompt.contains("isolated speech fillers"))
-        #expect(systemPrompt.contains("\"um\", \"uh\", \"erm\", and \"ah\""))
+        #expect(systemPrompt.contains("Remove fillers like \"um\", \"er\", \"you know\""))
+        #expect(systemPrompt.contains("Fix obvious grammar errors"))
+        #expect(systemPrompt.contains("repeats that are most likely"))
         #expect(systemPrompt.contains("complete result in revisedText"))
-        #expect(systemPrompt.contains("change X to Y"))
+        #expect(systemPrompt.contains("instructions about fixing mistakes"))
     }
 
     @Test
@@ -51,7 +52,7 @@ struct TranscriptEditValidatorTests {
         let rendered = TranscriptEditingPrompt.request(request)
 
         #expect(!rendered.contains("Language:"))
-        #expect(rendered.hasPrefix("Apply every applicable instruction"))
+        #expect(rendered.hasPrefix("<transcript>"))
     }
 
     @Test
