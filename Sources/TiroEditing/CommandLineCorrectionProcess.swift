@@ -315,9 +315,11 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
 
     private func waitUntilExit() async {
         await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                self.process.waitUntilExit()
-                continuation.resume()
+            Thread.detachNewThread {
+                autoreleasepool {
+                    self.process.waitUntilExit()
+                    continuation.resume()
+                }
             }
         }
     }
@@ -395,11 +397,13 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
         _ operation: @escaping @Sendable () throws -> Result
     ) async throws -> Result {
         try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                do {
-                    continuation.resume(returning: try operation())
-                } catch {
-                    continuation.resume(throwing: error)
+            Thread.detachNewThread {
+                autoreleasepool {
+                    do {
+                        continuation.resume(returning: try operation())
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
         }
