@@ -23,23 +23,25 @@ private final class CommandLineCorrectionPanel: NSPanel {
 
 @MainActor
 final class CommandLineCorrectionEditorWindowController: NSWindowController, NSWindowDelegate,
-    NSTextViewDelegate, NSTextFieldDelegate {
+    NSTextFieldDelegate {
     var onSave: ((CommandLineCorrectionConfiguration) -> Void)?
     var onDismiss: (() -> Void)?
 
     private let defaults: UserDefaults
-    private let presetButton = NSPopUpButton()
+    private let preset: CommandLineCorrectionPreset
     private let executableField = NSTextField()
     private let modelField = NSTextField()
-    private let argumentsView = NSTextView()
+    private let argumentsEditor = CommandArgumentsEditorView()
     private let validationLabel = NSTextField(wrappingLabelWithString: "")
     private var savedConfiguration = CommandLineCorrectionConfiguration.default
-    private var displayedConfiguration = CommandLineCorrectionConfiguration.default
-    private var displayedPreset = CommandLineCorrectionPreset.codex
     private var allowsClose = false
     private var discardAlertVisible = false
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        preset: CommandLineCorrectionPreset,
+        defaults: UserDefaults = .standard
+    ) {
+        self.preset = preset
         self.defaults = defaults
         let panel = CommandLineCorrectionPanel(
             contentRect: NSRect(x: 0, y: 0, width: 660, height: 590),
@@ -47,13 +49,16 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
             backing: .buffered,
             defer: false
         )
-        panel.title = "Command-Line Correction"
+        panel.title = "\(preset.title) Correction Command"
         panel.minSize = NSSize(width: 560, height: 480)
         panel.center()
         super.init(window: panel)
         panel.delegate = self
         panel.contentView = makeContentView()
-        savedConfiguration = CommandLineCorrectionConfiguration.load(from: defaults)
+        savedConfiguration = CommandLineCorrectionConfiguration.load(
+            preset: preset,
+            from: defaults
+        )
         load(savedConfiguration)
     }
 
@@ -69,20 +74,11 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         return false
     }
 
-    func textDidChange(_ notification: Notification) {
-        updateDocumentEditedState()
-    }
-
     func controlTextDidChange(_ obj: Notification) {
         updateDocumentEditedState()
     }
 
     private func makeContentView() -> NSView {
-        presetButton.addItems(withTitles: CommandLineCorrectionPreset.allCases.map(\.title))
-        presetButton.target = self
-        presetButton.action = #selector(presetChanged)
-        presetButton.setAccessibilityLabel("Command-line correction provider")
-
         executableField.placeholderString = "/absolute/path/to/executable"
         executableField.setAccessibilityLabel("Correction executable path")
         executableField.delegate = self
@@ -98,27 +94,20 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         executableRow.alignment = .centerY
         executableRow.spacing = 8
 
-        modelField.placeholderString = "Optional model name"
+        modelField.placeholderString = preset == .custom
+            ? "Optional value for {model}"
+            : "Model name"
         modelField.setAccessibilityLabel("Command-line correction model")
         modelField.delegate = self
 
-        argumentsView.isRichText = false
-        argumentsView.isAutomaticQuoteSubstitutionEnabled = false
-        argumentsView.isAutomaticDashSubstitutionEnabled = false
-        argumentsView.allowsUndo = true
-        argumentsView.delegate = self
-        argumentsView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        argumentsView.textContainerInset = NSSize(width: 8, height: 8)
-        argumentsView.setAccessibilityLabel("Command arguments, one per line")
-        let argumentsScroll = NSScrollView()
-        argumentsScroll.hasVerticalScroller = true
-        argumentsScroll.borderType = .bezelBorder
-        argumentsScroll.documentView = argumentsView
+        argumentsEditor.onChange = { [weak self] in
+            self?.updateDocumentEditedState()
+        }
 
         let argumentHelp = NSTextField(wrappingLabelWithString:
-            "One argument per line. Available placeholders: {model}, {schemaFile}, "
-                + "{schemaJSON}, and {outputFile}. Use \"\" for an empty argument. "
-                + "Schema and output placeholders must occupy a whole line. "
+            "Add one command argument per row. Available placeholders: {model}, {schemaFile}, "
+                + "{schemaJSON}, and {outputFile}. A blank row passes an empty argument. "
+                + "Schema and output placeholders must occupy a whole row. "
                 + "The complete prompt is sent through standard input."
         )
         argumentHelp.textColor = .secondaryLabelColor
@@ -148,11 +137,10 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         buttons.spacing = 8
 
         let stack = NSStackView(views: [
-            labeledRow("Provider", presetButton),
             labeledRow("Executable", executableRow),
             labeledRow("Model", modelField),
-            sectionLabel("Arguments"),
-            argumentsScroll,
+            sectionLabel("Command Arguments"),
+            argumentsEditor,
             argumentHelp,
             privacy,
             validationLabel,
@@ -173,7 +161,7 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
             stack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
             stack.topAnchor.constraint(equalTo: root.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
-            argumentsScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 190),
+            argumentsEditor.heightAnchor.constraint(greaterThanOrEqualToConstant: 190),
         ])
         return root
     }
@@ -197,46 +185,15 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
     }
 
     private func load(_ configuration: CommandLineCorrectionConfiguration) {
-        if let index = CommandLineCorrectionPreset.allCases.firstIndex(of: configuration.preset) {
-            presetButton.selectItem(at: index)
-        }
         executableField.stringValue = configuration.executablePath
         modelField.stringValue = configuration.model
-        argumentsView.string = configuration.argumentsText
-        displayedPreset = configuration.preset
-        displayedConfiguration = configuration
+        argumentsEditor.setArguments(configuration.arguments)
         updateDocumentEditedState()
         validationLabel.isHidden = true
     }
 
-    private var selectedPreset: CommandLineCorrectionPreset {
-        let index = presetButton.indexOfSelectedItem
-        return CommandLineCorrectionPreset.allCases.indices.contains(index)
-            ? CommandLineCorrectionPreset.allCases[index]
-            : .custom
-    }
-
-    @objc private func presetChanged() {
-        let newPreset = selectedPreset
-        guard currentConfiguration(for: displayedPreset) != displayedConfiguration else {
-            load(newPreset.configuration)
-            return
-        }
-        selectPreset(displayedPreset)
-        let alert = NSAlert()
-        alert.messageText = "Replace Unsaved Command Changes?"
-        alert.informativeText = "Choosing another provider restores that provider's preset command."
-        alert.addButton(withTitle: "Replace Changes")
-        alert.addButton(withTitle: "Keep Editing")
-        guard let window else { return }
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            self?.load(newPreset.configuration)
-        }
-    }
-
     @objc private func restorePreset() {
-        load(selectedPreset.configuration)
+        load(preset.configuration)
     }
 
     @objc private func chooseExecutable() {
@@ -247,6 +204,7 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         panel.prompt = "Choose"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         executableField.stringValue = url.path
+        updateDocumentEditedState()
     }
 
     @objc private func save() {
@@ -276,24 +234,13 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
     }
 
     private var currentConfiguration: CommandLineCorrectionConfiguration {
-        currentConfiguration(for: selectedPreset)
-    }
-
-    private func currentConfiguration(
-        for preset: CommandLineCorrectionPreset
-    ) -> CommandLineCorrectionConfiguration {
         CommandLineCorrectionConfiguration(
             preset: preset,
             executablePath: executableField.stringValue
                 .trimmingCharacters(in: .whitespacesAndNewlines),
             model: modelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
-            argumentsText: argumentsView.string
+            arguments: argumentsEditor.arguments
         )
-    }
-
-    private func selectPreset(_ preset: CommandLineCorrectionPreset) {
-        guard let index = CommandLineCorrectionPreset.allCases.firstIndex(of: preset) else { return }
-        presetButton.selectItem(at: index)
     }
 
     private func updateDocumentEditedState() {
@@ -321,5 +268,219 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
             self.allowsClose = true
             self.dismiss()
         }
+    }
+}
+
+@MainActor
+private final class CommandArgumentsEditorView: NSView, NSTableViewDataSource,
+    NSTableViewDelegate, NSTextFieldDelegate {
+    var onChange: (() -> Void)?
+    private(set) var arguments: [String] = []
+
+    private let table = NSTableView()
+    private let removeButton = NSButton()
+    private let moveUpButton = NSButton()
+    private let moveDownButton = NSButton()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        buildContent()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func setArguments(_ arguments: [String]) {
+        self.arguments = arguments
+        table.reloadData()
+        updateButtons()
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { arguments.count }
+
+    func tableView(
+        _ tableView: NSTableView,
+        viewFor tableColumn: NSTableColumn?,
+        row: Int
+    ) -> NSView? {
+        guard arguments.indices.contains(row) else { return nil }
+        let identifier = NSUserInterfaceItemIdentifier("CommandArgument")
+        let cell = (tableView.makeView(withIdentifier: identifier, owner: self)
+            as? NSTableCellView) ?? makeCell(identifier: identifier)
+        guard let field = cell.textField else { return cell }
+        field.stringValue = arguments[row]
+        field.tag = row
+        field.setAccessibilityLabel("Command argument \(row + 1) of \(arguments.count)")
+        return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateButtons()
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField,
+              arguments.indices.contains(field.tag) else { return }
+        arguments[field.tag] = field.stringValue
+        onChange?()
+    }
+
+    private func buildContent() {
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("argument"))
+        column.title = "Argument"
+        column.resizingMask = .autoresizingMask
+        table.addTableColumn(column)
+        table.dataSource = self
+        table.delegate = self
+        table.headerView = nil
+        table.allowsEmptySelection = true
+        table.allowsMultipleSelection = false
+        table.rowHeight = 25
+        table.setAccessibilityLabel("Command arguments")
+
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.documentView = table
+
+        let addButton = iconButton(
+            symbol: "plus",
+            label: "Add command argument",
+            action: #selector(addArgument)
+        )
+        configure(
+            removeButton,
+            symbol: "minus",
+            label: "Remove selected command argument",
+            action: #selector(removeArgument)
+        )
+        configure(
+            moveUpButton,
+            symbol: "arrow.up",
+            label: "Move selected argument up",
+            action: #selector(moveArgumentUp)
+        )
+        configure(
+            moveDownButton,
+            symbol: "arrow.down",
+            label: "Move selected argument down",
+            action: #selector(moveArgumentDown)
+        )
+        let buttons = NSStackView(views: [
+            addButton, removeButton, NSView(), moveUpButton, moveDownButton,
+        ])
+        buttons.orientation = .horizontal
+        buttons.alignment = .centerY
+        buttons.spacing = 4
+
+        let stack = NSStackView(views: [scroll, buttons])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            buttons.widthAnchor.constraint(equalTo: stack.widthAnchor),
+        ])
+        updateButtons()
+    }
+
+    private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
+        let cell = NSTableCellView()
+        cell.identifier = identifier
+        let field = NSTextField()
+        field.isBordered = false
+        field.drawsBackground = false
+        field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        field.delegate = self
+        field.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(field)
+        cell.textField = field
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 5),
+            field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
+            field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        return cell
+    }
+
+    private func iconButton(symbol: String, label: String, action: Selector) -> NSButton {
+        let button = NSButton()
+        configure(button, symbol: symbol, label: label, action: action)
+        return button
+    }
+
+    private func configure(
+        _ button: NSButton,
+        symbol: String,
+        label: String,
+        action: Selector
+    ) {
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        button.imagePosition = .imageOnly
+        button.bezelStyle = .texturedRounded
+        button.target = self
+        button.action = action
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 24).isActive = true
+    }
+
+    @objc private func addArgument() {
+        arguments.append("")
+        let row = arguments.count - 1
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        table.scrollRowToVisible(row)
+        table.editColumn(0, row: row, with: nil, select: true)
+        onChange?()
+    }
+
+    @objc private func removeArgument() {
+        let row = table.selectedRow
+        guard arguments.indices.contains(row) else { return }
+        arguments.remove(at: row)
+        table.reloadData()
+        if !arguments.isEmpty {
+            table.selectRowIndexes(
+                IndexSet(integer: min(row, arguments.count - 1)),
+                byExtendingSelection: false
+            )
+        }
+        updateButtons()
+        onChange?()
+    }
+
+    @objc private func moveArgumentUp() {
+        moveSelectedArgument(by: -1)
+    }
+
+    @objc private func moveArgumentDown() {
+        moveSelectedArgument(by: 1)
+    }
+
+    private func moveSelectedArgument(by offset: Int) {
+        let source = table.selectedRow
+        let destination = source + offset
+        guard arguments.indices.contains(source), arguments.indices.contains(destination) else {
+            return
+        }
+        arguments.swapAt(source, destination)
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: destination), byExtendingSelection: false)
+        updateButtons()
+        onChange?()
+    }
+
+    private func updateButtons() {
+        let row = table.selectedRow
+        removeButton.isEnabled = arguments.indices.contains(row)
+        moveUpButton.isEnabled = arguments.indices.contains(row) && row > 0
+        moveDownButton.isEnabled = arguments.indices.contains(row) && row < arguments.count - 1
     }
 }

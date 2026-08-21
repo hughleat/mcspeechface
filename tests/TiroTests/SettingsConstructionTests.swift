@@ -96,7 +96,11 @@ struct SettingsConstructionTests {
     func correctionModelSnapshotUsesCanonicalLocalStatus() {
         let incomplete = TranscriptEditingModelSnapshot(
             appleAvailability: .unavailable(reason: "Unavailable"),
-            commandLineAvailability: .unavailable(reason: "Unavailable"),
+            commandLineAvailability: Dictionary(
+                uniqueKeysWithValues: TranscriptEditingModel.commandLineModels.map {
+                    ($0, .unavailable(reason: "Unavailable"))
+                }
+            ),
             localStatuses: Dictionary(
                 uniqueKeysWithValues: TranscriptEditingModel.localModels.map { ($0, .notInstalled) }
             )
@@ -108,7 +112,11 @@ struct SettingsConstructionTests {
 
         let ready = TranscriptEditingModelSnapshot(
             appleAvailability: .available,
-            commandLineAvailability: .available,
+            commandLineAvailability: Dictionary(
+                uniqueKeysWithValues: TranscriptEditingModel.commandLineModels.map {
+                    ($0, .available)
+                }
+            ),
             localStatuses: Dictionary(
                 uniqueKeysWithValues: TranscriptEditingModel.localModels.map {
                     ($0, .installed(bytes: 1))
@@ -116,7 +124,9 @@ struct SettingsConstructionTests {
             )
         )
         #expect(ready.canSelect(.appleFoundation))
-        #expect(ready.canSelect(.commandLine))
+        #expect(ready.canSelect(.codexCommandLine))
+        #expect(ready.canSelect(.claudeCommandLine))
+        #expect(ready.canSelect(.customCommandLine))
         #expect(ready.canSelect(.qwenLocal))
         #expect(ready.canSelect(.ministralLocal))
     }
@@ -135,10 +145,184 @@ struct SettingsConstructionTests {
 
         try configuration.save(to: defaults)
 
-        #expect(CommandLineCorrectionConfiguration.load(from: defaults) == configuration)
-        #expect(configuration.argumentsText.contains("\"\""))
+        #expect(CommandLineCorrectionConfiguration.load(
+            preset: .custom,
+            from: defaults
+        ) == configuration)
+        #expect(configuration.arguments.contains(""))
         #expect(CommandLineCorrectionPreset.codex.configuration.arguments.contains("{outputFile}"))
         #expect(CommandLineCorrectionPreset.claude.configuration.arguments.contains("{schemaJSON}"))
+
+        var invalid = configuration
+        invalid.arguments = ["--schema={schemaJSON}"]
+        #expect(throws: CommandLineCorrectionConfigurationError.self) {
+            try invalid.validate()
+        }
+    }
+
+    @Test
+    func commandLineProvidersKeepIndependentConfigurations() throws {
+        let suite = "command-line-provider-settings-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var codex = CommandLineCorrectionPreset.codex.configuration
+        var claude = CommandLineCorrectionPreset.claude.configuration
+        codex.model = "codex-test-model"
+        claude.model = "claude-test-model"
+
+        try codex.save(to: defaults)
+        try claude.save(to: defaults)
+
+        #expect(CommandLineCorrectionConfiguration.load(
+            preset: .codex,
+            from: defaults
+        ) == codex)
+        #expect(CommandLineCorrectionConfiguration.load(
+            preset: .claude,
+            from: defaults
+        ) == claude)
+        #expect(CommandLineCorrectionConfiguration.load(
+            preset: .custom,
+            from: defaults
+        ) == CommandLineCorrectionPreset.custom.configuration)
+    }
+
+    @Test
+    func legacyCommandLineSelectionMigratesEveryConfiguredProvider() throws {
+        let suite = "command-line-selection-migration-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for preset in CommandLineCorrectionPreset.allCases {
+            defaults.removePersistentDomain(forName: suite)
+            var legacy = preset.configuration
+            if preset == .custom { legacy.executablePath = "/usr/bin/true" }
+            defaults.set("commandLine", forKey: TranscriptEditingModel.defaultsKey)
+            defaults.set(
+                try JSONEncoder().encode(legacy),
+                forKey: CommandLineCorrectionConfiguration.defaultsKey
+            )
+
+            #expect(TranscriptEditingModel.load(from: defaults) ==
+                TranscriptEditingModel.model(for: preset))
+            #expect(CommandLineCorrectionConfiguration.load(
+                preset: preset,
+                from: defaults
+            ) == legacy)
+        }
+
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set("commandLine", forKey: TranscriptEditingModel.defaultsKey)
+        defaults.set(Data("not-json".utf8), forKey: CommandLineCorrectionConfiguration.defaultsKey)
+        #expect(TranscriptEditingModel.load(from: defaults) == .codexCommandLine)
+    }
+
+    @Test
+    func providerSettingsTakePrecedenceOverLegacyConfiguration() throws {
+        let suite = "command-line-provider-precedence-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var legacy = CommandLineCorrectionPreset.codex.configuration
+        legacy.model = "legacy-model"
+        defaults.set(
+            try JSONEncoder().encode(legacy),
+            forKey: CommandLineCorrectionConfiguration.defaultsKey
+        )
+        var current = CommandLineCorrectionPreset.codex.configuration
+        current.model = "current-model"
+        try current.save(to: defaults)
+
+        #expect(CommandLineCorrectionConfiguration.load(
+            preset: .codex,
+            from: defaults
+        ) == current)
+    }
+
+    @Test @MainActor
+    func commandLineProviderEditorShowsStructuredArguments() throws {
+        _ = NSApplication.shared
+        let suite = "command-line-editor-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let configuration = CommandLineCorrectionPreset.claude.configuration
+        try configuration.save(to: defaults)
+        let controller = CommandLineCorrectionEditorWindowController(
+            preset: .claude,
+            defaults: defaults
+        )
+        defer { controller.close() }
+        let content = try #require(controller.window?.contentView)
+        let modelField = allSubviews(of: NSTextField.self, in: content).first {
+            $0.accessibilityLabel() == "Command-line correction model"
+        }
+        let argumentsTable = allSubviews(of: NSTableView.self, in: content).first {
+            $0.accessibilityLabel() == "Command arguments"
+        }
+
+        #expect(controller.window?.title == "Claude Correction Command")
+        #expect(modelField?.stringValue == configuration.model)
+        #expect(argumentsTable?.numberOfRows == configuration.arguments.count)
+        _ = argumentsTable?.view(atColumn: 0, row: 0, makeIfNecessary: true)
+        let argumentFields = allSubviews(of: NSTextField.self, in: content).filter {
+            $0.accessibilityLabel()?.hasPrefix("Command argument ") == true
+        }
+        #expect(argumentFields.first?.accessibilityLabel() ==
+            "Command argument 1 of \(configuration.arguments.count)")
+    }
+
+    @Test
+    func commandLineSelectionRoutesAndRefreshesEachProvider() async throws {
+        let suite = "command-line-provider-routing-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = TranscriptEditingService(defaults: defaults)
+        let response = transcriptionResponse(language: "English", text: "Um, send it.")
+
+        func configuration(
+            preset: CommandLineCorrectionPreset,
+            model: String,
+            marker: String
+        ) -> Tiro.CommandLineCorrectionConfiguration {
+            let program = #"{ consumed = 1 } END { if (configured != "\#(model)") exit 7; print "{\"hasChanges\":true,\"explanation\":\"\#(marker)\",\"revisedText\":\"Send it.\"}" }"#
+            return Tiro.CommandLineCorrectionConfiguration(
+                preset: preset,
+                executablePath: "/usr/bin/awk",
+                model: model,
+                arguments: ["-v", "configured={model}", program]
+            )
+        }
+
+        for (model, preset, marker) in [
+            (TranscriptEditingModel.codexCommandLine, CommandLineCorrectionPreset.codex, "codex"),
+            (.claudeCommandLine, .claude, "claude"),
+            (.customCommandLine, .custom, "custom"),
+        ] {
+            try configuration(
+                preset: preset,
+                model: "\(marker)-model",
+                marker: marker
+            ).save(to: defaults)
+            TranscriptEditingModel.save(model, to: defaults)
+            let result = try await service.proposeEdits(to: response)
+            guard case .proposal(let proposal) = result.decision else {
+                Issue.record("Expected a proposal from \(marker)")
+                continue
+            }
+            #expect(proposal.explanation == marker)
+        }
+
+        let refreshed = configuration(
+            preset: .codex,
+            model: "codex-refreshed-model",
+            marker: "codex refreshed"
+        )
+        try refreshed.save(to: defaults)
+        TranscriptEditingModel.save(.codexCommandLine, to: defaults)
+        let result = try await service.proposeEdits(to: response)
+        guard case .proposal(let proposal) = result.decision else {
+            Issue.record("Expected a proposal from refreshed Codex configuration")
+            return
+        }
+        #expect(proposal.explanation == "codex refreshed")
     }
 
     @Test @MainActor
@@ -161,6 +345,22 @@ struct SettingsConstructionTests {
             localStatus: .notInstalled,
             operationInProgress: false
         ))
+        for model in TranscriptEditingModel.commandLineModels {
+            #expect(!TranscriptEditingSettingsView.allowsSelection(
+                of: model,
+                appleAvailable: true,
+                commandLineAvailable: false,
+                localStatus: .notInstalled,
+                operationInProgress: false
+            ))
+            #expect(TranscriptEditingSettingsView.allowsSelection(
+                of: model,
+                appleAvailable: true,
+                commandLineAvailable: true,
+                localStatus: .notInstalled,
+                operationInProgress: false
+            ))
+        }
         for model in TranscriptEditingModel.localModels {
             #expect(!TranscriptEditingSettingsView.allowsSelection(
                 of: model,
@@ -309,7 +509,11 @@ struct SettingsConstructionTests {
         view.apply(
             snapshot: TranscriptEditingModelSnapshot(
                 appleAvailability: .available,
-                commandLineAvailability: .available,
+                commandLineAvailability: Dictionary(
+                    uniqueKeysWithValues: TranscriptEditingModel.commandLineModels.map {
+                        ($0, .available)
+                    }
+                ),
                 localStatuses: Dictionary(
                     uniqueKeysWithValues: TranscriptEditingModel.localModels.map {
                         ($0, .installed(bytes: 1))
@@ -336,6 +540,10 @@ struct SettingsConstructionTests {
         #expect(editButton?.accessibilityLabel() == "Edit correction prompts")
         #expect(modelTable.target === view)
         #expect(modelTable.action != nil)
+        #expect(modelTable.numberOfRows == TranscriptEditingModel.allCases.count)
+        #expect(TranscriptEditingModel.commandLineModels.map(\.title) == [
+            "Codex", "Claude", "Custom Command",
+        ])
 
         let qwenRow = try #require(TranscriptEditingModel.allCases.firstIndex(of: .qwenLocal))
         modelTable.selectRowIndexes(IndexSet(integer: qwenRow), byExtendingSelection: false)
@@ -458,14 +666,17 @@ private func allSubviews<T: NSView>(of type: T.Type, in view: NSView) -> [T] {
         + view.subviews.flatMap { allSubviews(of: type, in: $0) }
 }
 
-private func transcriptionResponse(language: String?) -> TranscriptionResponse {
+private func transcriptionResponse(
+    language: String?,
+    text: String = "Test transcript"
+) -> TranscriptionResponse {
     TranscriptionResponse(
         id: "test",
         timestamp: "2026-08-12T00:00:00Z",
         model: "test-model",
         audio_file: nil,
         transcription_seconds: 1,
-        text: "Test transcript",
+        text: text,
         language: language,
         origin_bundle_id: nil,
         origin_app_name: nil,

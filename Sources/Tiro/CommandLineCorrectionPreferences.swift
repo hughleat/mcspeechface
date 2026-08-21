@@ -90,10 +90,6 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         return fileManager.isExecutableFile(atPath: resolvedPath)
     }
 
-    var argumentsText: String {
-        arguments.map { $0.isEmpty ? "\"\"" : $0 }.joined(separator: "\n")
-    }
-
     init(
         preset: CommandLineCorrectionPreset,
         executablePath: String,
@@ -106,24 +102,6 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         self.arguments = arguments
     }
 
-    init(
-        preset: CommandLineCorrectionPreset,
-        executablePath: String,
-        model: String,
-        argumentsText: String
-    ) {
-        self.init(
-            preset: preset,
-            executablePath: executablePath,
-            model: model,
-            arguments: argumentsText.components(separatedBy: .newlines).compactMap { line in
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.isEmpty || trimmed.hasPrefix("#") { return nil }
-                return trimmed == "\"\"" ? "" : trimmed
-            }
-        )
-    }
-
     func validate() throws {
         guard executablePath.hasPrefix("/") else {
             throw CommandLineCorrectionConfigurationError.executableMustBeAbsolute
@@ -134,6 +112,13 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         guard !arguments.contains(where: { $0.contains("{model}") }) || !model.isEmpty else {
             throw CommandLineCorrectionConfigurationError.modelRequired
         }
+        for placeholder in ["{schemaFile}", "{schemaJSON}", "{outputFile}"] {
+            if arguments.contains(where: { $0.contains(placeholder) && $0 != placeholder }) {
+                throw CommandLineCorrectionConfigurationError.placeholderMustBeWholeArgument(
+                    placeholder
+                )
+            }
+        }
         guard executablePath.count <= 2_048,
               model.count <= 256,
               arguments.count <= 128,
@@ -142,24 +127,48 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         }
     }
 
-    static func load(from defaults: UserDefaults = .standard) -> Self {
-        guard let data = defaults.data(forKey: defaultsKey),
-              let configuration = try? JSONDecoder().decode(Self.self, from: data),
-              (try? configuration.validate()) != nil else {
-            return .default
+    static func load(
+        preset: CommandLineCorrectionPreset,
+        from defaults: UserDefaults = .standard
+    ) -> Self {
+        if let configuration = decode(from: defaults, key: storageKey(for: preset)),
+           configuration.preset == preset {
+            return configuration
         }
-        return configuration
+        let legacy = loadLegacy(from: defaults)
+        return legacy.preset == preset ? legacy : preset.configuration
     }
 
     func save(to defaults: UserDefaults = .standard) throws {
         try validate()
-        defaults.set(try JSONEncoder().encode(self), forKey: Self.defaultsKey)
+        defaults.set(
+            try JSONEncoder().encode(self),
+            forKey: Self.storageKey(for: preset)
+        )
+    }
+
+    static func loadLegacy(from defaults: UserDefaults = .standard) -> Self {
+        decode(from: defaults, key: defaultsKey) ?? .default
+    }
+
+    private static func storageKey(for preset: CommandLineCorrectionPreset) -> String {
+        "\(defaultsKey).\(preset.rawValue)"
+    }
+
+    private static func decode(from defaults: UserDefaults, key: String) -> Self? {
+        guard let data = defaults.data(forKey: key),
+              let configuration = try? JSONDecoder().decode(Self.self, from: data),
+              (try? configuration.validate()) != nil else {
+            return nil
+        }
+        return configuration
     }
 }
 
 enum CommandLineCorrectionConfigurationError: LocalizedError {
     case executableMustBeAbsolute
     case modelRequired
+    case placeholderMustBeWholeArgument(String)
     case invalidValue
 
     var errorDescription: String? {
@@ -168,6 +177,8 @@ enum CommandLineCorrectionConfigurationError: LocalizedError {
             "Choose an executable using its full path."
         case .modelRequired:
             "Enter a model name or remove {model} from the arguments."
+        case .placeholderMustBeWholeArgument(let placeholder):
+            "Put \(placeholder) in its own argument row."
         case .invalidValue:
             "The command-line correction settings are invalid."
         }

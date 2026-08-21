@@ -4,7 +4,9 @@ import TiroEditing
 enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
     case off
     case appleFoundation
-    case commandLine
+    case codexCommandLine
+    case claudeCommandLine
+    case customCommandLine
     case qwenLocal
     case ministralLocal
 
@@ -14,7 +16,9 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .off: "Off"
         case .appleFoundation: "Apple Intelligence"
-        case .commandLine: "Command Line"
+        case .codexCommandLine: "Codex"
+        case .claudeCommandLine: "Claude"
+        case .customCommandLine: "Custom Command"
         case .qwenLocal: "Qwen 3 1.7B"
         case .ministralLocal: "Ministral 3 3B"
         }
@@ -24,9 +28,12 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .off: return "Do not repair spoken self-corrections"
         case .appleFoundation: return "Provided by macOS · On-device"
-        case .commandLine:
-            let configuration = CommandLineCorrectionConfiguration.load()
-            return "\(configuration.preset.title) · May send text off-device"
+        case .codexCommandLine:
+            return "Codex CLI · Editable model and parameters · May send text off-device"
+        case .claudeCommandLine:
+            return "Claude Code CLI · Editable model and parameters · May send text off-device"
+        case .customCommandLine:
+            return "Run an executable with editable arguments · May send text off-device"
         case .qwenLocal:
             return "Balanced local model · On-device · \(downloadSizeDescription)"
         case .ministralLocal:
@@ -46,8 +53,24 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .qwenLocal: .qwen3Local
         case .ministralLocal: .ministral3Local
-        case .off, .appleFoundation, .commandLine: nil
+        case .off, .appleFoundation, .codexCommandLine, .claudeCommandLine,
+             .customCommandLine: nil
         }
+    }
+
+    var commandLinePreset: CommandLineCorrectionPreset? {
+        switch self {
+        case .codexCommandLine: .codex
+        case .claudeCommandLine: .claude
+        case .customCommandLine: .custom
+        case .off, .appleFoundation, .qwenLocal, .ministralLocal: nil
+        }
+    }
+
+    var isCommandLine: Bool { commandLinePreset != nil }
+
+    static var commandLineModels: [TranscriptEditingModel] {
+        allCases.filter(\.isCommandLine)
     }
 
     static var localModels: [TranscriptEditingModel] {
@@ -60,12 +83,23 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
     }
 
     static func load(from defaults: UserDefaults) -> TranscriptEditingModel {
-        defaults.string(forKey: defaultsKey)
-            .flatMap(TranscriptEditingModel.init(rawValue:)) ?? .off
+        guard let rawValue = defaults.string(forKey: defaultsKey) else { return .off }
+        if rawValue == "commandLine" {
+            return model(for: CommandLineCorrectionConfiguration.loadLegacy(from: defaults).preset)
+        }
+        return TranscriptEditingModel(rawValue: rawValue) ?? .off
     }
 
     static func save(_ model: TranscriptEditingModel, to defaults: UserDefaults) {
         defaults.set(model.rawValue, forKey: defaultsKey)
+    }
+
+    static func model(for preset: CommandLineCorrectionPreset) -> TranscriptEditingModel {
+        switch preset {
+        case .codex: .codexCommandLine
+        case .claude: .claudeCommandLine
+        case .custom: .customCommandLine
+        }
     }
 }
 
@@ -106,7 +140,7 @@ struct TranscriptEditingPromptPreferences {
 
 struct TranscriptEditingModelSnapshot: Equatable, Sendable {
     let appleAvailability: TranscriptEditorAvailability
-    let commandLineAvailability: TranscriptEditorAvailability
+    let commandLineAvailability: [TranscriptEditingModel: TranscriptEditorAvailability]
     let localStatuses: [TranscriptEditingModel: LocalTranscriptEditingModelStatus]
 
     func canSelect(_ model: TranscriptEditingModel) -> Bool {
@@ -115,8 +149,8 @@ struct TranscriptEditingModelSnapshot: Equatable, Sendable {
             true
         case .appleFoundation:
             appleAvailability == .available
-        case .commandLine:
-            commandLineAvailability == .available
+        case .codexCommandLine, .claudeCommandLine, .customCommandLine:
+            commandLineAvailability[model] == .available
         case .qwenLocal, .ministralLocal:
             if case .installed = localStatuses[model] { true } else { false }
         }
@@ -130,19 +164,21 @@ struct TranscriptEditingResult: Sendable {
 
 actor TranscriptEditingService {
     private var appleEditor: (any TranscriptEditor)?
-    private var commandLineEditor: (
+    private var commandLineEditors: [TranscriptEditingModel: (
         configuration: CommandLineCorrectionConfiguration,
         editor: any TranscriptEditor
-    )?
+    )] = [:]
     private var localEditors: [TranscriptEditingModel: any TranscriptEditor] = [:]
     private var activeLocalRepairs: [TranscriptEditingModel: Int] = [:]
     private var localModelMutations: Set<TranscriptEditingModel> = []
     private let localModelStores: [TranscriptEditingModel: LocalTranscriptEditingModelStore]
     private let llamaExecutableURL: URL
+    private let defaults: UserDefaults
 
     init(
         modelsRoot: URL = AppPaths.editingModelsDirectory,
         llamaExecutableURL: URL = AppPaths.llamaHelperExecutable,
+        defaults: UserDefaults = .standard,
         downloader: any TranscriptEditingModelDownloading =
             URLSessionTranscriptEditingModelDownloader()
     ) {
@@ -155,14 +191,18 @@ actor TranscriptEditingService {
             ))
         })
         self.llamaExecutableURL = llamaExecutableURL
+        self.defaults = defaults
     }
 
     func availability(for model: TranscriptEditingModel) async -> TranscriptEditorAvailability {
         guard model != .off else {
             return .unavailable(reason: "Spoken corrections are off.")
         }
-        if model == .commandLine {
-            let configuration = CommandLineCorrectionConfiguration.load()
+        if let preset = model.commandLinePreset {
+            let configuration = CommandLineCorrectionConfiguration.load(
+                preset: preset,
+                from: defaults
+            )
             return configuration.isExecutableAvailable
                 ? .available
                 : .unavailable(reason: "Choose an installed executable.")
@@ -177,7 +217,7 @@ actor TranscriptEditingService {
     func proposeEdits(
         to response: TranscriptionResponse
     ) async throws -> TranscriptEditingResult {
-        let selection = TranscriptEditingModel.selected
+        let selection = TranscriptEditingModel.load(from: defaults)
         guard selection != .off else {
             return TranscriptEditingResult(decision: .unchanged, requiresReview: false)
         }
@@ -193,13 +233,13 @@ actor TranscriptEditingService {
                 activeLocalRepairs[selection, default: 1] -= 1
             }
         }
-        let promptConfiguration = TranscriptEditingPromptPreferences().load()
+        let promptConfiguration = TranscriptEditingPromptPreferences(defaults: defaults).load()
         let decision = try await selectedEditor.proposeEdits(
             for: Self.request(for: response, promptConfiguration: promptConfiguration)
         )
         return TranscriptEditingResult(
             decision: decision,
-            requiresReview: promptConfiguration.isCustom || selection == .commandLine
+            requiresReview: promptConfiguration.isCustom || selection.isCommandLine
         )
     }
 
@@ -234,7 +274,7 @@ actor TranscriptEditingService {
         let request = TranscriptEditRequest(
             text: text,
             language: language,
-            promptConfiguration: TranscriptEditingPromptPreferences().load()
+            promptConfiguration: TranscriptEditingPromptPreferences(defaults: defaults).load()
         )
         let providers = try selectedModels.map {
             TranscriptCorrectionProvider(editor: try editor(for: $0))
@@ -254,7 +294,12 @@ actor TranscriptEditingService {
 
     func modelSnapshot() async -> TranscriptEditingModelSnapshot {
         let appleAvailability = await availability(for: .appleFoundation)
-        let commandLineAvailability = await availability(for: .commandLine)
+        var commandLineAvailability: [
+            TranscriptEditingModel: TranscriptEditorAvailability
+        ] = [:]
+        for model in TranscriptEditingModel.commandLineModels {
+            commandLineAvailability[model] = await availability(for: model)
+        }
         var localStatuses: [TranscriptEditingModel: LocalTranscriptEditingModelStatus] = [:]
         for (model, store) in localModelStores {
             localStatuses[model] = await store.status()
@@ -292,7 +337,7 @@ actor TranscriptEditingService {
         guard let store = localModelStores[model] else {
             throw TranscriptEditingServiceError.notLocalModel
         }
-        guard TranscriptEditingModel.selected != model else {
+        guard TranscriptEditingModel.load(from: defaults) != model else {
             throw TranscriptEditingServiceError.selectedModel
         }
         guard activeLocalRepairs[model, default: 0] == 0 else {
@@ -319,9 +364,16 @@ actor TranscriptEditingService {
             let editor = try AppleFoundationTranscriptEditor()
             appleEditor = editor
             return editor
-        case .commandLine:
-            let saved = CommandLineCorrectionConfiguration.load()
-            if let commandLineEditor, commandLineEditor.configuration == saved {
+        case .codexCommandLine, .claudeCommandLine, .customCommandLine:
+            guard let preset = model.commandLinePreset else {
+                throw TranscriptEditingServiceError.commandLineNotConfigured
+            }
+            let saved = CommandLineCorrectionConfiguration.load(
+                preset: preset,
+                from: defaults
+            )
+            if let commandLineEditor = commandLineEditors[model],
+               commandLineEditor.configuration == saved {
                 return commandLineEditor.editor
             }
             try saved.validate()
@@ -339,7 +391,7 @@ actor TranscriptEditingService {
                 configuration: configuration,
                 requiresGrounding: false
             )
-            commandLineEditor = (saved, editor)
+            commandLineEditors[model] = (saved, editor)
             return editor
         case .qwenLocal, .ministralLocal:
             if let editor = localEditors[model] { return editor }

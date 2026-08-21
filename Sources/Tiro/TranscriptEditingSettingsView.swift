@@ -29,8 +29,8 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         var states: [TranscriptEditingModel: ModelState] = [
             .off: .available,
             .appleFoundation: .checking,
-            .commandLine: .checking,
         ]
+        for model in TranscriptEditingModel.commandLineModels { states[model] = .checking }
         for model in TranscriptEditingModel.localModels { states[model] = .checking }
         return states
     }()
@@ -66,7 +66,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         invalidateRefresh()
         let generation = refreshGeneration
         states[.appleFoundation] = .checking
-        states[.commandLine] = .checking
+        for model in TranscriptEditingModel.commandLineModels { states[model] = .checking }
         if operationTask == nil {
             for model in TranscriptEditingModel.localModels { states[model] = .checking }
         }
@@ -214,9 +214,12 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         case .available: .available
         case .unavailable(let reason): .unavailable(reason)
         }
-        states[.commandLine] = switch snapshot.commandLineAvailability {
-        case .available: .available
-        case .unavailable(let reason): .unavailable(reason)
+        for model in TranscriptEditingModel.commandLineModels {
+            states[model] = switch snapshot.commandLineAvailability[model] {
+            case .available: .available
+            case .unavailable(let reason): .unavailable(reason)
+            case nil: .unavailable("Configure an installed executable.")
+            }
         }
         for model in TranscriptEditingModel.localModels {
             states[model] = .local(snapshot.localStatuses[model] ?? .notInstalled)
@@ -236,13 +239,17 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             return operationTask == nil && model == selectedModel
         default:
             let appleAvailable = states[.appleFoundation] == .available
+            let commandLineAvailable = model.commandLinePreset.map {
+                CommandLineCorrectionConfiguration.load(
+                    preset: $0,
+                    from: defaults
+                ).isExecutableAvailable
+            } ?? false
             let localStatus = localModelStatus(for: model)
             return Self.allowsSelection(
                 of: model,
                 appleAvailable: appleAvailable,
-                commandLineAvailable: CommandLineCorrectionConfiguration.load(
-                    from: defaults
-                ).isExecutableAvailable,
+                commandLineAvailable: commandLineAvailable,
                 localStatus: localStatus,
                 operationInProgress: operationTask != nil
             )
@@ -260,7 +267,8 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         switch model {
         case .off: return true
         case .appleFoundation: return appleAvailable
-        case .commandLine: return commandLineAvailable
+        case .codexCommandLine, .claudeCommandLine, .customCommandLine:
+            return commandLineAvailable
         case .qwenLocal, .ministralLocal:
             if case .installed = localStatus { return true }
             return false
@@ -415,12 +423,15 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         selected: Bool,
         row: Int
     ) -> ModelLibraryRowView.Action? {
-        if model == .commandLine {
+        if model.isCommandLine {
+            let actionLabel = model == .customCommandLine
+                ? "Edit Custom Command"
+                : "Edit \(model.title) command"
             return ModelLibraryRowView.Action(
-                label: "Configure command-line correction",
-                symbol: "terminal",
+                label: actionLabel,
+                symbol: "slider.horizontal.3",
                 isEnabled: operationTask == nil,
-                toolTip: "Configure command-line correction",
+                toolTip: "Edit the executable, model, and arguments used by \(model.title)",
                 tag: row,
                 target: self,
                 selector: #selector(configureCommandLineCorrection)
@@ -538,12 +549,17 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         }
     }
 
-    @objc private func configureCommandLineCorrection() {
+    @objc private func configureCommandLineCorrection(_ sender: NSButton) {
+        guard let model = model(for: sender),
+              let preset = model.commandLinePreset else { return }
         guard commandLineEditorController == nil else {
             commandLineEditorController?.showWindow(nil)
             return
         }
-        let controller = CommandLineCorrectionEditorWindowController(defaults: defaults)
+        let controller = CommandLineCorrectionEditorWindowController(
+            preset: preset,
+            defaults: defaults
+        )
         controller.onSave = { [weak self] _ in
             self?.refresh()
             self?.onModelChanged?(self?.selectedModel ?? .off)

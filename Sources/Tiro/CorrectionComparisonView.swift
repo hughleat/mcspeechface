@@ -59,7 +59,7 @@ final class CorrectionComparisonView: NSStackView {
                 selectedModels.formIntersection(availableModels)
                 if selectedModels.isEmpty {
                     selectedModels.formUnion(
-                        availableModels.filter { $0 != .commandLine }.prefix(2)
+                        availableModels.filter { !$0.isCommandLine }.prefix(2)
                     )
                 }
                 rebuildRecordingPicker()
@@ -191,7 +191,7 @@ final class CorrectionComparisonView: NSStackView {
         }
         modelButtons = availableModels.enumerated().map { index, model in
             let button = NSButton(
-                checkboxWithTitle: model == .commandLine
+                checkboxWithTitle: model.isCommandLine
                     ? "\(model.title) (may send text off-device)"
                     : model.title,
                 target: self,
@@ -250,7 +250,7 @@ final class CorrectionComparisonView: NSStackView {
         guard let entry = selectedEntry else { return }
         let models = availableModels.filter(selectedModels.contains)
         guard !models.isEmpty else { return }
-        if models.contains(.commandLine),
+        if models.contains(where: \.isCommandLine),
            !defaults.bool(forKey: Self.externalComparisonConsentKey) {
             confirmExternalComparison(entry: entry, models: models)
             return
