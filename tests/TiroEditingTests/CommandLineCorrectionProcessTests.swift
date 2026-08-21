@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import TiroEditing
 
-@Suite(.serialized)
 struct CommandLineCorrectionProcessTests {
     @Test
     func configurationRejectsRelativePathsInvalidArgumentsAndUnboundedTimeouts() {

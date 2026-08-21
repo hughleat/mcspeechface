@@ -216,26 +216,32 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
             throw CommandLineCorrectionError.couldNotLaunch(error.localizedDescription)
         }
 
-        let outputReader = Task.detached {
-            try Self.readBounded(
-                self.output.fileHandleForReading,
-                maximumBytes: self.maximumOutputBytes,
-                eventHandler: self.eventHandler
-            )
+        let outputReader = Task {
+            try await Self.performBlocking {
+                try Self.readBounded(
+                    self.output.fileHandleForReading,
+                    maximumBytes: self.maximumOutputBytes,
+                    eventHandler: self.eventHandler
+                )
+            }
         }
-        let errorReader = Task.detached {
-            try Self.readBounded(
-                self.errorOutput.fileHandleForReading,
-                maximumBytes: self.maximumErrorOutputBytes,
-                eventHandler: nil
-            )
+        let errorReader = Task {
+            try await Self.performBlocking {
+                try Self.readBounded(
+                    self.errorOutput.fileHandleForReading,
+                    maximumBytes: self.maximumErrorOutputBytes,
+                    eventHandler: nil
+                )
+            }
         }
-        let inputWriter = Task.detached {
-            defer { try? self.input.fileHandleForWriting.close() }
-            do {
-                try self.input.fileHandleForWriting.write(contentsOf: self.standardInput)
-            } catch {
-                throw CommandLineCorrectionError.inputWriteFailed
+        let inputWriter = Task {
+            try await Self.performBlocking {
+                defer { try? self.input.fileHandleForWriting.close() }
+                do {
+                    try self.input.fileHandleForWriting.write(contentsOf: self.standardInput)
+                } catch {
+                    throw CommandLineCorrectionError.inputWriteFailed
+                }
             }
         }
 
@@ -383,6 +389,20 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
             eventHandler(line)
         }
         return (data, exceededLimit)
+    }
+
+    private static func performBlocking<Result: Sendable>(
+        _ operation: @escaping @Sendable () throws -> Result
+    ) async throws -> Result {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    continuation.resume(returning: try operation())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     private static func preferredOutput(
