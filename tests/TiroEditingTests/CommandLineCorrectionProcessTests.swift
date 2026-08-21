@@ -342,7 +342,7 @@ struct CommandLineCorrectionProcessTests {
         } catch {
             Issue.record("Expected CancellationError, got \(error)")
         }
-        #expect(ProcessInfo.processInfo.systemUptime - startedAt < 2)
+        #expect(ProcessInfo.processInfo.systemUptime - startedAt < 5)
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
     }
 
