@@ -71,16 +71,25 @@ struct TranscriptReviewTests {
         )
         #expect(
             DictationWorkflowState.reviewing.shortcutTapAction(reviewIsActive: false)
-                == .toggleDeferredRecording
+                == .requestDeferredRecording
         )
         #expect(
             DictationWorkflowState.committing.shortcutTapAction(reviewIsActive: false)
-                == .toggleDeferredRecording
+                == .requestDeferredRecording
         )
         #expect(
             DictationWorkflowState.idle.shortcutTapAction(reviewIsActive: false)
                 == .startRecording
         )
+    }
+
+    @Test func repeatedDeferredRecordingRequestsCoalesce() {
+        var deferredStart = DeferredRecordingStart()
+        deferredStart.request()
+        deferredStart.request()
+
+        #expect(deferredStart.consume())
+        #expect(!deferredStart.consume())
     }
 
     @Test @MainActor

@@ -80,7 +80,7 @@ import UniformTypeIdentifiers
     private var awaitingPrivacyReview = false
     private var isPresentingRecovery = false
     private var localCorrectionShutdownPrepared = false
-    private var deferredRecordingStartRequested = false
+    private var deferredRecordingStart = DeferredRecordingStart()
 #if TIRO_SPONSORSHIP_ENABLED
     private var supportPromptSuppressedUntil: Date?
 #endif
@@ -765,7 +765,7 @@ import UniformTypeIdentifiers
         case .cancelStarting: cancelRecording()
         case .stopRecording: stopRecording()
         case .acceptReview: transcriptReviewWindow?.accept()
-        case .toggleDeferredRecording: deferredRecordingStartRequested.toggle()
+        case .requestDeferredRecording: deferredRecordingStart.request()
         case .ignore: break
         }
     }
@@ -1092,8 +1092,7 @@ import UniformTypeIdentifiers
     }
 
     private func startDeferredRecordingIfNeeded() {
-        guard deferredRecordingStartRequested else { return }
-        deferredRecordingStartRequested = false
+        guard deferredRecordingStart.consume() else { return }
         startRecording()
     }
 

@@ -3,8 +3,22 @@ enum DictationShortcutTapAction: Equatable {
     case cancelStarting
     case stopRecording
     case acceptReview
-    case toggleDeferredRecording
+    case requestDeferredRecording
     case ignore
+}
+
+struct DeferredRecordingStart {
+    private var isPending = false
+
+    mutating func request() {
+        isPending = true
+    }
+
+    mutating func consume() -> Bool {
+        guard isPending else { return false }
+        isPending = false
+        return true
+    }
 }
 
 enum DictationWorkflowState: Equatable {
@@ -41,8 +55,8 @@ enum DictationWorkflowState: Equatable {
         case .starting: .cancelStarting
         case .recording: .stopRecording
         case .transcribing, .correcting: .ignore
-        case .reviewing: reviewIsActive ? .acceptReview : .toggleDeferredRecording
-        case .committing: .toggleDeferredRecording
+        case .reviewing: reviewIsActive ? .acceptReview : .requestDeferredRecording
+        case .committing: .requestDeferredRecording
         }
     }
 }
