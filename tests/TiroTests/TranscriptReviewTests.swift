@@ -88,8 +88,10 @@ struct TranscriptReviewTests {
         deferredStart.request()
         deferredStart.request()
 
-        #expect(deferredStart.consume())
-        #expect(!deferredStart.consume())
+        let firstStart = deferredStart.consume()
+        let secondStart = deferredStart.consume()
+        #expect(firstStart)
+        #expect(!secondStart)
     }
 
     @Test @MainActor
