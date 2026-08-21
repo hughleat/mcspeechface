@@ -64,6 +64,25 @@ struct TranscriptReviewTests {
         #expect(DictationWorkflowState.committing.commandName == "committing")
     }
 
+    @Test func shortcutTapIsDeferredAcrossTheReviewCommitHandoff() {
+        #expect(
+            DictationWorkflowState.reviewing.shortcutTapAction(reviewIsActive: true)
+                == .acceptReview
+        )
+        #expect(
+            DictationWorkflowState.reviewing.shortcutTapAction(reviewIsActive: false)
+                == .toggleDeferredRecording
+        )
+        #expect(
+            DictationWorkflowState.committing.shortcutTapAction(reviewIsActive: false)
+                == .toggleDeferredRecording
+        )
+        #expect(
+            DictationWorkflowState.idle.shortcutTapAction(reviewIsActive: false)
+                == .startRecording
+        )
+    }
+
     @Test @MainActor
     func reviewPanelAlwaysUsesTheDarkOverlayAppearance() throws {
         _ = NSApplication.shared

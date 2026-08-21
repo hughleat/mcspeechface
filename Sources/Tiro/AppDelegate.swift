@@ -80,6 +80,7 @@ import UniformTypeIdentifiers
     private var awaitingPrivacyReview = false
     private var isPresentingRecovery = false
     private var localCorrectionShutdownPrepared = false
+    private var deferredRecordingStartRequested = false
 #if TIRO_SPONSORSHIP_ENABLED
     private var supportPromptSuppressedUntil: Date?
 #endif
@@ -756,13 +757,16 @@ import UniformTypeIdentifiers
 
     @objc private func toggleRecording() {
         guard commandRecording == nil else { return }
-        switch state {
-        case .idle: startRecording()
-        case .starting: cancelRecording()
-        case .recording: stopRecording()
-        case .transcribing, .correcting: break
-        case .reviewing: transcriptReviewWindow?.accept()
-        case .committing: break
+        let tapAction = state.shortcutTapAction(
+            reviewIsActive: transcriptReviewWindow?.isReviewing == true
+        )
+        switch tapAction {
+        case .startRecording: startRecording()
+        case .cancelStarting: cancelRecording()
+        case .stopRecording: stopRecording()
+        case .acceptReview: transcriptReviewWindow?.accept()
+        case .toggleDeferredRecording: deferredRecordingStartRequested.toggle()
+        case .ignore: break
         }
     }
 
@@ -964,6 +968,7 @@ import UniformTypeIdentifiers
     private func finishCancelledTranscription() {
         resetAfterTranscription()
         overlay.dismiss()
+        startDeferredRecordingIfNeeded()
     }
 
     private func finishNoSpeechTranscription() {
@@ -1083,6 +1088,13 @@ import UniformTypeIdentifiers
         if DictationModel.selected == model {
             setTranscriptionStatus(nil)
         }
+        startDeferredRecordingIfNeeded()
+    }
+
+    private func startDeferredRecordingIfNeeded() {
+        guard deferredRecordingStartRequested else { return }
+        deferredRecordingStartRequested = false
+        startRecording()
     }
 
     private func reviewedText(
