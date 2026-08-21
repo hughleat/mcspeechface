@@ -24,7 +24,7 @@ struct TranscriptReviewTests {
         #expect(TranscriptReviewPreference.always.shouldReview(textChanged: false))
         #expect(TranscriptReviewPreference.never.shouldReview(
             textChanged: false,
-            usesCustomPrompt: true
+            requiresReview: true
         ))
     }
 

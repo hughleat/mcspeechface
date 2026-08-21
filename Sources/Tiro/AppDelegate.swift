@@ -1045,14 +1045,14 @@ import UniformTypeIdentifiers
     ) async -> String? {
         var revisedText = response.text
         var explanation = ""
-        var usedCustomPrompt = false
+        var correctionRequiresReview = false
         if TranscriptEditingModel.selected != .off, !response.text.isEmpty {
             state = .correcting
             menuToggleItem.title = "Correcting…"
             overlay.show(.correcting)
             do {
                 let result = try await transcriptEditingService.proposeEdits(to: response)
-                usedCustomPrompt = result.usedCustomPrompt
+                correctionRequiresReview = result.requiresReview
                 if case .proposal(let proposal) = result.decision {
                     revisedText = proposal.revisedText
                     explanation = proposal.explanation
@@ -1060,6 +1060,9 @@ import UniformTypeIdentifiers
             } catch is CancellationError {
                 return nil
             } catch {
+                correctionRequiresReview = true
+                explanation = "Correction failed: \(error.localizedDescription) "
+                    + "The original transcription is shown."
                 NSLog("Could not analyse spoken corrections: %@", error.localizedDescription)
             }
         }
@@ -1076,7 +1079,7 @@ import UniformTypeIdentifiers
         let selectedText: String
         if TranscriptReviewPreference.load().shouldReview(
             textChanged: draft.textChanged,
-            usesCustomPrompt: usedCustomPrompt
+            requiresReview: correctionRequiresReview
         ) {
             overlay.dismiss()
             let reviewWindow = transcriptReviewWindow ?? TranscriptReviewWindowController()

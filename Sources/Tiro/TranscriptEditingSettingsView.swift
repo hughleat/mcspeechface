@@ -4,6 +4,7 @@ import TiroEditing
 @MainActor
 final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, NSTableViewDelegate {
     var onModelChanged: ((TranscriptEditingModel) -> Void)?
+    var onCompareModels: (() -> Void)?
 
     private enum ModelState: Equatable {
         case checking
@@ -20,15 +21,24 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     private let defaults: UserDefaults
     private let table = NSTableView()
     private let storageLabel = NSTextField(labelWithString: "")
-    private var localDownloadSpace: LocalTranscriptEditingModelDownloadSpace?
-    private var states: [TranscriptEditingModel: ModelState] = [
-        .off: .available,
-        .appleFoundation: .checking,
-        .qwenLocal: .checking,
-    ]
+    private let compareButton = NSButton()
+    private var localDownloadSpaces: [
+        TranscriptEditingModel: LocalTranscriptEditingModelDownloadSpace
+    ] = [:]
+    private var states: [TranscriptEditingModel: ModelState] = {
+        var states: [TranscriptEditingModel: ModelState] = [
+            .off: .available,
+            .appleFoundation: .checking,
+            .commandLine: .checking,
+        ]
+        for model in TranscriptEditingModel.localModels { states[model] = .checking }
+        return states
+    }()
     private var refreshTask: Task<Void, Never>?
     private var operationTask: Task<Void, Never>?
+    private var operationModel: TranscriptEditingModel?
     private var promptEditorController: TranscriptEditingPromptEditorWindowController?
+    private var commandLineEditorController: CommandLineCorrectionEditorWindowController?
     private var refreshGeneration = 0
     private var isApplyingSelection = false
 
@@ -56,16 +66,19 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         invalidateRefresh()
         let generation = refreshGeneration
         states[.appleFoundation] = .checking
-        if operationTask == nil { states[.qwenLocal] = .checking }
+        states[.commandLine] = .checking
+        if operationTask == nil {
+            for model in TranscriptEditingModel.localModels { states[model] = .checking }
+        }
         reloadTable()
         refreshTask = Task { [weak self, service] in
             async let snapshot = service.modelSnapshot()
-            async let downloadSpace = service.localModelDownloadSpace()
-            let results = await (snapshot, downloadSpace)
+            async let downloadSpaces = service.localModelDownloadSpaces()
+            let results = await (snapshot, downloadSpaces)
             guard !Task.isCancelled, self?.refreshGeneration == generation else { return }
             self?.apply(
                 snapshot: results.0,
-                downloadSpace: results.1
+                downloadSpaces: results.1
             )
         }
     }
@@ -128,7 +141,17 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         instructionsRow.spacing = 8
         addArrangedSubview(instructionsRow)
         instructionsRow.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
-        let footer = NSStackView(views: [NSView(), storageLabel])
+        compareButton.title = "Compare Corrections…"
+        compareButton.image = NSImage(
+            systemSymbolName: "rectangle.split.3x1",
+            accessibilityDescription: nil
+        )
+        compareButton.imagePosition = .imageLeading
+        compareButton.bezelStyle = .rounded
+        compareButton.target = self
+        compareButton.action = #selector(compareCorrections)
+        compareButton.toolTip = "Compare correction models on a saved transcript"
+        let footer = NSStackView(views: [compareButton, NSView(), storageLabel])
         footer.orientation = .horizontal
         footer.alignment = .centerY
         footer.spacing = 8
@@ -185,14 +208,20 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
 
     func apply(
         snapshot: TranscriptEditingModelSnapshot,
-        downloadSpace: LocalTranscriptEditingModelDownloadSpace
+        downloadSpaces: [TranscriptEditingModel: LocalTranscriptEditingModelDownloadSpace]
     ) {
         states[.appleFoundation] = switch snapshot.appleAvailability {
         case .available: .available
         case .unavailable(let reason): .unavailable(reason)
         }
-        states[.qwenLocal] = .local(snapshot.localStatus)
-        apply(downloadSpace: downloadSpace)
+        states[.commandLine] = switch snapshot.commandLineAvailability {
+        case .available: .available
+        case .unavailable(let reason): .unavailable(reason)
+        }
+        for model in TranscriptEditingModel.localModels {
+            states[model] = .local(snapshot.localStatuses[model] ?? .notInstalled)
+        }
+        apply(downloadSpaces: downloadSpaces)
         if !canRemainSelected(selectedModel) {
             selectedModel = .off
             onModelChanged?(.off)
@@ -207,10 +236,13 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             return operationTask == nil && model == selectedModel
         default:
             let appleAvailable = states[.appleFoundation] == .available
-            let localStatus = localModelStatus
+            let localStatus = localModelStatus(for: model)
             return Self.allowsSelection(
                 of: model,
                 appleAvailable: appleAvailable,
+                commandLineAvailable: CommandLineCorrectionConfiguration.load(
+                    from: defaults
+                ).isExecutableAvailable,
                 localStatus: localStatus,
                 operationInProgress: operationTask != nil
             )
@@ -220,6 +252,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     static func allowsSelection(
         of model: TranscriptEditingModel,
         appleAvailable: Bool,
+        commandLineAvailable: Bool = false,
         localStatus: LocalTranscriptEditingModelStatus,
         operationInProgress: Bool
     ) -> Bool {
@@ -227,7 +260,8 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         switch model {
         case .off: return true
         case .appleFoundation: return appleAvailable
-        case .qwenLocal:
+        case .commandLine: return commandLineAvailable
+        case .qwenLocal, .ministralLocal:
             if case .installed = localStatus { return true }
             return false
         }
@@ -241,8 +275,10 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         }
     }
 
-    private var localModelStatus: LocalTranscriptEditingModelStatus {
-        switch states[.qwenLocal] {
+    private func localModelStatus(
+        for model: TranscriptEditingModel
+    ) -> LocalTranscriptEditingModelStatus {
+        switch states[model] {
         case .local(let status), .localError(_, let status): status
         case .checking, .available, .unavailable, .cancelling, .deleting, nil: .notInstalled
         }
@@ -325,7 +361,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
                 "Unavailable", .tertiaryLabelColor, nil
             )
         case .local(.notInstalled):
-            if let space = localDownloadSpace, !space.hasEnoughSpace,
+            if let space = localDownloadSpaces[model], !space.hasEnoughSpace,
                let available = space.availableBytes {
                 let detail = "Needs \(Self.fileSize(space.requiredBytes)) free · "
                     + "\(Self.fileSize(available)) available"
@@ -379,7 +415,18 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         selected: Bool,
         row: Int
     ) -> ModelLibraryRowView.Action? {
-        guard model == .qwenLocal else { return nil }
+        if model == .commandLine {
+            return ModelLibraryRowView.Action(
+                label: "Configure command-line correction",
+                symbol: "terminal",
+                isEnabled: operationTask == nil,
+                toolTip: "Configure command-line correction",
+                tag: row,
+                target: self,
+                selector: #selector(configureCommandLineCorrection)
+            )
+        }
+        guard model.localSpec != nil else { return nil }
         let label: String
         let symbol: String
         let selector: Selector
@@ -390,7 +437,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             label = "Download \(model.title)"
             symbol = "arrow.down.circle"
             selector = #selector(downloadLocalModel(_:))
-            enabled = operationTask == nil && localDownloadSpace?.hasEnoughSpace != false
+            enabled = operationTask == nil && localDownloadSpaces[model]?.hasEnoughSpace != false
             toolTip = enabled ? label : "Not enough space to download \(model.title)"
         case .local(.installing):
             label = "Cancel \(model.title) download"
@@ -419,7 +466,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
                 label = "Retry \(model.title) download"
                 symbol = "arrow.clockwise"
                 selector = #selector(downloadLocalModel(_:))
-                enabled = operationTask == nil && localDownloadSpace?.hasEnoughSpace != false
+                enabled = operationTask == nil && localDownloadSpaces[model]?.hasEnoughSpace != false
                 toolTip = enabled ? label : "Not enough space to download \(model.title)"
             }
         case .checking, .available, .unavailable, .cancelling, .deleting:
@@ -437,32 +484,36 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     }
 
     @objc private func downloadLocalModel(_ sender: NSButton) {
-        guard operationTask == nil else { return }
+        guard operationTask == nil,
+              let model = model(for: sender),
+              model.localSpec != nil else { return }
         invalidateRefresh()
-        states[.qwenLocal] = .local(.installing)
+        operationModel = model
+        states[model] = .local(.installing)
         reloadTable()
-        AccessibilityAnnouncements.post("Downloading Qwen 3 Local.", from: table)
+        AccessibilityAnnouncements.post("Downloading \(model.title).", from: table)
         operationTask = Task { [weak self, service] in
             let finalState: ModelState
             let announcement: String
             do {
-                try await service.installLocalModel()
-                finalState = .local(await service.localModelStatus())
-                announcement = "Qwen 3 Local installed."
+                try await service.installLocalModel(model)
+                finalState = .local(await service.localModelStatus(for: model))
+                announcement = "\(model.title) installed."
             } catch {
-                let status = await service.localModelStatus()
+                let status = await service.localModelStatus(for: model)
                 if Self.isCancellation(error) {
                     finalState = .local(status)
-                    announcement = "Qwen 3 Local download cancelled."
+                    announcement = "\(model.title) download cancelled."
                 } else {
                     finalState = .localError(error.localizedDescription, status)
-                    announcement = "Qwen 3 Local download failed."
+                    announcement = "\(model.title) download failed."
                 }
             }
-            let space = await service.localModelDownloadSpace()
+            let spaces = await service.localModelDownloadSpaces()
             self?.finishLocalOperation(
+                model: model,
                 state: finalState,
-                downloadSpace: space,
+                downloadSpaces: spaces,
                 announcement: announcement
             )
         }
@@ -487,17 +538,45 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         }
     }
 
+    @objc private func configureCommandLineCorrection() {
+        guard commandLineEditorController == nil else {
+            commandLineEditorController?.showWindow(nil)
+            return
+        }
+        let controller = CommandLineCorrectionEditorWindowController(defaults: defaults)
+        controller.onSave = { [weak self] _ in
+            self?.refresh()
+            self?.onModelChanged?(self?.selectedModel ?? .off)
+        }
+        controller.onDismiss = { [weak self] in
+            self?.commandLineEditorController = nil
+        }
+        commandLineEditorController = controller
+        if let parent = window, let editorWindow = controller.window {
+            parent.beginSheet(editorWindow)
+        } else {
+            controller.showWindow(nil)
+        }
+    }
+
+    @objc private func compareCorrections() {
+        onCompareModels?()
+    }
+
     @objc private func cancelLocalModelDownload(_ sender: NSButton) {
-        states[.qwenLocal] = .cancelling
+        guard let model = operationModel else { return }
+        states[model] = .cancelling
         reloadTable()
-        announce("Cancelling Qwen 3 Local download.")
+        announce("Cancelling \(model.title) download.")
         operationTask?.cancel()
     }
 
     @objc private func deleteLocalModel(_ sender: NSButton) {
-        guard selectedModel != .qwenLocal, operationTask == nil else { return }
+        guard let model = model(for: sender),
+              selectedModel != model,
+              operationTask == nil else { return }
         let alert = NSAlert()
-        alert.messageText = "Delete Qwen 3 Local?"
+        alert.messageText = "Delete \(model.title)?"
         alert.informativeText =
             "The downloaded model file will be removed. You can download it again later."
         alert.alertStyle = .warning
@@ -505,7 +584,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         alert.addButton(withTitle: "Cancel")
         let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
-            self?.performLocalModelDeletion()
+            self?.performLocalModelDeletion(model)
         }
         if let window {
             alert.beginSheetModal(for: window, completionHandler: completion)
@@ -514,41 +593,49 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         }
     }
 
-    private func performLocalModelDeletion() {
+    private func performLocalModelDeletion(_ model: TranscriptEditingModel) {
+        guard selectedModel != model, operationTask == nil else {
+            reloadTable(selecting: selectedModel)
+            return
+        }
         invalidateRefresh()
-        states[.qwenLocal] = .deleting
+        operationModel = model
+        states[model] = .deleting
         reloadTable()
-        AccessibilityAnnouncements.post("Deleting Qwen 3 Local.", from: table)
+        AccessibilityAnnouncements.post("Deleting \(model.title).", from: table)
         operationTask = Task { [weak self, service] in
             let finalState: ModelState
             let announcement: String
             do {
-                try await service.deleteLocalModel()
+                try await service.deleteLocalModel(model)
                 finalState = .local(.notInstalled)
-                announcement = "Qwen 3 Local deleted."
+                announcement = "\(model.title) deleted."
             } catch {
-                let status = await service.localModelStatus()
+                let status = await service.localModelStatus(for: model)
                 finalState = .localError(error.localizedDescription, status)
-                announcement = "Qwen 3 Local could not be deleted."
+                announcement = "\(model.title) could not be deleted."
             }
-            let space = await service.localModelDownloadSpace()
+            let spaces = await service.localModelDownloadSpaces()
             self?.finishLocalOperation(
+                model: model,
                 state: finalState,
-                downloadSpace: space,
+                downloadSpaces: spaces,
                 announcement: announcement
             )
         }
     }
 
     private func finishLocalOperation(
+        model: TranscriptEditingModel,
         state: ModelState,
-        downloadSpace: LocalTranscriptEditingModelDownloadSpace,
+        downloadSpaces: [TranscriptEditingModel: LocalTranscriptEditingModelDownloadSpace],
         announcement: String
     ) {
         invalidateRefresh()
-        states[.qwenLocal] = state
-        apply(downloadSpace: downloadSpace)
+        states[model] = state
+        apply(downloadSpaces: downloadSpaces)
         operationTask = nil
+        operationModel = nil
         reloadTable()
         announce(announcement)
         resumeAppleAvailabilityCheckIfNeeded()
@@ -564,9 +651,11 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             || Task.isCancelled
     }
 
-    private func apply(downloadSpace: LocalTranscriptEditingModelDownloadSpace) {
-        localDownloadSpace = downloadSpace
-        if let available = downloadSpace.availableBytes {
+    private func apply(
+        downloadSpaces: [TranscriptEditingModel: LocalTranscriptEditingModelDownloadSpace]
+    ) {
+        localDownloadSpaces = downloadSpaces
+        if let available = downloadSpaces.values.compactMap(\.availableBytes).first {
             storageLabel.stringValue = "\(Self.fileSize(available)) available for models"
             storageLabel.isHidden = false
         } else {
@@ -582,6 +671,11 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         refreshGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
+    }
+
+    private func model(for sender: NSButton) -> TranscriptEditingModel? {
+        guard TranscriptEditingModel.allCases.indices.contains(sender.tag) else { return nil }
+        return TranscriptEditingModel.allCases[sender.tag]
     }
 
     private var selectedModel: TranscriptEditingModel {

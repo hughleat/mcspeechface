@@ -457,6 +457,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$ROOT/.build/release/Tiro" "$APP/Contents/MacOS/Tiro"
 cp "$ROOT/.build/release/TiroCommand" "$APP/Contents/Helpers/tiro"
 chmod 755 "$APP/Contents/Helpers/tiro"
+xcrun clang -Os -arch arm64 -mmacosx-version-min="$DEPLOYMENT_TARGET" \
+    "$ROOT/native/process_launcher.c" \
+    -o "$APP/Contents/Helpers/tiro-process-launcher"
+chmod 755 "$APP/Contents/Helpers/tiro-process-launcher"
 llama_runtime="$(prepare_llama_runtime)"
 llama_helper="$APP/Contents/Helpers/llama"
 mkdir -p "$llama_helper"

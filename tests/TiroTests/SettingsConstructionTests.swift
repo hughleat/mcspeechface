@@ -96,18 +96,49 @@ struct SettingsConstructionTests {
     func correctionModelSnapshotUsesCanonicalLocalStatus() {
         let incomplete = TranscriptEditingModelSnapshot(
             appleAvailability: .unavailable(reason: "Unavailable"),
-            localStatus: .notInstalled
+            commandLineAvailability: .unavailable(reason: "Unavailable"),
+            localStatuses: Dictionary(
+                uniqueKeysWithValues: TranscriptEditingModel.localModels.map { ($0, .notInstalled) }
+            )
         )
         #expect(incomplete.canSelect(.off))
         #expect(!incomplete.canSelect(.appleFoundation))
         #expect(!incomplete.canSelect(.qwenLocal))
+        #expect(!incomplete.canSelect(.ministralLocal))
 
         let ready = TranscriptEditingModelSnapshot(
             appleAvailability: .available,
-            localStatus: .installed(bytes: 1)
+            commandLineAvailability: .available,
+            localStatuses: Dictionary(
+                uniqueKeysWithValues: TranscriptEditingModel.localModels.map {
+                    ($0, .installed(bytes: 1))
+                }
+            )
         )
         #expect(ready.canSelect(.appleFoundation))
+        #expect(ready.canSelect(.commandLine))
         #expect(ready.canSelect(.qwenLocal))
+        #expect(ready.canSelect(.ministralLocal))
+    }
+
+    @Test
+    func commandLineCorrectionConfigurationRoundTripsLiteralArguments() throws {
+        let suite = "command-line-correction-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let configuration = CommandLineCorrectionConfiguration(
+            preset: .custom,
+            executablePath: "/usr/bin/true",
+            model: "example model",
+            arguments: ["--literal", "$(never-run)", "", "{schemaJSON}"]
+        )
+
+        try configuration.save(to: defaults)
+
+        #expect(CommandLineCorrectionConfiguration.load(from: defaults) == configuration)
+        #expect(configuration.argumentsText.contains("\"\""))
+        #expect(CommandLineCorrectionPreset.codex.configuration.arguments.contains("{outputFile}"))
+        #expect(CommandLineCorrectionPreset.claude.configuration.arguments.contains("{schemaJSON}"))
     }
 
     @Test @MainActor
@@ -130,18 +161,20 @@ struct SettingsConstructionTests {
             localStatus: .notInstalled,
             operationInProgress: false
         ))
-        #expect(!TranscriptEditingSettingsView.allowsSelection(
-            of: .qwenLocal,
-            appleAvailable: true,
-            localStatus: .notInstalled,
-            operationInProgress: false
-        ))
-        #expect(TranscriptEditingSettingsView.allowsSelection(
-            of: .qwenLocal,
-            appleAvailable: true,
-            localStatus: .installed(bytes: 1_282_439_264),
-            operationInProgress: false
-        ))
+        for model in TranscriptEditingModel.localModels {
+            #expect(!TranscriptEditingSettingsView.allowsSelection(
+                of: model,
+                appleAvailable: true,
+                localStatus: .notInstalled,
+                operationInProgress: false
+            ))
+            #expect(TranscriptEditingSettingsView.allowsSelection(
+                of: model,
+                appleAvailable: true,
+                localStatus: .installed(bytes: 1),
+                operationInProgress: false
+            ))
+        }
         #expect(!TranscriptEditingSettingsView.allowsSelection(
             of: .off,
             appleAvailable: true,
@@ -276,11 +309,20 @@ struct SettingsConstructionTests {
         view.apply(
             snapshot: TranscriptEditingModelSnapshot(
                 appleAvailability: .available,
-                localStatus: .installed(bytes: 1_282_439_264)
+                commandLineAvailability: .available,
+                localStatuses: Dictionary(
+                    uniqueKeysWithValues: TranscriptEditingModel.localModels.map {
+                        ($0, .installed(bytes: 1))
+                    }
+                )
             ),
-            downloadSpace: LocalTranscriptEditingModelDownloadSpace(
-                requiredBytes: 1,
-                availableBytes: 2
+            downloadSpaces: Dictionary(
+                uniqueKeysWithValues: TranscriptEditingModel.localModels.map {
+                    ($0, LocalTranscriptEditingModelDownloadSpace(
+                        requiredBytes: 1,
+                        availableBytes: 2
+                    ))
+                }
             )
         )
         let labels = allSubviews(of: NSTextField.self, in: view).map(\.stringValue)

@@ -36,14 +36,11 @@ public struct TranscriptEditingPromptConfiguration: Codable, Equatable, Sendable
 
         The transcript to fix will be given inside <transcript> tags.
         Return the complete result in revisedText. Set explanation to a brief description of the
-        changes. When nothing changes, set hasChanges to false, use an empty explanation, and return
-        the original transcript unchanged.
-
-        Example: "Um, send the report, ah, tomorrow. Please change to today and exclamation."
-        becomes "Send the report today!".
+        changes. When nothing changes, set hasChanges to false, use an empty explanation.
         """,
         userPromptTemplate: """
-        {languageLine}<transcript>
+        {languageLine}
+        <transcript>
         {transcript}
         </transcript>
         """
@@ -104,9 +101,20 @@ public struct TranscriptEditingPromptConfiguration: Codable, Equatable, Sendable
     }
 
     private static func render(_ template: String, text: String?, language: String?) -> String {
-        let languageLine = language.map { "Language: \($0)\n" } ?? ""
         var rendered = template
-            .replacingOccurrences(of: Self.languageLinePlaceholder, with: languageLine)
+        if let language {
+            rendered = rendered.replacingOccurrences(
+                of: Self.languageLinePlaceholder,
+                with: "Language: \(language)"
+            )
+        } else {
+            rendered = rendered.replacingOccurrences(
+                of: Self.languageLinePlaceholder + "\n",
+                with: ""
+            )
+            rendered = rendered.replacingOccurrences(of: Self.languageLinePlaceholder, with: "")
+        }
+        rendered = rendered
             .replacingOccurrences(of: Self.languagePlaceholder, with: language ?? "")
         if let text {
             rendered = rendered.replacingOccurrences(of: Self.transcriptPlaceholder, with: text)

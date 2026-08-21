@@ -85,9 +85,23 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             throw GGUFTranscriptEditorError.transcriptTooLong
         }
 
+        let promptFiles: LocalCorrectionPromptFiles
+        do {
+            promptFiles = try LocalCorrectionPromptFiles(request: request)
+        } catch {
+            throw GGUFTranscriptEditorError.generationFailed(
+                "The private prompt files could not be created."
+            )
+        }
+        defer { promptFiles.remove() }
         let output = try await runner.run(
             executableURL: executableURL,
-            arguments: Self.arguments(modelURL: modelURL, request: request),
+            arguments: Self.arguments(
+                modelURL: modelURL,
+                request: request,
+                systemPromptFile: promptFiles.systemPrompt,
+                userPromptFile: promptFiles.userPrompt
+            ),
             timeout: 90
         )
         return try Self.decision(
@@ -157,12 +171,14 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
 
     static func arguments(
         modelURL: URL,
-        request: TranscriptEditRequest
+        request: TranscriptEditRequest,
+        systemPromptFile: URL,
+        userPromptFile: URL
     ) -> [String] {
         [
             "--model", modelURL.path,
-            "--system-prompt", TranscriptEditingPrompt.instructions(request),
-            "--prompt", TranscriptEditingPrompt.request(request),
+            "--system-prompt-file", systemPromptFile.path,
+            "--file", userPromptFile.path,
             "--grammar", jsonGrammar,
             "--conversation",
             "--single-turn",
@@ -176,6 +192,7 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             "--ctx-size", "4096",
             "--n-predict", String(TranscriptEditingPrompt.maximumResponseTokens(request)),
             "--gpu-layers", "all",
+            "--no-warmup",
             "--no-perf",
             "--log-disable",
         ]
@@ -197,6 +214,48 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
     }
 }
 
+struct LocalCorrectionPromptFiles {
+    let directory: URL
+    let systemPrompt: URL
+    let userPrompt: URL
+
+    init(request: TranscriptEditRequest) throws {
+        let fileManager = FileManager.default
+        directory = fileManager.temporaryDirectory.appendingPathComponent(
+            "tiro-local-correction-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        systemPrompt = directory.appendingPathComponent("system-prompt.txt")
+        userPrompt = directory.appendingPathComponent("user-prompt.txt")
+        do {
+            try fileManager.createDirectory(
+                at: directory,
+                withIntermediateDirectories: false,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try Data(TranscriptEditingPrompt.instructions(request).utf8)
+                .write(to: systemPrompt, options: .atomic)
+            try Data(TranscriptEditingPrompt.request(request).utf8)
+                .write(to: userPrompt, options: .atomic)
+            try fileManager.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: systemPrompt.path
+            )
+            try fileManager.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: userPrompt.path
+            )
+        } catch {
+            try? fileManager.removeItem(at: directory)
+            throw error
+        }
+    }
+
+    func remove() {
+        try? FileManager.default.removeItem(at: directory)
+    }
+}
+
 protocol TranscriptEditingProcessRunning: Sendable {
     func run(executableURL: URL, arguments: [String], timeout: TimeInterval) async throws -> String
 }
@@ -207,90 +266,31 @@ struct FoundationTranscriptEditingProcessRunner: TranscriptEditingProcessRunning
         arguments: [String],
         timeout: TimeInterval
     ) async throws -> String {
-        let execution = ProcessExecution(executableURL: executableURL, arguments: arguments)
-        return try await execution.run(timeout: timeout)
-    }
-}
-
-private final class ProcessExecution: @unchecked Sendable {
-    private let process = Process()
-    private let output = Pipe()
-    private let errorOutput = Pipe()
-
-    init(executableURL: URL, arguments: [String]) {
-        process.executableURL = executableURL
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = output
-        process.standardError = errorOutput
-        process.environment = [
-            "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-            "LANG": ProcessInfo.processInfo.environment["LANG"] ?? "en_US.UTF-8",
-            "PATH": "/usr/bin:/bin",
-            "TMPDIR": NSTemporaryDirectory(),
-        ]
-    }
-
-    func run(timeout: TimeInterval) async throws -> String {
+        let configuration: CommandLineCorrectionConfiguration
         do {
-            try process.run()
+            configuration = try CommandLineCorrectionConfiguration(
+                id: "local-gguf-runtime",
+                name: "Local correction runtime",
+                executablePath: executableURL.path,
+                arguments: arguments,
+                timeout: timeout
+            )
         } catch {
             throw GGUFTranscriptEditorError.generationFailed(error.localizedDescription)
         }
-
-        return try await withTaskCancellationHandler {
-            let timedOut = await wait(timeout: timeout)
-            if timedOut {
-                throw GGUFTranscriptEditorError.generationTimedOut
-            }
-            try Task.checkCancellation()
-            let outputData = output.fileHandleForReading.readDataToEndOfFile()
-            let errorData = errorOutput.fileHandleForReading.readDataToEndOfFile()
-            guard process.terminationStatus == 0 else {
-                let reason = String(data: errorData, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let failureReason = reason.flatMap { $0.isEmpty ? nil : $0 }
-                    ?? "exit code \(process.terminationStatus)"
-                throw GGUFTranscriptEditorError.generationFailed(failureReason)
-            }
-            guard outputData.count <= 512_000,
-                  let text = String(data: outputData, encoding: .utf8) else {
-                throw GGUFTranscriptEditorError.invalidResponse
-            }
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
-        } onCancel: {
-            terminate()
+        do {
+            return try await FoundationCommandLineCorrectionProcessRunner().run(
+                configuration: configuration,
+                standardInput: Data()
+            ).standardOutput
+        } catch CommandLineCorrectionError.timedOut {
+            throw GGUFTranscriptEditorError.generationTimedOut
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch CommandLineCorrectionError.outputTooLarge {
+            throw GGUFTranscriptEditorError.invalidResponse
+        } catch {
+            throw GGUFTranscriptEditorError.generationFailed(error.localizedDescription)
         }
-    }
-
-    private func wait(timeout: TimeInterval) async -> Bool {
-        await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await self.waitForProcessExit()
-                return false
-            }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(timeout))
-                guard !Task.isCancelled else { return false }
-                self.terminate()
-                return true
-            }
-            let result = await group.next() ?? false
-            group.cancelAll()
-            return result
-        }
-    }
-
-    private func waitForProcessExit() async {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async { [self] in
-                process.waitUntilExit()
-                continuation.resume()
-            }
-        }
-    }
-
-    private func terminate() {
-        if process.isRunning { process.terminate() }
     }
 }

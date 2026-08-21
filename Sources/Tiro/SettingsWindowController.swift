@@ -28,6 +28,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let historyView: HistoryView
     private let modelManagementView: ModelManagementView
     private let modelComparisonView: ModelComparisonView
+    private let correctionComparisonView: CorrectionComparisonView
     private let permissionSettingsView = PermissionSettingsView()
     private let commandLineToolView = CommandLineToolSettingsView()
     private let privacySettingsView: PrivacySettingsView
@@ -58,6 +59,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         historyView = HistoryView(service: service)
         modelManagementView = ModelManagementView(service: service)
         modelComparisonView = ModelComparisonView(service: service)
+        correctionComparisonView = CorrectionComparisonView(
+            historyService: service,
+            editingService: transcriptEditingService
+        )
         privacySettingsView = PrivacySettingsView(service: service)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 860, height: 640),
@@ -84,6 +89,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
         transcriptEditingView.onModelChanged = { [weak self] model in
             self?.onCorrectionModelChanged?(model)
+        }
+        transcriptEditingView.onCompareModels = { [weak self] in
+            self?.showModelComparison(selecting: 1)
         }
         permissionSettingsView.onPermissionChanged = { [weak modelManagementView] in
             modelManagementView?.refresh()
@@ -250,14 +258,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         modelsTabbedView?.selectTab(at: index)
     }
 
-    private func showModelComparison() {
+    private func showModelComparison(selecting tab: Int = 0) {
         let controller: ModelComparisonWindowController
         if let modelComparisonWindow {
             controller = modelComparisonWindow
         } else {
-            controller = ModelComparisonWindowController(comparisonView: modelComparisonView)
+            controller = ModelComparisonWindowController(
+                transcriptionView: modelComparisonView,
+                correctionView: correctionComparisonView
+            )
             modelComparisonWindow = controller
         }
+        controller.selectTab(at: tab)
         controller.showWindow(nil)
     }
 
@@ -504,38 +516,51 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
 @MainActor
 private final class ModelComparisonWindowController: NSWindowController, NSWindowDelegate {
-    private let comparisonView: ModelComparisonView
+    private let transcriptionView: ModelComparisonView
+    private let correctionView: CorrectionComparisonView
+    private let tabs: SettingsTabbedContentView
 
-    init(comparisonView: ModelComparisonView) {
-        self.comparisonView = comparisonView
+    init(transcriptionView: ModelComparisonView, correctionView: CorrectionComparisonView) {
+        self.transcriptionView = transcriptionView
+        self.correctionView = correctionView
+        tabs = SettingsTabbedContentView(tabs: [
+            .init(title: "Transcription", view: transcriptionView),
+            .init(title: "Corrections", view: correctionView),
+        ], accessibilityLabel: "Comparison category")
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 580),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Compare Transcription Models"
+        window.title = "Compare Models"
         window.minSize = NSSize(width: 680, height: 480)
         window.center()
         super.init(window: window)
         window.delegate = self
         contentViewController = SettingsPageViewController(
-            title: "Compare Transcription Models",
-            contentView: comparisonView
+            title: "Compare Models",
+            contentView: tabs
         )
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func showWindow(_ sender: Any?) {
-        comparisonView.refresh()
+        transcriptionView.refresh()
+        correctionView.refresh()
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func windowWillClose(_ notification: Notification) {
-        comparisonView.cancelWork()
+        transcriptionView.cancelWork()
+        correctionView.cancelWork()
+    }
+
+    func selectTab(at index: Int) {
+        tabs.selectTab(at: index)
     }
 }
 

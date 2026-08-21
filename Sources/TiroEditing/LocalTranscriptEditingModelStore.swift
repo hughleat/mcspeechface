@@ -30,7 +30,7 @@ public struct LocalTranscriptEditingModelSpec: Equatable, Sendable {
 
     public static let qwen3Local = LocalTranscriptEditingModelSpec(
         id: "qwen3-1.7b-q4",
-        name: "Qwen 3 Local",
+        name: "Qwen 3 1.7B",
         detail: "Local · 1.28 GB · Multilingual",
         fileName: "Qwen3-1.7B-Q4_K_M.gguf",
         downloadURL: URL(string:
@@ -40,6 +40,21 @@ public struct LocalTranscriptEditingModelSpec: Equatable, Sendable {
         expectedBytes: 1_282_439_264,
         sha256: "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5"
     )
+
+    public static let ministral3Local = LocalTranscriptEditingModelSpec(
+        id: "ministral-3-3b-q4",
+        name: "Ministral 3 3B",
+        detail: "Local · 2.15 GB · Multilingual",
+        fileName: "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf",
+        downloadURL: URL(string:
+            "https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF/resolve/" +
+            "eb599d408350ea2bb60452cb86be7c7b2fc28227/" +
+            "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf?download=true"
+        )!,
+        expectedBytes: 2_147_023_008,
+        sha256: "9ed150d4367e68df0ac8e1540f6ddc65b42d0ee26378329d1ecbca60f93fc5f8"
+    )
+
 }
 
 public enum LocalTranscriptEditingModelStatus: Equatable, Sendable {

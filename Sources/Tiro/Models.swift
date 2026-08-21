@@ -446,6 +446,7 @@ struct HistoryEntry {
     let id: String
     let timestamp: String
     let model: String
+    let language: String?
     let transcription_seconds: Double
     let text: String
     let raw_text: String?
@@ -464,6 +465,7 @@ struct HistoryEntry {
         id: String,
         timestamp: String,
         model: String,
+        language: String? = nil,
         transcriptionSeconds: Double,
         text: String,
         rawText: String?,
@@ -478,6 +480,7 @@ struct HistoryEntry {
         self.id = id
         self.timestamp = timestamp
         self.model = model
+        self.language = language
         transcription_seconds = transcriptionSeconds
         self.text = text
         raw_text = rawText

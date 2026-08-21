@@ -108,6 +108,11 @@ CLI="$APP/Contents/Helpers/tiro"
 [[ -f "$CLI" && -x "$CLI" ]] || fail "Tiro command-line helper is missing or not executable"
 cmp -s "$APP/Contents/MacOS/Tiro" "$CLI" \
     && fail "command-line helper was replaced by the GUI executable"
+PROCESS_LAUNCHER="$APP/Contents/Helpers/tiro-process-launcher"
+[[ -f "$PROCESS_LAUNCHER" && -x "$PROCESS_LAUNCHER" ]] \
+    || fail "correction process launcher is missing or not executable"
+"$PROCESS_LAUNCHER" /usr/bin/true \
+    || fail "correction process launcher could not start a command"
 LLAMA_CLI="$APP/Contents/Helpers/llama/tiro-llama"
 [[ -f "$LLAMA_CLI" && -x "$LLAMA_CLI" ]] \
     || fail "local transcript editing runtime is missing or not executable"

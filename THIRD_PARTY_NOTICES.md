@@ -29,5 +29,10 @@ At the user's request, Tiro can separately download
 which is distributed under the Apache License 2.0. The model is not included in
 Tiro distributions.
 
+At the user's request, Tiro can separately download
+[Ministral 3 3B Instruct GGUF](https://huggingface.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF),
+which is distributed under the Apache License 2.0. The model is not included in
+Tiro distributions.
+
 Tiro is not affiliated with NVIDIA, FluidInference, Argmax, OpenAI, ggml-org,
-or Qwen.
+Qwen, Mistral AI, Anthropic, or their affiliates.

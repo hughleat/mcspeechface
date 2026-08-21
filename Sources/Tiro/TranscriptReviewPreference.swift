@@ -27,8 +27,8 @@ enum TranscriptReviewPreference: String, CaseIterable {
         defaults.set(rawValue, forKey: Self.defaultsKey)
     }
 
-    func shouldReview(textChanged: Bool, usesCustomPrompt: Bool = false) -> Bool {
-        if usesCustomPrompt { return true }
+    func shouldReview(textChanged: Bool, requiresReview: Bool = false) -> Bool {
+        if requiresReview { return true }
         return switch self {
         case .never: false
         case .whenChanged: textChanged

@@ -1018,6 +1018,7 @@ final class TiroService {
             id: entry.id,
             timestamp: entry.timestamp,
             model: entry.model,
+            language: entry.language,
             transcriptionSeconds: entry.transcriptionSeconds,
             text: entry.text,
             rawText: entry.rawText,

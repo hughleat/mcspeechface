@@ -5,6 +5,58 @@ import Testing
 
 struct LocalTranscriptEditingTests {
     @Test
+    func downloadableCorrectionModelsHavePinnedArtifacts() {
+        let spec = LocalTranscriptEditingModelSpec.qwen3Local
+
+        #expect(spec.id == "qwen3-1.7b-q4")
+        #expect(spec.fileName == "Qwen3-1.7B-Q4_K_M.gguf")
+        #expect(spec.expectedBytes == 1_282_439_264)
+        #expect(spec.sha256 == "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5")
+        #expect(spec.downloadURL.scheme == "https")
+        #expect(spec.downloadURL.path.contains("/resolve/daeb8e2d528a760970442092f6bf1e55c3b659eb/"))
+
+        let ministral = LocalTranscriptEditingModelSpec.ministral3Local
+        #expect(ministral.id == "ministral-3-3b-q4")
+        #expect(ministral.fileName == "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf")
+        #expect(ministral.expectedBytes == 2_147_023_008)
+        #expect(ministral.sha256 == "9ed150d4367e68df0ac8e1540f6ddc65b42d0ee26378329d1ecbca60f93fc5f8")
+        #expect(ministral.downloadURL.scheme == "https")
+        #expect(ministral.downloadURL.path.contains("/resolve/eb599d408350ea2bb60452cb86be7c7b2fc28227/"))
+    }
+
+    @Test
+    func localInvocationUsesMetalWithoutDisposableWarmup() {
+        let arguments = GGUFTranscriptEditor.arguments(
+            modelURL: URL(fileURLWithPath: "/tmp/model.gguf"),
+            request: TranscriptEditRequest(text: "Correct this."),
+            systemPromptFile: URL(fileURLWithPath: "/tmp/system-prompt.txt"),
+            userPromptFile: URL(fileURLWithPath: "/tmp/user-prompt.txt")
+        )
+
+        #expect(arguments.contains("--gpu-layers"))
+        #expect(arguments.contains("all"))
+        #expect(arguments.contains("--no-warmup"))
+        #expect(arguments.contains("--system-prompt-file"))
+        #expect(arguments.contains("--file"))
+        #expect(!arguments.joined(separator: " ").contains("Correct this."))
+    }
+
+    @Test
+    func localPromptsUsePrivateFilesAndCanBeRemoved() throws {
+        let request = TranscriptEditRequest(text: "Private dictated text.", language: "English")
+        let files = try LocalCorrectionPromptFiles(request: request)
+
+        #expect(try permissions(of: files.directory) == 0o700)
+        #expect(try permissions(of: files.systemPrompt) == 0o600)
+        #expect(try permissions(of: files.userPrompt) == 0o600)
+        #expect(try String(contentsOf: files.systemPrompt, encoding: .utf8).contains("voice transcription"))
+        #expect(try String(contentsOf: files.userPrompt, encoding: .utf8).contains("Private dictated text."))
+
+        files.remove()
+        #expect(!FileManager.default.fileExists(atPath: files.directory.path))
+    }
+
+    @Test
     func installsVerifiedModelAtomically() async throws {
         let data = Data("small test model".utf8)
         let fixture = try Fixture(data: data)
@@ -143,18 +195,12 @@ struct LocalTranscriptEditingTests {
         let request = TranscriptEditRequest(
             text: "Um, send the report, ah, tomorrow. Please remove the ums and ahs."
         )
-        let output = try await FoundationTranscriptEditingProcessRunner().run(
+        let editor = GGUFTranscriptEditor(
+            spec: .qwen3Local,
             executableURL: URL(fileURLWithPath: executablePath),
-            arguments: GGUFTranscriptEditor.arguments(modelURL: store.modelURL, request: request),
-            timeout: 90
+            modelURL: store.modelURL
         )
-        if environment["TIRO_QWEN_DUMP_OUTPUT"] == "1" {
-            print("Qwen fixture output:\n\(output)")
-        }
-        let decision = try GGUFTranscriptEditor.decision(
-            from: output,
-            originalText: request.text
-        )
+        let decision = try await editor.proposeEdits(for: request)
 
         guard case .proposal(let proposal) = decision else {
             Issue.record("Expected Qwen to remove dictated fillers and the editing request")
@@ -232,6 +278,11 @@ struct LocalTranscriptEditingTests {
         func remove() {
             try? FileManager.default.removeItem(at: root)
         }
+    }
+
+    private func permissions(of url: URL) throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return (attributes[.posixPermissions] as? NSNumber)?.intValue ?? -1
     }
 
     private struct FixtureDownloader: TranscriptEditingModelDownloading {
