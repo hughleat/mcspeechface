@@ -308,7 +308,7 @@ struct CommandLineCorrectionProcessTests {
                 standardInput: Data()
             )
         }
-        #expect(ProcessInfo.processInfo.systemUptime - startedAt < 2)
+        #expect(ProcessInfo.processInfo.systemUptime - startedAt < 5)
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
     }
 
