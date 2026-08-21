@@ -24,38 +24,45 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
     public nonisolated let id: String
     public nonisolated let name: String
 
-    private let executableURL: URL
     private let modelURL: URL
-    private let runner: any TranscriptEditingProcessRunning
+    private let executableURL: URL?
+    private let server: any LocalCorrectionServing
 
     public init(
         spec: LocalTranscriptEditingModelSpec,
         executableURL: URL,
-        modelURL: URL
+        modelURL: URL,
+        idleTimeout: TimeInterval = 600
     ) {
         id = spec.id
         name = spec.name
-        self.executableURL = executableURL
         self.modelURL = modelURL
-        runner = FoundationTranscriptEditingProcessRunner()
+        self.executableURL = executableURL
+        server = PersistentLlamaServer(
+            executableURL: executableURL,
+            modelURL: modelURL,
+            idleTimeout: idleTimeout
+        )
     }
 
     init(
         spec: LocalTranscriptEditingModelSpec,
-        executableURL: URL,
         modelURL: URL,
-        runner: any TranscriptEditingProcessRunning
+        server: any LocalCorrectionServing
     ) {
         id = spec.id
         name = spec.name
-        self.executableURL = executableURL
         self.modelURL = modelURL
-        self.runner = runner
+        executableURL = nil
+        self.server = server
     }
 
     public func availability() async -> TranscriptEditorAvailability {
-        guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
-            return .unavailable(reason: GGUFTranscriptEditorError.runtimeUnavailable.localizedDescription)
+        if let executableURL,
+           !FileManager.default.isExecutableFile(atPath: executableURL.path) {
+            return .unavailable(
+                reason: GGUFTranscriptEditorError.runtimeUnavailable.localizedDescription
+            )
         }
         guard FileManager.default.fileExists(atPath: modelURL.path) else {
             return .unavailable(reason: GGUFTranscriptEditorError.modelNotInstalled.localizedDescription)
@@ -63,11 +70,43 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
         return .available
     }
 
+    public func runtimeState() async -> LocalCorrectionRuntimeState {
+        await server.runtimeState()
+    }
+
+    public func updateIdleTimeout(_ timeout: TimeInterval) async {
+        await server.updateIdleTimeout(timeout)
+    }
+
+    public func beginUse() async {
+        await server.beginUse()
+    }
+
+    public func endUse() async {
+        await server.endUse()
+    }
+
+    public func prepare() async throws {
+        guard case .available = await availability() else {
+            if let executableURL,
+               !FileManager.default.isExecutableFile(atPath: executableURL.path) {
+                throw GGUFTranscriptEditorError.runtimeUnavailable
+            }
+            throw GGUFTranscriptEditorError.modelNotInstalled
+        }
+        try await server.prepare()
+    }
+
+    public func stop() async {
+        await server.stop()
+    }
+
     public func proposeEdits(
         for request: TranscriptEditRequest
     ) async throws -> TranscriptEditDecision {
         guard case .available = await availability() else {
-            if !FileManager.default.isExecutableFile(atPath: executableURL.path) {
+            if let executableURL,
+               !FileManager.default.isExecutableFile(atPath: executableURL.path) {
                 throw GGUFTranscriptEditorError.runtimeUnavailable
             }
             throw GGUFTranscriptEditorError.modelNotInstalled
@@ -85,24 +124,9 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             throw GGUFTranscriptEditorError.transcriptTooLong
         }
 
-        let promptFiles: LocalCorrectionPromptFiles
-        do {
-            promptFiles = try LocalCorrectionPromptFiles(request: request)
-        } catch {
-            throw GGUFTranscriptEditorError.generationFailed(
-                "The private prompt files could not be created."
-            )
-        }
-        defer { promptFiles.remove() }
-        let output = try await runner.run(
-            executableURL: executableURL,
-            arguments: Self.arguments(
-                modelURL: modelURL,
-                request: request,
-                systemPromptFile: promptFiles.systemPrompt,
-                userPromptFile: promptFiles.userPrompt
-            ),
-            timeout: 90
+        let output = try await server.generate(
+            request: request,
+            grammar: Self.jsonGrammar
         )
         return try Self.decision(
             from: output,
@@ -169,35 +193,6 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
         return objects
     }
 
-    static func arguments(
-        modelURL: URL,
-        request: TranscriptEditRequest,
-        systemPromptFile: URL,
-        userPromptFile: URL
-    ) -> [String] {
-        [
-            "--model", modelURL.path,
-            "--system-prompt-file", systemPromptFile.path,
-            "--file", userPromptFile.path,
-            "--grammar", jsonGrammar,
-            "--conversation",
-            "--single-turn",
-            "--jinja",
-            "--reasoning", "off",
-            "--reasoning-format", "none",
-            "--no-display-prompt",
-            "--color", "off",
-            "--simple-io",
-            "--temperature", "0",
-            "--ctx-size", "4096",
-            "--n-predict", String(TranscriptEditingPrompt.maximumResponseTokens(request)),
-            "--gpu-layers", "all",
-            "--no-warmup",
-            "--no-perf",
-            "--log-disable",
-        ]
-    }
-
     private static let jsonGrammar = #"""
         root ::= "{" ws "\"hasChanges\"" ws ":" ws boolean ws "," ws "\"explanation\"" ws ":" ws string ws "," ws "\"revisedText\"" ws ":" ws string ws "}"
         boolean ::= "true" | "false"
@@ -211,86 +206,5 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
         let hasChanges: Bool
         let explanation: String
         let revisedText: String
-    }
-}
-
-struct LocalCorrectionPromptFiles {
-    let directory: URL
-    let systemPrompt: URL
-    let userPrompt: URL
-
-    init(request: TranscriptEditRequest) throws {
-        let fileManager = FileManager.default
-        directory = fileManager.temporaryDirectory.appendingPathComponent(
-            "tiro-local-correction-\(UUID().uuidString)",
-            isDirectory: true
-        )
-        systemPrompt = directory.appendingPathComponent("system-prompt.txt")
-        userPrompt = directory.appendingPathComponent("user-prompt.txt")
-        do {
-            try fileManager.createDirectory(
-                at: directory,
-                withIntermediateDirectories: false,
-                attributes: [.posixPermissions: 0o700]
-            )
-            try Data(TranscriptEditingPrompt.instructions(request).utf8)
-                .write(to: systemPrompt, options: .atomic)
-            try Data(TranscriptEditingPrompt.request(request).utf8)
-                .write(to: userPrompt, options: .atomic)
-            try fileManager.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: systemPrompt.path
-            )
-            try fileManager.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: userPrompt.path
-            )
-        } catch {
-            try? fileManager.removeItem(at: directory)
-            throw error
-        }
-    }
-
-    func remove() {
-        try? FileManager.default.removeItem(at: directory)
-    }
-}
-
-protocol TranscriptEditingProcessRunning: Sendable {
-    func run(executableURL: URL, arguments: [String], timeout: TimeInterval) async throws -> String
-}
-
-struct FoundationTranscriptEditingProcessRunner: TranscriptEditingProcessRunning {
-    func run(
-        executableURL: URL,
-        arguments: [String],
-        timeout: TimeInterval
-    ) async throws -> String {
-        let configuration: CommandLineCorrectionConfiguration
-        do {
-            configuration = try CommandLineCorrectionConfiguration(
-                id: "local-gguf-runtime",
-                name: "Local correction runtime",
-                executablePath: executableURL.path,
-                arguments: arguments,
-                timeout: timeout
-            )
-        } catch {
-            throw GGUFTranscriptEditorError.generationFailed(error.localizedDescription)
-        }
-        do {
-            return try await FoundationCommandLineCorrectionProcessRunner().run(
-                configuration: configuration,
-                standardInput: Data()
-            ).standardOutput
-        } catch CommandLineCorrectionError.timedOut {
-            throw GGUFTranscriptEditorError.generationTimedOut
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch CommandLineCorrectionError.outputTooLarge {
-            throw GGUFTranscriptEditorError.invalidResponse
-        } catch {
-            throw GGUFTranscriptEditorError.generationFailed(error.localizedDescription)
-        }
     }
 }

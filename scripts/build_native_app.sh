@@ -251,7 +251,7 @@ prepare_llama_runtime() {
         fi
     fi
 
-    if [[ ! -x "$runtime/tiro-llama" ]]; then
+    if [[ ! -x "$runtime/tiro-llama-server" ]]; then
         command -v cmake >/dev/null || fail "cmake is required to build the local editing runtime"
         rm -rf "$build" "$runtime" "$staging"
         cmake -S "$source" -B "$build" \
@@ -269,15 +269,17 @@ prepare_llama_runtime() {
             -DLLAMA_BUILD_COMMIT="$LLAMA_RUNTIME_COMMIT" \
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_BUILD_UI=OFF \
+            -DLLAMA_USE_PREBUILT_UI=OFF \
             -DLLAMA_BUILD_EXAMPLES=OFF \
             -DLLAMA_BUILD_TOOLS=ON \
             -DLLAMA_BUILD_COMMON=ON \
             -DLLAMA_OPENSSL=OFF >&2
-        cmake --build "$build" --config Release --target llama-cli -j 4 >&2
+        cmake --build "$build" --config Release --target llama-server -j 4 >&2
         mkdir -p "$staging"
-        cp "$build/bin/llama-cli" "$staging/tiro-llama"
+        cp "$build/bin/llama-server" "$staging/tiro-llama-server"
         cp "$source/LICENSE" "$staging/LICENSE"
-        chmod 755 "$staging/tiro-llama"
+        chmod 755 "$staging/tiro-llama-server"
         mv "$staging" "$runtime"
         rm -rf "$build"
     fi
@@ -464,8 +466,8 @@ chmod 755 "$APP/Contents/Helpers/tiro-process-launcher"
 llama_runtime="$(prepare_llama_runtime)"
 llama_helper="$APP/Contents/Helpers/llama"
 mkdir -p "$llama_helper"
-cp "$llama_runtime/tiro-llama" "$llama_helper/tiro-llama"
-chmod 755 "$llama_helper/tiro-llama"
+cp "$llama_runtime/tiro-llama-server" "$llama_helper/tiro-llama-server"
+chmod 755 "$llama_helper/tiro-llama-server"
 cp "$ROOT/native/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/native/Assets/Tiro.icns" "$APP/Contents/Resources/Tiro.icns"
 mkdir -p "$APP/Contents/Resources/Licenses"

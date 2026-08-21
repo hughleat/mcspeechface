@@ -95,7 +95,7 @@ struct CorrectionModelEvaluationTests {
         let assertExact = environment["TIRO_CORRECTION_EVALUATION_ASSERT_EXACT"] == "1"
 
         if requestedModels.contains("qwen") {
-            guard let executablePath = environment["TIRO_LLAMA_EXECUTABLE"],
+            guard let executablePath = environment["TIRO_LLAMA_SERVER_EXECUTABLE"],
                   let modelPath = environment["TIRO_QWEN_MODEL"] else {
                 if assertExact { Issue.record("Qwen evaluation paths are missing.") }
                 return

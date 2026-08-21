@@ -22,6 +22,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     private let table = NSTableView()
     private let storageLabel = NSTextField(labelWithString: "")
     private let compareButton = NSButton()
+    private let idleTimeoutPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private var localDownloadSpaces: [
         TranscriptEditingModel: LocalTranscriptEditingModelDownloadSpace
     ] = [:]
@@ -36,7 +37,10 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     }()
     private var refreshTask: Task<Void, Never>?
     private var operationTask: Task<Void, Never>?
+    private var runtimeRefreshTask: Task<Void, Never>?
+    private var runtimeActionTask: Task<Void, Never>?
     private var operationModel: TranscriptEditingModel?
+    private var runtimeStates: [TranscriptEditingModel: LocalCorrectionRuntimeState] = [:]
     private var promptEditorController: TranscriptEditingPromptEditorWindowController?
     private var commandLineEditorController: CommandLineCorrectionEditorWindowController?
     private var refreshGeneration = 0
@@ -60,9 +64,12 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     deinit {
         refreshTask?.cancel()
         operationTask?.cancel()
+        runtimeRefreshTask?.cancel()
+        runtimeActionTask?.cancel()
     }
 
     func refresh() {
+        startRuntimeRefreshIfNeeded()
         invalidateRefresh()
         let generation = refreshGeneration
         states[.appleFoundation] = .checking
@@ -85,6 +92,8 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
 
     func cancelWork() {
         invalidateRefresh()
+        runtimeRefreshTask?.cancel()
+        runtimeRefreshTask = nil
     }
 
     private func buildContent() {
@@ -114,6 +123,30 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         addArrangedSubview(scrollView)
         scrollView.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 206).isActive = true
+
+        let idleTimeoutLabel = NSTextField(labelWithString: "Unload local model after")
+        idleTimeoutLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        for timeout in LocalCorrectionIdleTimeout.allCases {
+            idleTimeoutPopup.addItem(withTitle: timeout.title)
+            idleTimeoutPopup.lastItem?.tag = timeout.rawValue
+        }
+        idleTimeoutPopup.selectItem(
+            withTag: LocalCorrectionIdleTimeout.load(from: defaults).rawValue
+        )
+        idleTimeoutPopup.target = self
+        idleTimeoutPopup.action = #selector(idleTimeoutChanged)
+        idleTimeoutPopup.toolTip = "How long an idle local correction model remains in memory"
+        idleTimeoutPopup.setAccessibilityLabel("Unload local correction model after")
+        let idleTimeoutRow = NSStackView(views: [
+            idleTimeoutLabel,
+            NSView(),
+            idleTimeoutPopup,
+        ])
+        idleTimeoutRow.orientation = .horizontal
+        idleTimeoutRow.alignment = .centerY
+        idleTimeoutRow.spacing = 8
+        addArrangedSubview(idleTimeoutRow)
+        idleTimeoutRow.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
 
         storageLabel.font = .systemFont(ofSize: 11)
         storageLabel.textColor = .secondaryLabelColor
@@ -321,7 +354,13 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     ) -> ModelLibraryRowView.Content {
         let selected = model == selectedModel
         let state = states[model] ?? .checking
-        let presentation = presentation(for: model, state: state, selected: selected)
+        let runtimeState = runtimeStates[model] ?? .stopped
+        let presentation = presentation(
+            for: model,
+            state: state,
+            runtimeState: runtimeState,
+            selected: selected
+        )
         return ModelLibraryRowView.Content(
             name: model.title,
             detail: presentation.detail,
@@ -330,7 +369,13 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             status: presentation.status,
             statusColor: presentation.statusColor,
             progress: presentation.progress,
-            action: action(for: model, state: state, selected: selected, row: row),
+            action: action(
+                for: model,
+                state: state,
+                runtimeState: runtimeState,
+                selected: selected,
+                row: row
+            ),
             isSelected: selected,
             accessibilityValue: "\(selected ? "Selected model" : presentation.status), "
                 + presentation.detail
@@ -340,6 +385,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     private func presentation(
         for model: TranscriptEditingModel,
         state: ModelState,
+        runtimeState: LocalCorrectionRuntimeState,
         selected: Bool
     ) -> (
         detail: String,
@@ -393,9 +439,18 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
                 of: model.downloadSizeDescription,
                 with: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
             )
+            if case .failed(let reason) = runtimeState {
+                return (reason, .systemRed, reason, "Load failed", .systemRed, nil)
+            }
+            let runtimePresentation = Self.runtimePresentation(
+                runtimeState,
+                selected: selected
+            )
             return (
                 detail, .secondaryLabelColor, nil,
-                selected ? "Selected" : "Installed", .secondaryLabelColor, nil
+                runtimePresentation.status,
+                runtimePresentation.color,
+                runtimePresentation.progress
             )
         case .localError(let message, _):
             return (
@@ -420,6 +475,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     private func action(
         for model: TranscriptEditingModel,
         state: ModelState,
+        runtimeState: LocalCorrectionRuntimeState,
         selected: Bool,
         row: Int
     ) -> ModelLibraryRowView.Action? {
@@ -457,13 +513,25 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             enabled = true
             toolTip = label
         case .local(.installed):
-            label = "Delete \(model.title)"
-            symbol = "trash"
-            selector = #selector(deleteLocalModel(_:))
-            enabled = operationTask == nil && !selected
-            toolTip = selected
-                ? "Select another correction model before deleting"
-                : label
+            if runtimeState.isRunning {
+                label = "Stop \(model.title)"
+                symbol = "stop.circle"
+                selector = #selector(stopLocalModel(_:))
+                enabled = operationTask == nil
+                    && runtimeActionTask == nil
+                    && runtimeState != .correcting
+                toolTip = runtimeState == .correcting
+                    ? "Wait for the current correction to finish"
+                    : "Unload \(model.title) from memory"
+            } else {
+                label = "Delete \(model.title)"
+                symbol = "trash"
+                selector = #selector(deleteLocalModel(_:))
+                enabled = operationTask == nil && !selected
+                toolTip = selected
+                    ? "Select another correction model before deleting"
+                    : label
+            }
         case .localError(_, let status):
             if case .installed = status {
                 label = "Retry deleting \(model.title)"
@@ -579,6 +647,33 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         onCompareModels?()
     }
 
+    @objc private func idleTimeoutChanged() {
+        guard let timeout = LocalCorrectionIdleTimeout(
+            rawValue: idleTimeoutPopup.selectedTag()
+        ) else { return }
+        timeout.save(to: defaults)
+        Task { [service] in
+            await service.updateLocalModelIdleTimeout(timeout)
+        }
+    }
+
+    @objc private func stopLocalModel(_ sender: NSButton) {
+        guard runtimeActionTask == nil, let model = model(for: sender) else { return }
+        sender.isEnabled = false
+        runtimeActionTask = Task { [weak self, service] in
+            do {
+                try await service.stopLocalModel(model)
+                self?.runtimeStates = await service.localRuntimeStates()
+                self?.reloadTable()
+                self?.announce("\(model.title) unloaded from memory.")
+            } catch {
+                self?.announce(error.localizedDescription)
+            }
+            self?.runtimeActionTask = nil
+            self?.reloadTable()
+        }
+    }
+
     @objc private func cancelLocalModelDownload(_ sender: NSButton) {
         guard let model = operationModel else { return }
         states[model] = .cancelling
@@ -687,6 +782,55 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         refreshGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
+    }
+
+    private func startRuntimeRefreshIfNeeded() {
+        guard runtimeRefreshTask == nil else { return }
+        runtimeRefreshTask = Task { [weak self, service] in
+            while !Task.isCancelled {
+                let states = await service.localRuntimeStates()
+                guard !Task.isCancelled else { return }
+                if self?.runtimeStates != states {
+                    self?.runtimeStates = states
+                    self?.reloadTable()
+                }
+                do {
+                    try await Task.sleep(for: .milliseconds(500))
+                } catch {
+                    return
+                }
+            }
+        }
+    }
+
+    private static func runtimePresentation(
+        _ state: LocalCorrectionRuntimeState,
+        selected: Bool
+    ) -> (
+        status: String,
+        color: NSColor,
+        progress: ModelLibraryRowView.ProgressState?
+    ) {
+        switch state {
+        case .stopped:
+            return (selected ? "Selected · Stopped" : "Installed", .secondaryLabelColor, nil)
+        case .loading:
+            return (
+                "Loading...",
+                .secondaryLabelColor,
+                .indeterminate(accessibilityValue: "Loading model into memory")
+            )
+        case .ready:
+            return (selected ? "Selected · Loaded" : "Loaded", .systemGreen, nil)
+        case .correcting:
+            return (
+                "Correcting...",
+                .secondaryLabelColor,
+                .indeterminate(accessibilityValue: "Correcting transcript")
+            )
+        case .failed:
+            return ("Load failed", .systemRed, nil)
+        }
     }
 
     private func model(for sender: NSButton) -> TranscriptEditingModel? {

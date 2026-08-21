@@ -47,6 +47,13 @@ public actor CommandLineTranscriptEditor: TranscriptEditor {
     public func proposeEdits(
         for request: TranscriptEditRequest
     ) async throws -> TranscriptEditDecision {
+        try await proposeEdits(for: request, progressHandler: nil)
+    }
+
+    public func proposeEdits(
+        for request: TranscriptEditRequest,
+        progressHandler: (@Sendable (TranscriptEditingProgress) -> Void)?
+    ) async throws -> TranscriptEditDecision {
         guard !request.text.isEmpty else { return .unchanged }
         try TranscriptEditingPrompt.validate(request)
         guard case .available = await availability() else {
@@ -56,9 +63,18 @@ public actor CommandLineTranscriptEditor: TranscriptEditor {
             throw CommandLineCorrectionError.executableNotRunnable
         }
 
+        let progressReporter = CommandLineProgressReporter(
+            providerName: name,
+            progressHandler: progressHandler
+        )
+        progressReporter.report(.starting)
         let result = try await runner.run(
             configuration: configuration,
-            standardInput: Self.promptData(for: request)
+            standardInput: Self.promptData(for: request),
+            eventHandler: { line in
+                guard let phase = Self.progressPhase(from: line) else { return }
+                progressReporter.report(phase)
+            }
         )
         return try Self.decision(
             from: result.standardOutput,
@@ -83,7 +99,8 @@ public actor CommandLineTranscriptEditor: TranscriptEditor {
         originalText: String,
         requiresGrounding: Bool = true
     ) throws -> TranscriptEditDecision {
-        guard let data = output.data(using: .utf8),
+        let structuredOutput = streamedResult(in: output) ?? output
+        guard let data = structuredOutput.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               Set(object.keys) == ["hasChanges", "explanation", "revisedText"],
               let response = try? JSONDecoder().decode(GeneratedDecision.self, from: data) else {
@@ -98,9 +115,90 @@ public actor CommandLineTranscriptEditor: TranscriptEditor {
         )
     }
 
+    static func streamedResult(in output: String) -> String? {
+        for line in output.split(whereSeparator: \Character.isNewline).reversed() {
+            guard let data = String(line).data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            if object["type"] as? String == "result",
+               let structuredOutput = object["structured_output"],
+               let result = jsonString(from: structuredOutput) {
+                return result
+            }
+            if object["type"] as? String == "result",
+               let result = object["result"] {
+                if let result = result as? String { return result }
+                if let result = jsonString(from: result) { return result }
+            }
+            if object["type"] as? String == "item.completed",
+               let item = object["item"] as? [String: Any],
+               item["type"] as? String == "agent_message",
+               let text = item["text"] as? String {
+                return text
+            }
+        }
+        return nil
+    }
+
+    private static func jsonString(from object: Any) -> String? {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return text
+    }
+
+    private static func progressPhase(from line: String) -> TranscriptEditingProgressPhase? {
+        guard let data = line.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String else { return nil }
+        switch type {
+        case "thread.started", "system", "session.started":
+            return .working
+        case "item.completed", "assistant", "content_block_delta":
+            return .receiving
+        case "turn.started", "message_start", "message_delta":
+            return .working
+        case "result", "turn.completed":
+            return .receiving
+        default:
+            return nil
+        }
+    }
+
     private struct GeneratedDecision: Decodable {
         let hasChanges: Bool
         let explanation: String
         let revisedText: String
+    }
+}
+
+private final class CommandLineProgressReporter: @unchecked Sendable {
+    private let providerName: String
+    private let progressHandler: (@Sendable (TranscriptEditingProgress) -> Void)?
+    private let lock = NSLock()
+    private var highestPhase = -1
+
+    init(
+        providerName: String,
+        progressHandler: (@Sendable (TranscriptEditingProgress) -> Void)?
+    ) {
+        self.providerName = providerName
+        self.progressHandler = progressHandler
+    }
+
+    func report(_ phase: TranscriptEditingProgressPhase) {
+        let rank = switch phase {
+        case .starting: 0
+        case .working: 1
+        case .receiving: 2
+        }
+        lock.lock()
+        guard rank > highestPhase else {
+            lock.unlock()
+            return
+        }
+        highestPhase = rank
+        lock.unlock()
+        progressHandler?(TranscriptEditingProgress(providerName: providerName, phase: phase))
     }
 }

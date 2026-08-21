@@ -152,6 +152,9 @@ struct SettingsConstructionTests {
         #expect(configuration.arguments.contains(""))
         #expect(CommandLineCorrectionPreset.codex.configuration.arguments.contains("{outputFile}"))
         #expect(CommandLineCorrectionPreset.claude.configuration.arguments.contains("{schemaJSON}"))
+        #expect(CommandLineCorrectionPreset.codex.configuration.arguments.contains("--json"))
+        #expect(CommandLineCorrectionPreset.claude.configuration.arguments.contains("stream-json"))
+        #expect(!CommandLineCorrectionPreset.claude.configuration.arguments.contains("--bare"))
 
         var invalid = configuration
         invalid.arguments = ["--schema={schemaJSON}"]
@@ -185,6 +188,54 @@ struct SettingsConstructionTests {
             preset: .custom,
             from: defaults
         ) == CommandLineCorrectionPreset.custom.configuration)
+    }
+
+    @Test
+    func defaultCommandLineConfigurationsGainStreamingWithoutChangingCustomArguments() throws {
+        let suite = "command-line-streaming-migration-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var oldCodex = CommandLineCorrectionPreset.codex.configuration
+        oldCodex.arguments.removeAll(where: { $0 == "--json" })
+        try oldCodex.save(to: defaults)
+        #expect(CommandLineCorrectionConfiguration.load(
+            preset: .codex,
+            from: defaults
+        ).arguments.contains("--json"))
+
+        var oldClaude = CommandLineCorrectionPreset.claude.configuration
+        oldClaude.arguments.removeAll(where: {
+            ["--bare", "--output-format", "stream-json", "--verbose"].contains($0)
+        })
+        try oldClaude.save(to: defaults)
+        let migratedClaude = CommandLineCorrectionConfiguration.load(
+            preset: .claude,
+            from: defaults
+        )
+        #expect(migratedClaude.arguments.contains("stream-json"))
+        #expect(!migratedClaude.arguments.contains("--bare"))
+
+        var customizedClaude = oldClaude
+        customizedClaude.arguments.append("--custom-flag")
+        try customizedClaude.save(to: defaults)
+        #expect(CommandLineCorrectionConfiguration.load(
+            preset: .claude,
+            from: defaults
+        ) == customizedClaude)
+    }
+
+    @Test
+    func localCorrectionIdleTimeoutRoundTripsAndDefaultsToTenMinutes() throws {
+        let suite = "local-correction-idle-timeout-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        #expect(LocalCorrectionIdleTimeout.load(from: defaults) == .tenMinutes)
+        for timeout in LocalCorrectionIdleTimeout.allCases {
+            timeout.save(to: defaults)
+            #expect(LocalCorrectionIdleTimeout.load(from: defaults) == timeout)
+        }
     }
 
     @Test

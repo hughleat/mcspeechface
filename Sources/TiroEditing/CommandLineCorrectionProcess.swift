@@ -10,8 +10,22 @@ struct CommandLineCorrectionProcessResult: Equatable, Sendable {
 protocol CommandLineCorrectionProcessRunning: Sendable {
     func run(
         configuration: CommandLineCorrectionConfiguration,
-        standardInput: Data
+        standardInput: Data,
+        eventHandler: (@Sendable (String) -> Void)?
     ) async throws -> CommandLineCorrectionProcessResult
+}
+
+extension CommandLineCorrectionProcessRunning {
+    func run(
+        configuration: CommandLineCorrectionConfiguration,
+        standardInput: Data
+    ) async throws -> CommandLineCorrectionProcessResult {
+        try await run(
+            configuration: configuration,
+            standardInput: standardInput,
+            eventHandler: nil
+        )
+    }
 }
 
 struct FoundationCommandLineCorrectionProcessRunner: CommandLineCorrectionProcessRunning {
@@ -37,7 +51,8 @@ struct FoundationCommandLineCorrectionProcessRunner: CommandLineCorrectionProces
 
     func run(
         configuration: CommandLineCorrectionConfiguration,
-        standardInput: Data
+        standardInput: Data,
+        eventHandler: (@Sendable (String) -> Void)? = nil
     ) async throws -> CommandLineCorrectionProcessResult {
         try Task.checkCancellation()
         let fileManager = FileManager.default
@@ -69,7 +84,8 @@ struct FoundationCommandLineCorrectionProcessRunner: CommandLineCorrectionProces
             outputFileURL: preparedArguments.outputFileURL,
             standardInput: standardInput,
             maximumOutputBytes: maximumOutputBytes,
-            maximumErrorOutputBytes: maximumErrorOutputBytes
+            maximumErrorOutputBytes: maximumErrorOutputBytes,
+            eventHandler: eventHandler
         )
         let captured = try await execution.run(timeout: configuration.timeout)
         return CommandLineCorrectionProcessResult(
@@ -154,6 +170,7 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
     private let maximumOutputBytes: Int
     private let maximumErrorOutputBytes: Int
     private let usesProcessGroup: Bool
+    private let eventHandler: (@Sendable (String) -> Void)?
     private let terminationLock = NSLock()
 
     init(
@@ -164,7 +181,8 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
         outputFileURL: URL?,
         standardInput: Data,
         maximumOutputBytes: Int,
-        maximumErrorOutputBytes: Int
+        maximumErrorOutputBytes: Int,
+        eventHandler: (@Sendable (String) -> Void)?
     ) {
         if let processLauncherURL {
             process.executableURL = processLauncherURL
@@ -184,6 +202,7 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
         self.standardInput = standardInput
         self.maximumOutputBytes = maximumOutputBytes
         self.maximumErrorOutputBytes = maximumErrorOutputBytes
+        self.eventHandler = eventHandler
     }
 
     func run(timeout: TimeInterval) async throws -> CapturedCommandLineOutput {
@@ -200,13 +219,15 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
         let outputReader = Task.detached {
             try Self.readBounded(
                 self.output.fileHandleForReading,
-                maximumBytes: self.maximumOutputBytes
+                maximumBytes: self.maximumOutputBytes,
+                eventHandler: self.eventHandler
             )
         }
         let errorReader = Task.detached {
             try Self.readBounded(
                 self.errorOutput.fileHandleForReading,
-                maximumBytes: self.maximumErrorOutputBytes
+                maximumBytes: self.maximumErrorOutputBytes,
+                eventHandler: nil
             )
         }
         let inputWriter = Task.detached {
@@ -331,15 +352,35 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
 
     private static func readBounded(
         _ handle: FileHandle,
-        maximumBytes: Int
+        maximumBytes: Int,
+        eventHandler: (@Sendable (String) -> Void)? = nil
     ) throws -> (data: Data, exceededLimit: Bool) {
         defer { try? handle.close() }
         var data = Data()
+        var pendingEventData = Data()
         var exceededLimit = false
         while let chunk = try handle.read(upToCount: 16_384), !chunk.isEmpty {
             let remaining = max(0, maximumBytes - data.count)
             if chunk.count > remaining { exceededLimit = true }
             if remaining > 0 { data.append(chunk.prefix(remaining)) }
+            if let eventHandler {
+                pendingEventData.append(chunk)
+                while let newline = pendingEventData.firstIndex(of: 0x0A) {
+                    let lineData = pendingEventData[..<newline]
+                    pendingEventData.removeSubrange(...newline)
+                    if let line = String(data: lineData, encoding: .utf8), !line.isEmpty {
+                        eventHandler(line)
+                    }
+                }
+                if pendingEventData.count > 64_000 {
+                    pendingEventData.removeAll(keepingCapacity: true)
+                }
+            }
+        }
+        if let eventHandler,
+           !pendingEventData.isEmpty,
+           let line = String(data: pendingEventData, encoding: .utf8) {
+            eventHandler(line)
         }
         return (data, exceededLimit)
     }

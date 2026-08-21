@@ -109,12 +109,14 @@ enum AppPaths {
         applicationSupportDirectory.appendingPathComponent("Models/editing", isDirectory: true)
     }
 
-    static var llamaHelperExecutable: URL {
-        if let configuredPath = ProcessInfo.processInfo.environment["TIRO_LLAMA_EXECUTABLE"] {
+    static var llamaServerHelperExecutable: URL {
+        if let configuredPath = ProcessInfo.processInfo.environment[
+            "TIRO_LLAMA_SERVER_EXECUTABLE"
+        ] {
             return URL(fileURLWithPath: configuredPath)
         }
         return Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Helpers/llama/tiro-llama")
+            .appendingPathComponent("Contents/Helpers/llama/tiro-llama-server")
     }
 
     static var historyFile: URL {

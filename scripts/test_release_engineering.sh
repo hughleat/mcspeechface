@@ -30,7 +30,7 @@ rg -q -F 'command-line helper was replaced by the GUI executable' \
     "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'local transcript editing runtime could not start' \
     "$ROOT/scripts/smoke_release.sh"
-rg -q -F 'Contents/Helpers/llama/tiro-llama' "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'Contents/Helpers/llama/tiro-llama-server' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'local transcript editing runtime has non-system dependencies' \
     "$ROOT/scripts/smoke_release.sh"
 rg -q -F -- '--print-build-features' "$ROOT/scripts/smoke_release.sh"

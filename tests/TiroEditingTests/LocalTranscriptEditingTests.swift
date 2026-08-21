@@ -25,35 +25,36 @@ struct LocalTranscriptEditingTests {
     }
 
     @Test
-    func localInvocationUsesMetalWithoutDisposableWarmup() {
-        let arguments = GGUFTranscriptEditor.arguments(
-            modelURL: URL(fileURLWithPath: "/tmp/model.gguf"),
-            request: TranscriptEditRequest(text: "Correct this."),
-            systemPromptFile: URL(fileURLWithPath: "/tmp/system-prompt.txt"),
-            userPromptFile: URL(fileURLWithPath: "/tmp/user-prompt.txt")
+    func localEditorUsesPersistentRuntimeLifecycle() async throws {
+        let model = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "fixture-\(UUID().uuidString).gguf"
+        )
+        try Data("fixture".utf8).write(to: model)
+        defer { try? FileManager.default.removeItem(at: model) }
+        let server = RecordingLocalCorrectionServer()
+        let editor = GGUFTranscriptEditor(
+            spec: .qwen3Local,
+            modelURL: model,
+            server: server
         )
 
-        #expect(arguments.contains("--gpu-layers"))
-        #expect(arguments.contains("all"))
-        #expect(arguments.contains("--no-warmup"))
-        #expect(arguments.contains("--system-prompt-file"))
-        #expect(arguments.contains("--file"))
-        #expect(!arguments.joined(separator: " ").contains("Correct this."))
-    }
+        try await editor.prepare()
+        #expect(await editor.runtimeState() == .ready)
+        let decision = try await editor.proposeEdits(for: TranscriptEditRequest(
+            text: "Um, send it today."
+        ))
+        await editor.updateIdleTimeout(30)
+        await editor.stop()
 
-    @Test
-    func localPromptsUsePrivateFilesAndCanBeRemoved() throws {
-        let request = TranscriptEditRequest(text: "Private dictated text.", language: "English")
-        let files = try LocalCorrectionPromptFiles(request: request)
-
-        #expect(try permissions(of: files.directory) == 0o700)
-        #expect(try permissions(of: files.systemPrompt) == 0o600)
-        #expect(try permissions(of: files.userPrompt) == 0o600)
-        #expect(try String(contentsOf: files.systemPrompt, encoding: .utf8).contains("voice transcription"))
-        #expect(try String(contentsOf: files.userPrompt, encoding: .utf8).contains("Private dictated text."))
-
-        files.remove()
-        #expect(!FileManager.default.fileExists(atPath: files.directory.path))
+        guard case .proposal(let proposal) = decision else {
+            Issue.record("Expected the persistent runtime's proposal")
+            return
+        }
+        #expect(proposal.revisedText == "Send it today.")
+        #expect(await server.prepareCount == 1)
+        #expect(await server.generateCount == 1)
+        #expect(await server.idleTimeout == 30)
+        #expect(await editor.runtimeState() == .stopped)
     }
 
     @Test
@@ -168,23 +169,10 @@ struct LocalTranscriptEditingTests {
     }
 
     @Test
-    func terminatesHelperAfterTimeout() async {
-        let runner = FoundationTranscriptEditingProcessRunner()
-
-        await #expect(throws: GGUFTranscriptEditorError.self) {
-            _ = try await runner.run(
-                executableURL: URL(fileURLWithPath: "/bin/sleep"),
-                arguments: ["5"],
-                timeout: 0.05
-            )
-        }
-    }
-
-    @Test
     func installedQwenEditsRealTranscriptWhenConfigured() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let modelsPath = environment["TIRO_QWEN_INTEGRATION_MODELS"],
-              let executablePath = environment["TIRO_LLAMA_EXECUTABLE"] else {
+              let executablePath = environment["TIRO_LLAMA_SERVER_EXECUTABLE"] else {
             return
         }
         let store = LocalTranscriptEditingModelStore(
@@ -217,7 +205,7 @@ struct LocalTranscriptEditingTests {
     func installedQwenFollowsUserPromptWhenConfigured() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let modelsPath = environment["TIRO_QWEN_INTEGRATION_MODELS"],
-              let executablePath = environment["TIRO_LLAMA_EXECUTABLE"] else {
+              let executablePath = environment["TIRO_LLAMA_SERVER_EXECUTABLE"] else {
             return
         }
         let store = LocalTranscriptEditingModelStore(
@@ -280,11 +268,6 @@ struct LocalTranscriptEditingTests {
         }
     }
 
-    private func permissions(of url: URL) throws -> Int {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        return (attributes[.posixPermissions] as? NSNumber)?.intValue ?? -1
-    }
-
     private struct FixtureDownloader: TranscriptEditingModelDownloading {
         let data: Data
 
@@ -295,5 +278,42 @@ struct LocalTranscriptEditingTests {
             try data.write(to: fileURL)
             return DownloadedTranscriptEditingModel(fileURL: fileURL, statusCode: 200)
         }
+    }
+}
+
+private actor RecordingLocalCorrectionServer: LocalCorrectionServing {
+    private(set) var prepareCount = 0
+    private(set) var generateCount = 0
+    private(set) var useCount = 0
+    private(set) var idleTimeout: TimeInterval = 600
+    private var state = LocalCorrectionRuntimeState.stopped
+
+    func runtimeState() -> LocalCorrectionRuntimeState { state }
+
+    func updateIdleTimeout(_ timeout: TimeInterval) {
+        idleTimeout = timeout
+    }
+
+    func beginUse() {
+        useCount += 1
+    }
+
+    func endUse() {
+        useCount = max(0, useCount - 1)
+    }
+
+    func prepare() {
+        prepareCount += 1
+        state = .ready
+    }
+
+    func generate(request: TranscriptEditRequest, grammar: String) -> String {
+        generateCount += 1
+        state = .ready
+        return #"{"hasChanges":true,"explanation":"Removed a filler.","revisedText":"Send it today."}"#
+    }
+
+    func stop() {
+        state = .stopped
     }
 }

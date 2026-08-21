@@ -228,6 +228,22 @@ public enum TranscriptEditorAvailability: Equatable, Sendable {
     case unavailable(reason: String)
 }
 
+public enum TranscriptEditingProgressPhase: Equatable, Sendable {
+    case starting
+    case working
+    case receiving
+}
+
+public struct TranscriptEditingProgress: Equatable, Sendable {
+    public let providerName: String
+    public let phase: TranscriptEditingProgressPhase
+
+    public init(providerName: String, phase: TranscriptEditingProgressPhase) {
+        self.providerName = providerName
+        self.phase = phase
+    }
+}
+
 public protocol TranscriptEditor: Sendable {
     var id: String { get }
     var name: String { get }

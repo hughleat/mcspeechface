@@ -113,14 +113,14 @@ PROCESS_LAUNCHER="$APP/Contents/Helpers/tiro-process-launcher"
     || fail "correction process launcher is missing or not executable"
 "$PROCESS_LAUNCHER" /usr/bin/true \
     || fail "correction process launcher could not start a command"
-LLAMA_CLI="$APP/Contents/Helpers/llama/tiro-llama"
-[[ -f "$LLAMA_CLI" && -x "$LLAMA_CLI" ]] \
+LLAMA_SERVER="$APP/Contents/Helpers/llama/tiro-llama-server"
+[[ -f "$LLAMA_SERVER" && -x "$LLAMA_SERVER" ]] \
     || fail "local transcript editing runtime is missing or not executable"
-runtime_dependencies="$(otool -L "$LLAMA_CLI" | tail -n +2 | awk '{ print $1 }' \
+runtime_dependencies="$(otool -L "$LLAMA_SERVER" | tail -n +2 | awk '{ print $1 }' \
     | rg -v '^(/System/Library/|/usr/lib/)' || true)"
 [[ -z "$runtime_dependencies" ]] \
     || fail "local transcript editing runtime has non-system dependencies"
-"$LLAMA_CLI" --version >/dev/null 2>&1 \
+"$LLAMA_SERVER" --version >/dev/null 2>&1 \
     || fail "local transcript editing runtime could not start"
 [[ -n "$(/usr/libexec/PlistBuddy -c 'Print :NSSpeechRecognitionUsageDescription' "$INFO")" ]] \
     || fail "Speech Recognition usage description is missing"

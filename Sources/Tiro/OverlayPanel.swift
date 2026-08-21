@@ -5,6 +5,9 @@ enum OverlayState: Equatable {
     case startingUp
     case transcribing
     case correcting
+    case correctionStarting(String)
+    case correctionWorking(String)
+    case correctionReceiving(String)
     case pasted
     case pasteSent
     case copied
@@ -19,6 +22,9 @@ enum OverlayState: Equatable {
         case .startingUp: return "Tiro is starting"
         case .transcribing: return "Transcribing"
         case .correcting: return "Correcting"
+        case .correctionStarting(let provider): return "Starting \(provider)"
+        case .correctionWorking(let provider): return "\(provider) is working"
+        case .correctionReceiving(let provider): return "Receiving from \(provider)"
         case .pasted: return "Pasted"
         case .pasteSent: return "Paste sent"
         case .copied: return "Copied"
@@ -32,7 +38,9 @@ enum OverlayState: Equatable {
     var color: NSColor {
         switch self {
         case .recording, .error: return NSColor.systemRed
-        case .startingUp, .transcribing, .correcting, .pasteSent, .noSpeech, .modelBusy, .pasteFailed:
+        case .startingUp, .transcribing, .correcting, .correctionStarting,
+             .correctionWorking, .correctionReceiving, .pasteSent, .noSpeech,
+             .modelBusy, .pasteFailed:
             return NSColor.systemOrange
         case .pasted, .copied: return NSColor.systemGreen
         }
@@ -44,6 +52,9 @@ enum OverlayState: Equatable {
         case .startingUp: return "Tiro is starting. Try dictating again shortly."
         case .transcribing: return "Tiro is transcribing."
         case .correcting: return "Tiro is correcting the transcript."
+        case .correctionStarting(let provider): return "Starting \(provider)."
+        case .correctionWorking(let provider): return "\(provider) is correcting the transcript."
+        case .correctionReceiving(let provider): return "Receiving the correction from \(provider)."
         case .pasted: return "Dictation pasted."
         case .pasteSent: return "Paste sent."
         case .copied: return "Dictation copied to the clipboard."

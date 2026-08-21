@@ -75,8 +75,11 @@ import UniformTypeIdentifiers
     private var lastFailedPasteText: String?
     private var pasteRecoveryGeneration = 0
     private var pasteRetryTask: Task<Void, Never>?
+    private var correctionPreloadTask: Task<Void, Never>?
+    private var localCorrectionUseToken: LocalCorrectionUseToken?
     private var awaitingPrivacyReview = false
     private var isPresentingRecovery = false
+    private var localCorrectionShutdownPrepared = false
 #if TIRO_SPONSORSHIP_ENABLED
     private var supportPromptSuppressedUntil: Date?
 #endif
@@ -127,6 +130,19 @@ import UniformTypeIdentifiers
         hotkeys.stop()
         PasteEventGate.shared.stop()
         commandServer.stop()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !localCorrectionShutdownPrepared else { return .terminateNow }
+        localCorrectionShutdownPrepared = true
+        let preloadTask = correctionPreloadTask
+        correctionPreloadTask?.cancel()
+        Task { [transcriptEditingService] in
+            await transcriptEditingService.prepareForShutdown()
+            _ = await preloadTask?.result
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     private func configureStatusItem() {
@@ -570,9 +586,13 @@ import UniformTypeIdentifiers
         controller.onModelsChanged = { [weak self] models in
             self?.applyModelInventory(models)
         }
-        controller.onCorrectionModelChanged = { [weak self] _ in
+        controller.onCorrectionModelChanged = { [weak self] model in
             self?.updateCorrectionModelChecks()
             self?.refreshCorrectionModelMenu()
+            guard let self else { return }
+            Task { [transcriptEditingService] in
+                await transcriptEditingService.correctionModelDidChange(to: model)
+            }
         }
         controller.onShortcutChanged = { [weak self] shortcut in
             guard let self else { return }
@@ -788,6 +808,26 @@ import UniformTypeIdentifiers
         }
         state = .starting
         menuToggleItem.title = "Cancel Starting"
+        correctionPreloadTask?.cancel()
+        correctionPreloadTask = Task { [weak self, transcriptEditingService] in
+            var token: LocalCorrectionUseToken?
+            do {
+                token = try await transcriptEditingService.prepareSelectedLocalModel()
+            } catch {
+                if !Task.isCancelled {
+                    NSLog(
+                        "Could not preload local correction model: %@",
+                        error.localizedDescription
+                    )
+                }
+            }
+            guard !Task.isCancelled, let self, self.recordingModelUseReserved else {
+                if let token { await transcriptEditingService.releaseLocalModelUse(token) }
+                return
+            }
+            self.localCorrectionUseToken = token
+            self.correctionPreloadTask = nil
+        }
         if playStartSound, UserDefaults.standard.bool(forKey: "soundFeedback") {
             recordingSounds.playStart { [weak self] in self?.beginRecording() }
         } else {
@@ -957,6 +997,14 @@ import UniformTypeIdentifiers
     private func releaseRecordingModelUse() {
         guard recordingModelUseReserved else { return }
         recordingModelUseReserved = false
+        correctionPreloadTask?.cancel()
+        correctionPreloadTask = nil
+        if let token = localCorrectionUseToken {
+            localCorrectionUseToken = nil
+            Task { [transcriptEditingService] in
+                await transcriptEditingService.releaseLocalModelUse(token)
+            }
+        }
         recordingModel = nil
         service.endRecordingModelUse()
         updateModelChecks()
@@ -1051,7 +1099,15 @@ import UniformTypeIdentifiers
             menuToggleItem.title = "Correcting…"
             overlay.show(.correcting)
             do {
-                let result = try await transcriptEditingService.proposeEdits(to: response)
+                let result = try await transcriptEditingService.proposeEdits(
+                    to: response,
+                    progressHandler: { [weak self] progress in
+                        Task { @MainActor in
+                            guard let self, self.transcriptionID == operationID else { return }
+                            self.overlay.show(Self.overlayState(for: progress))
+                        }
+                    }
+                )
                 correctionRequiresReview = result.requiresReview
                 if case .proposal(let proposal) = result.decision {
                     revisedText = proposal.revisedText
@@ -1100,6 +1156,16 @@ import UniformTypeIdentifiers
             return nil
         }
         return selectedText
+    }
+
+    private static func overlayState(
+        for progress: TranscriptEditingProgress
+    ) -> OverlayState {
+        switch progress.phase {
+        case .starting: .correctionStarting(progress.providerName)
+        case .working: .correctionWorking(progress.providerName)
+        case .receiving: .correctionReceiving(progress.providerName)
+        }
     }
 
     private func presentError(_ error: Error) {
@@ -1445,6 +1511,9 @@ import UniformTypeIdentifiers
         TranscriptEditingModel.selected = model
         updateCorrectionModelChecks()
         settingsWindow.refreshCorrectionModel()
+        Task { [transcriptEditingService] in
+            await transcriptEditingService.correctionModelDidChange(to: model)
+        }
     }
 
     private func updateModelChecks() {
@@ -1551,6 +1620,7 @@ import UniformTypeIdentifiers
             if !available.contains(TranscriptEditingModel.selected) {
                 TranscriptEditingModel.selected = .off
                 settingsWindow.refreshCorrectionModel()
+                await transcriptEditingService.correctionModelDidChange(to: .off)
             }
             updateCorrectionModelChecks()
         }

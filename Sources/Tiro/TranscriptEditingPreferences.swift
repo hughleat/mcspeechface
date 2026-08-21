@@ -162,22 +162,59 @@ struct TranscriptEditingResult: Sendable {
     let requiresReview: Bool
 }
 
+struct LocalCorrectionUseToken: Sendable {
+    let model: TranscriptEditingModel
+}
+
+enum LocalCorrectionIdleTimeout: Int, CaseIterable, Sendable {
+    case oneMinute = 60
+    case fiveMinutes = 300
+    case tenMinutes = 600
+    case thirtyMinutes = 1_800
+    case oneHour = 3_600
+    case never = 0
+
+    static let defaultsKey = "localCorrectionIdleTimeoutSeconds"
+    static let `default` = LocalCorrectionIdleTimeout.tenMinutes
+
+    var title: String {
+        switch self {
+        case .oneMinute: "1 minute"
+        case .fiveMinutes: "5 minutes"
+        case .tenMinutes: "10 minutes"
+        case .thirtyMinutes: "30 minutes"
+        case .oneHour: "1 hour"
+        case .never: "Never"
+        }
+    }
+
+    static func load(from defaults: UserDefaults = .standard) -> Self {
+        guard defaults.object(forKey: defaultsKey) != nil else { return .default }
+        return Self(rawValue: defaults.integer(forKey: defaultsKey)) ?? .default
+    }
+
+    func save(to defaults: UserDefaults = .standard) {
+        defaults.set(rawValue, forKey: Self.defaultsKey)
+    }
+}
+
 actor TranscriptEditingService {
     private var appleEditor: (any TranscriptEditor)?
     private var commandLineEditors: [TranscriptEditingModel: (
         configuration: CommandLineCorrectionConfiguration,
-        editor: any TranscriptEditor
+        editor: CommandLineTranscriptEditor
     )] = [:]
-    private var localEditors: [TranscriptEditingModel: any TranscriptEditor] = [:]
+    private var localEditors: [TranscriptEditingModel: GGUFTranscriptEditor] = [:]
     private var activeLocalRepairs: [TranscriptEditingModel: Int] = [:]
     private var localModelMutations: Set<TranscriptEditingModel> = []
+    private var isShuttingDown = false
     private let localModelStores: [TranscriptEditingModel: LocalTranscriptEditingModelStore]
-    private let llamaExecutableURL: URL
+    private let llamaServerExecutableURL: URL
     private let defaults: UserDefaults
 
     init(
         modelsRoot: URL = AppPaths.editingModelsDirectory,
-        llamaExecutableURL: URL = AppPaths.llamaHelperExecutable,
+        llamaServerExecutableURL: URL = AppPaths.llamaServerHelperExecutable,
         defaults: UserDefaults = .standard,
         downloader: any TranscriptEditingModelDownloading =
             URLSessionTranscriptEditingModelDownloader()
@@ -190,7 +227,7 @@ actor TranscriptEditingService {
                 downloader: downloader
             ))
         })
-        self.llamaExecutableURL = llamaExecutableURL
+        self.llamaServerExecutableURL = llamaServerExecutableURL
         self.defaults = defaults
     }
 
@@ -215,8 +252,10 @@ actor TranscriptEditingService {
     }
 
     func proposeEdits(
-        to response: TranscriptionResponse
+        to response: TranscriptionResponse,
+        progressHandler: (@Sendable (TranscriptEditingProgress) -> Void)? = nil
     ) async throws -> TranscriptEditingResult {
+        guard !isShuttingDown else { throw TranscriptEditingServiceError.shuttingDown }
         let selection = TranscriptEditingModel.load(from: defaults)
         guard selection != .off else {
             return TranscriptEditingResult(decision: .unchanged, requiresReview: false)
@@ -234,13 +273,92 @@ actor TranscriptEditingService {
             }
         }
         let promptConfiguration = TranscriptEditingPromptPreferences(defaults: defaults).load()
-        let decision = try await selectedEditor.proposeEdits(
-            for: Self.request(for: response, promptConfiguration: promptConfiguration)
-        )
+        let request = Self.request(for: response, promptConfiguration: promptConfiguration)
+        let decision: TranscriptEditDecision
+        if let commandLineEditor = selectedEditor as? CommandLineTranscriptEditor {
+            decision = try await commandLineEditor.proposeEdits(
+                for: request,
+                progressHandler: progressHandler
+            )
+        } else {
+            decision = try await selectedEditor.proposeEdits(for: request)
+        }
         return TranscriptEditingResult(
             decision: decision,
             requiresReview: promptConfiguration.isCustom || selection.isCommandLine
         )
+    }
+
+    func prepareSelectedLocalModel() async throws -> LocalCorrectionUseToken? {
+        try Task.checkCancellation()
+        guard !isShuttingDown else { throw TranscriptEditingServiceError.shuttingDown }
+        let selection = TranscriptEditingModel.load(from: defaults)
+        guard selection.localSpec != nil else { return nil }
+        guard !localModelMutations.contains(selection) else {
+            throw TranscriptEditingServiceError.modelOperationInProgress
+        }
+        let editor = try localEditor(for: selection)
+        await editor.beginUse()
+        do {
+            try Task.checkCancellation()
+            await editor.updateIdleTimeout(idleTimeout)
+            try await editor.prepare()
+            return LocalCorrectionUseToken(model: selection)
+        } catch {
+            await editor.endUse()
+            throw error
+        }
+    }
+
+    func releaseLocalModelUse(_ token: LocalCorrectionUseToken) async {
+        await localEditors[token.model]?.endUse()
+    }
+
+    func prepareForShutdown() async {
+        isShuttingDown = true
+        await stopAllLocalModels()
+    }
+
+    func correctionModelDidChange(to selectedModel: TranscriptEditingModel) async {
+        for (model, editor) in localEditors where model != selectedModel {
+            await editor.stop()
+        }
+        if let editor = localEditors[selectedModel] {
+            await editor.updateIdleTimeout(idleTimeout)
+        }
+    }
+
+    func updateLocalModelIdleTimeout(_ timeout: LocalCorrectionIdleTimeout) async {
+        timeout.save(to: defaults)
+        for editor in localEditors.values {
+            await editor.updateIdleTimeout(TimeInterval(timeout.rawValue))
+        }
+    }
+
+    func localRuntimeStates() async -> [TranscriptEditingModel: LocalCorrectionRuntimeState] {
+        var result: [TranscriptEditingModel: LocalCorrectionRuntimeState] = [:]
+        for model in TranscriptEditingModel.localModels {
+            if let editor = localEditors[model] {
+                result[model] = await editor.runtimeState()
+            } else {
+                result[model] = .stopped
+            }
+        }
+        return result
+    }
+
+    func stopLocalModel(_ model: TranscriptEditingModel) async throws {
+        guard model.localSpec != nil else { throw TranscriptEditingServiceError.notLocalModel }
+        guard activeLocalRepairs[model, default: 0] == 0 else {
+            throw TranscriptEditingServiceError.modelInUse
+        }
+        await localEditors[model]?.stop()
+    }
+
+    func stopAllLocalModels() async {
+        for editor in localEditors.values {
+            await editor.stop()
+        }
     }
 
     static func request(
@@ -279,10 +397,17 @@ actor TranscriptEditingService {
         let providers = try selectedModels.map {
             TranscriptCorrectionProvider(editor: try editor(for: $0))
         }
-        return try await TranscriptCorrectionComparator().compare(
-            request: request,
-            providers: providers
-        )
+        do {
+            let comparison = try await TranscriptCorrectionComparator().compare(
+                request: request,
+                providers: providers
+            )
+            await stopUnselectedComparisonModels(localModels)
+            return comparison
+        } catch {
+            await stopUnselectedComparisonModels(localModels)
+            throw error
+        }
     }
 
     func localModelStatus(
@@ -348,6 +473,7 @@ actor TranscriptEditingService {
         }
         localModelMutations.insert(model)
         defer { localModelMutations.remove(model) }
+        await localEditors[model]?.stop()
         localEditors[model] = nil
         try await store.delete()
     }
@@ -394,19 +520,39 @@ actor TranscriptEditingService {
             commandLineEditors[model] = (saved, editor)
             return editor
         case .qwenLocal, .ministralLocal:
-            if let editor = localEditors[model] { return editor }
-            guard let spec = model.localSpec,
-                  let store = localModelStores[model] else {
-                throw TranscriptEditingServiceError.notLocalModel
-            }
-            let editor = GGUFTranscriptEditor(
-                spec: spec,
-                executableURL: llamaExecutableURL,
-                modelURL: store.modelURL
-            )
-            localEditors[model] = editor
-            return editor
+            return try localEditor(for: model)
         }
+    }
+
+    private func localEditor(
+        for model: TranscriptEditingModel
+    ) throws -> GGUFTranscriptEditor {
+        if let editor = localEditors[model] { return editor }
+        guard let spec = model.localSpec,
+              let store = localModelStores[model] else {
+            throw TranscriptEditingServiceError.notLocalModel
+        }
+        let editor = GGUFTranscriptEditor(
+            spec: spec,
+            executableURL: llamaServerExecutableURL,
+            modelURL: store.modelURL,
+            idleTimeout: idleTimeout
+        )
+        localEditors[model] = editor
+        return editor
+    }
+
+    private func stopUnselectedComparisonModels(
+        _ models: [TranscriptEditingModel]
+    ) async {
+        let selected = TranscriptEditingModel.load(from: defaults)
+        for model in models where model != selected {
+            await localEditors[model]?.stop()
+        }
+    }
+
+    private var idleTimeout: TimeInterval {
+        TimeInterval(LocalCorrectionIdleTimeout.load(from: defaults).rawValue)
     }
 }
 
@@ -418,6 +564,7 @@ enum TranscriptEditingServiceError: LocalizedError {
     case notLocalModel
     case selectedModel
     case commandLineNotConfigured
+    case shuttingDown
 
     var errorDescription: String? {
         switch self {
@@ -428,6 +575,7 @@ enum TranscriptEditingServiceError: LocalizedError {
         case .notLocalModel: "This correction model is not downloadable."
         case .selectedModel: "Select another correction model before deleting this one."
         case .commandLineNotConfigured: "Configure an available command-line correction executable."
+        case .shuttingDown: "The app is shutting down."
         }
     }
 }

@@ -92,6 +92,61 @@ struct CommandLineTranscriptEditorTests {
     }
 
     @Test
+    func decodesClaudeAndCodexStreamingResults() throws {
+        let claude = #"{"type":"system","subtype":"init"}"# + "\n"
+            + #"{"type":"result","subtype":"success","result":"{\"hasChanges\":true,\"explanation\":\"Removed a filler.\",\"revisedText\":\"Send it.\"}"}"#
+        let codex = #"{"type":"thread.started","thread_id":"fixture"}"# + "\n"
+            + #"{"type":"item.completed","item":{"type":"agent_message","text":"{\"hasChanges\":true,\"explanation\":\"Removed a filler.\",\"revisedText\":\"Send it.\"}"}}"#
+
+        for output in [claude, codex] {
+            let decision = try CommandLineTranscriptEditor.decision(
+                from: output,
+                originalText: "Um, send it."
+            )
+            guard case .proposal(let proposal) = decision else {
+                Issue.record("Expected a streamed proposal")
+                continue
+            }
+            #expect(proposal.revisedText == "Send it.")
+        }
+    }
+
+    @Test
+    func decodesClaudeStructuredStreamingResult() throws {
+        let output = #"{"type":"result","subtype":"success","structured_output":{"hasChanges":true,"explanation":"Removed a filler.","revisedText":"Send it."}}"#
+
+        let decision = try CommandLineTranscriptEditor.decision(
+            from: output,
+            originalText: "Um, send it."
+        )
+        guard case .proposal(let proposal) = decision else {
+            Issue.record("Expected a streamed proposal")
+            return
+        }
+        #expect(proposal.revisedText == "Send it.")
+    }
+
+    @Test
+    func reportsBoundedProgressFromJSONEvents() async throws {
+        let runner = StreamingRunner()
+        let recorder = ProgressRecorder()
+        let configuration = try CommandLineCorrectionConfiguration(
+            id: "stream-fixture",
+            name: "Stream Fixture",
+            executablePath: "/bin/echo",
+            arguments: []
+        )
+        let editor = CommandLineTranscriptEditor(configuration: configuration, runner: runner)
+
+        _ = try await editor.proposeEdits(
+            for: TranscriptEditRequest(text: "Um, send it."),
+            progressHandler: { recorder.append($0.phase) }
+        )
+
+        #expect(recorder.phases == [.starting, .working, .receiving])
+    }
+
+    @Test
     func emptyTranscriptDoesNotLaunchTheCommand() async throws {
         let runner = RecordingRunner()
         let configuration = try CommandLineCorrectionConfiguration(
@@ -116,12 +171,44 @@ struct CommandLineTranscriptEditorTests {
     }
 }
 
+private actor StreamingRunner: CommandLineCorrectionProcessRunning {
+    func run(
+        configuration: CommandLineCorrectionConfiguration,
+        standardInput: Data,
+        eventHandler: (@Sendable (String) -> Void)?
+    ) -> CommandLineCorrectionProcessResult {
+        eventHandler?(#"{"type":"turn.started"}"#)
+        eventHandler?(#"{"type":"item.completed"}"#)
+        eventHandler?(#"{"type":"turn.started"}"#)
+        eventHandler?(#"{"type":"result"}"#)
+        return CommandLineCorrectionProcessResult(
+            standardOutput: #"{"hasChanges":true,"explanation":"Removed a filler.","revisedText":"Send it."}"#,
+            standardError: "",
+            workingDirectory: FileManager.default.temporaryDirectory
+        )
+    }
+}
+
+private final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [TranscriptEditingProgressPhase] = []
+
+    var phases: [TranscriptEditingProgressPhase] {
+        lock.withLock { stored }
+    }
+
+    func append(_ phase: TranscriptEditingProgressPhase) {
+        lock.withLock { stored.append(phase) }
+    }
+}
+
 private actor RecordingRunner: CommandLineCorrectionProcessRunning {
     private(set) var callCount = 0
 
     func run(
         configuration: CommandLineCorrectionConfiguration,
-        standardInput: Data
+        standardInput: Data,
+        eventHandler: (@Sendable (String) -> Void)?
     ) async throws -> CommandLineCorrectionProcessResult {
         callCount += 1
         return CommandLineCorrectionProcessResult(
