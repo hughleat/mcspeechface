@@ -166,7 +166,13 @@ actor PersistentLlamaServer: LocalCorrectionServing {
             return content
         } catch is CancellationError {
             operationInProgress = false
-            restoreReadyStateAfterRequest()
+            if state == .loading {
+                lifecycleGeneration += 1
+                stopProcess()
+                state = .stopped
+            } else {
+                restoreReadyStateAfterRequest()
+            }
             throw CancellationError()
         } catch let error as GGUFTranscriptEditorError {
             operationInProgress = false
@@ -321,6 +327,7 @@ actor PersistentLlamaServer: LocalCorrectionServing {
     }
 
     private func restoreReadyStateAfterRequest() {
+        guard state == .correcting else { return }
         refreshExitedProcessState()
         if process?.isRunning == true {
             state = .ready
