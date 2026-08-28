@@ -46,18 +46,21 @@ struct ErrorRecoveryTests {
         let coordinator = PasteCoordinator(
             pasteboard: pasteboard,
             eventDispatcher: { _ in .accepted },
-            confirmationDelays: [20_000_000]
+            confirmationDelays: [0]
         )
+        let destination = SuspendedPasteDestination()
 
         let result = try await coordinator.paste(
             "dictated text",
-            to: PasteDestinationStub(consumptionConfirmed: true),
+            to: destination,
             waitForConfirmation: false
         )
 
         #expect(result == .dispatched)
         #expect(pasteboard.string == "dictated text")
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitForProbe(in: destination)
+        destination.resumeProbe(with: true)
+        try await waitForBackgroundConfirmations(in: coordinator)
         #expect(pasteboard.string == "previous clipboard")
     }
 
@@ -138,10 +141,7 @@ struct ErrorRecoveryTests {
             to: suspendedDestination,
             waitForConfirmation: false
         )
-        for _ in 0..<100 {
-            if suspendedDestination.pendingProbeCount > 0 { break }
-            try await Task.sleep(nanoseconds: 1_000_000)
-        }
+        try await waitForProbe(in: suspendedDestination)
         #expect(suspendedDestination.pendingProbeCount == 1)
 
         let secondResult = try await coordinator.paste(
@@ -153,13 +153,28 @@ struct ErrorRecoveryTests {
         pasteboard.clearContents()
         _ = pasteboard.setString("newer clipboard", forType: .string)
         suspendedDestination.resumeProbe(with: true)
-        for _ in 0..<100 {
-            if coordinator.activeBackgroundConfirmationCount == 0 { break }
-            try await Task.sleep(nanoseconds: 1_000_000)
-        }
+        try await waitForBackgroundConfirmations(in: coordinator)
 
         #expect(coordinator.activeBackgroundConfirmationCount == 0)
         #expect(pasteboard.string == "newer clipboard")
+    }
+
+    @MainActor
+    private func waitForProbe(in destination: SuspendedPasteDestination) async throws {
+        for _ in 0..<100 {
+            if destination.pendingProbeCount > 0 { return }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    @MainActor
+    private func waitForBackgroundConfirmations(
+        in coordinator: PasteCoordinator
+    ) async throws {
+        for _ in 0..<100 {
+            if coordinator.activeBackgroundConfirmationCount == 0 { return }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
     }
 
     @Test @MainActor
