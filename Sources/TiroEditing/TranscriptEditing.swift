@@ -92,11 +92,11 @@ public struct TranscriptEditingPromptConfiguration: Codable, Equatable, Sendable
         }
     }
 
-    func renderedSystemPrompt(language: String?) -> String {
+    public func renderedSystemPrompt(language: String?) -> String {
         Self.render(systemPrompt, text: nil, language: language)
     }
 
-    func renderedUserPrompt(text: String, language: String?) -> String {
+    public func renderedUserPrompt(text: String, language: String?) -> String {
         Self.render(userPromptTemplate, text: text, language: language)
     }
 
@@ -250,6 +250,19 @@ public protocol TranscriptEditor: Sendable {
 
     func availability() async -> TranscriptEditorAvailability
     func proposeEdits(for request: TranscriptEditRequest) async throws -> TranscriptEditDecision
+}
+
+public protocol ProgressReportingTranscriptEditor: TranscriptEditor {
+    func proposeEdits(
+        for request: TranscriptEditRequest,
+        progressHandler: (@Sendable (TranscriptEditingProgress) -> Void)?
+    ) async throws -> TranscriptEditDecision
+}
+
+public protocol PersistentTranscriptEditor: ProgressReportingTranscriptEditor {
+    func runtimeState() async -> PersistentCorrectionRuntimeState
+    func prepare() async throws
+    func stop() async
 }
 
 enum TranscriptEditingPrompt {

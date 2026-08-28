@@ -95,7 +95,7 @@ struct FoundationCommandLineCorrectionProcessRunner: CommandLineCorrectionProces
         )
     }
 
-    private static var bundledProcessLauncherURL: URL? {
+    static var bundledProcessLauncherURL: URL? {
         let url = Bundle.main.bundleURL
             .appendingPathComponent("Contents/Helpers/tiro-process-launcher")
         return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
@@ -155,6 +155,44 @@ struct FoundationCommandLineCorrectionProcessRunner: CommandLineCorrectionProces
     }
 }
 
+enum CommandLineProcessTerminator {
+    static func stop(_ process: Process?, usesProcessGroup: Bool) {
+        guard let process else { return }
+        let identifier = process.processIdentifier
+        guard identifier > 0 else { return }
+        if usesProcessGroup {
+            guard Darwin.kill(-identifier, SIGTERM) == 0 else { return }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.25) {
+                Darwin.kill(-identifier, SIGKILL)
+            }
+        } else {
+            guard process.isRunning else { return }
+            process.terminate()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.25) {
+                guard process.isRunning, process.processIdentifier == identifier else { return }
+                Darwin.kill(identifier, SIGKILL)
+            }
+        }
+    }
+}
+
+enum CommandLineCorrectionEnvironment {
+    static func minimum(workingDirectory: URL) -> [String: String] {
+        let environment = ProcessInfo.processInfo.environment
+        let commonPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+        let existingPaths = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
+        let path = (commonPaths + existingPaths).reduce(into: [String]()) {
+            if !$0.contains($1) { $0.append($1) }
+        }.joined(separator: ":")
+        return [
+            "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
+            "LANG": environment["LANG"] ?? "en_US.UTF-8",
+            "PATH": path,
+            "TMPDIR": workingDirectory.path,
+        ]
+    }
+}
+
 private struct CapturedCommandLineOutput: Sendable {
     let standardOutput: String
     let standardError: String
@@ -197,7 +235,9 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = errorOutput
-        process.environment = Self.environment(workingDirectory: workingDirectory)
+        process.environment = CommandLineCorrectionEnvironment.minimum(
+            workingDirectory: workingDirectory
+        )
         self.outputFileURL = outputFileURL
         self.standardInput = standardInput
         self.maximumOutputBytes = maximumOutputBytes
@@ -458,13 +498,4 @@ private final class CommandLineProcessExecution: @unchecked Sendable {
         )
     }
 
-    private static func environment(workingDirectory: URL) -> [String: String] {
-        let environment = ProcessInfo.processInfo.environment
-        return [
-            "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-            "LANG": environment["LANG"] ?? "en_US.UTF-8",
-            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-            "TMPDIR": workingDirectory.path,
-        ]
-    }
 }

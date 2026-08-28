@@ -1,6 +1,6 @@
 import Foundation
 
-public actor CommandLineTranscriptEditor: TranscriptEditor {
+public actor CommandLineTranscriptEditor: ProgressReportingTranscriptEditor {
     public nonisolated let id: String
     public nonisolated let name: String
 

@@ -150,11 +150,13 @@ struct SettingsConstructionTests {
             from: defaults
         ) == configuration)
         #expect(configuration.arguments.contains(""))
-        #expect(CommandLineCorrectionPreset.codex.configuration.arguments.contains("{outputFile}"))
-        #expect(CommandLineCorrectionPreset.claude.configuration.arguments.contains("{schemaJSON}"))
-        #expect(CommandLineCorrectionPreset.codex.configuration.arguments.contains("--json"))
-        #expect(CommandLineCorrectionPreset.claude.configuration.arguments.contains("stream-json"))
-        #expect(!CommandLineCorrectionPreset.claude.configuration.arguments.contains("--bare"))
+        #expect(CommandLineCorrectionPreset.codex.configuration.effectiveArguments.contains("{outputFile}"))
+        #expect(CommandLineCorrectionPreset.claude.configuration.effectiveArguments.contains("{schemaJSON}"))
+        #expect(CommandLineCorrectionPreset.codex.configuration.effectiveArguments.contains("--json"))
+        #expect(CommandLineCorrectionPreset.claude.configuration.effectiveArguments.contains("stream-json"))
+        #expect(!CommandLineCorrectionPreset.claude.configuration.effectiveArguments.contains("--bare"))
+        #expect(CommandLineCorrectionPreset.codex.configuration.connectionMode == .enhanced)
+        #expect(CommandLineCorrectionPreset.claude.configuration.accessProfile == .correctionOnly)
 
         var invalid = configuration
         invalid.arguments = ["--schema={schemaJSON}"]
@@ -188,6 +190,27 @@ struct SettingsConstructionTests {
             preset: .custom,
             from: defaults
         ) == CommandLineCorrectionPreset.custom.configuration)
+
+        codex.connectionMode = .commandLine
+        codex.reasoningEffort = .automatic
+        try codex.save(to: defaults)
+        #expect(CommandLineCorrectionConfiguration.load(
+            preset: .codex,
+            from: defaults
+        ) == codex)
+    }
+
+    @Test
+    func providerAccessProfilesGenerateExpectedSafeguards() {
+        var codex = CommandLineCorrectionPreset.codex.configuration
+        codex.accessProfile = .unrestricted
+        #expect(codex.effectiveArguments.contains("--dangerously-bypass-approvals-and-sandbox"))
+
+        var claude = CommandLineCorrectionPreset.claude.configuration
+        #expect(claude.effectiveArguments.contains("--setting-sources"))
+        #expect(claude.effectiveArguments.contains(#"{"autoMemoryEnabled":false}"#))
+        claude.accessProfile = .unrestricted
+        #expect(claude.effectiveArguments.contains("--dangerously-skip-permissions"))
     }
 
     @Test
@@ -202,7 +225,7 @@ struct SettingsConstructionTests {
         #expect(CommandLineCorrectionConfiguration.load(
             preset: .codex,
             from: defaults
-        ).arguments.contains("--json"))
+        ).effectiveArguments.contains("--json"))
 
         var oldClaude = CommandLineCorrectionPreset.claude.configuration
         oldClaude.arguments.removeAll(where: {
@@ -213,16 +236,19 @@ struct SettingsConstructionTests {
             preset: .claude,
             from: defaults
         )
-        #expect(migratedClaude.arguments.contains("stream-json"))
+        #expect(migratedClaude.effectiveArguments.contains("stream-json"))
         #expect(!migratedClaude.arguments.contains("--bare"))
 
         var customizedClaude = oldClaude
+        customizedClaude.connectionMode = .commandLine
         customizedClaude.arguments.append("--custom-flag")
         try customizedClaude.save(to: defaults)
-        #expect(CommandLineCorrectionConfiguration.load(
+        let loadedCustomization = CommandLineCorrectionConfiguration.load(
             preset: .claude,
             from: defaults
-        ) == customizedClaude)
+        )
+        #expect(loadedCustomization == customizedClaude)
+        #expect(loadedCustomization.effectiveArguments.contains("--custom-flag"))
     }
 
     @Test
@@ -302,26 +328,48 @@ struct SettingsConstructionTests {
         )
         defer { controller.close() }
         let content = try #require(controller.window?.contentView)
-        let modelField = allSubviews(of: NSTextField.self, in: content).first {
-            $0.accessibilityLabel() == "Command-line correction model"
+        let modelPopup = allSubviews(of: NSPopUpButton.self, in: content).first {
+            $0.accessibilityLabel() == "Correction model"
         }
-        let argumentsTable = allSubviews(of: NSTableView.self, in: content).first {
-            $0.accessibilityLabel() == "Command arguments"
+        let accessPopup = allSubviews(of: NSPopUpButton.self, in: content).first {
+            $0.accessibilityLabel() == "Provider access"
         }
+        let connectionPopup = try #require(
+            allSubviews(of: NSPopUpButton.self, in: content).first {
+                $0.accessibilityLabel() == "Provider connection mode"
+            }
+        )
 
-        #expect(controller.window?.title == "Claude Correction Command")
-        #expect(modelField?.stringValue == configuration.model)
-        #expect(argumentsTable?.numberOfRows == configuration.arguments.count)
-        _ = argumentsTable?.view(atColumn: 0, row: 0, makeIfNecessary: true)
-        let argumentFields = allSubviews(of: NSTextField.self, in: content).filter {
-            $0.accessibilityLabel()?.hasPrefix("Command argument ") == true
+        #expect(controller.window?.title == "Claude Correction")
+        #expect(modelPopup?.selectedItem?.representedObject as? String == configuration.model)
+        #expect(accessPopup?.selectedItem?.representedObject as? String ==
+            CorrectionProviderAccessProfile.correctionOnly.rawValue)
+        let argumentTable = try #require(allSubviews(of: NSTableView.self, in: content).first)
+        var view: NSView? = argumentTable
+        var isEffectivelyHidden = false
+        while let current = view {
+            isEffectivelyHidden = isEffectivelyHidden || current.isHidden
+            view = current.superview
         }
-        #expect(argumentFields.first?.accessibilityLabel() ==
-            "Command argument 1 of \(configuration.arguments.count)")
+        #expect(isEffectivelyHidden)
+
+        connectionPopup.selectItem(withTitle: CorrectionProviderConnectionMode.commandLine.title)
+        _ = NSApp.sendAction(
+            try #require(connectionPopup.action),
+            to: connectionPopup.target,
+            from: connectionPopup
+        )
+        view = argumentTable
+        isEffectivelyHidden = false
+        while let current = view {
+            isEffectivelyHidden = isEffectivelyHidden || current.isHidden
+            view = current.superview
+        }
+        #expect(!isEffectivelyHidden)
     }
 
     @Test
-    func commandLineSelectionRoutesAndRefreshesEachProvider() async throws {
+    func customCommandLineSelectionRoutesAndRefreshesConfiguration() async throws {
         let suite = "command-line-provider-routing-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -342,38 +390,32 @@ struct SettingsConstructionTests {
             )
         }
 
-        for (model, preset, marker) in [
-            (TranscriptEditingModel.codexCommandLine, CommandLineCorrectionPreset.codex, "codex"),
-            (.claudeCommandLine, .claude, "claude"),
-            (.customCommandLine, .custom, "custom"),
-        ] {
-            try configuration(
-                preset: preset,
-                model: "\(marker)-model",
-                marker: marker
-            ).save(to: defaults)
-            TranscriptEditingModel.save(model, to: defaults)
-            let result = try await service.proposeEdits(to: response)
-            guard case .proposal(let proposal) = result.decision else {
-                Issue.record("Expected a proposal from \(marker)")
-                continue
-            }
-            #expect(proposal.explanation == marker)
-        }
-
-        let refreshed = configuration(
-            preset: .codex,
-            model: "codex-refreshed-model",
-            marker: "codex refreshed"
-        )
-        try refreshed.save(to: defaults)
-        TranscriptEditingModel.save(.codexCommandLine, to: defaults)
-        let result = try await service.proposeEdits(to: response)
-        guard case .proposal(let proposal) = result.decision else {
-            Issue.record("Expected a proposal from refreshed Codex configuration")
+        try configuration(
+            preset: .custom,
+            model: "custom-model",
+            marker: "custom"
+        ).save(to: defaults)
+        TranscriptEditingModel.save(.customCommandLine, to: defaults)
+        let initial = try await service.proposeEdits(to: response)
+        guard case .proposal(let initialProposal) = initial.decision else {
+            Issue.record("Expected a proposal from the custom command")
             return
         }
-        #expect(proposal.explanation == "codex refreshed")
+        #expect(initialProposal.explanation == "custom")
+
+        let refreshed = configuration(
+            preset: .custom,
+            model: "custom-refreshed-model",
+            marker: "custom refreshed"
+        )
+        try refreshed.save(to: defaults)
+        TranscriptEditingModel.save(.customCommandLine, to: defaults)
+        let result = try await service.proposeEdits(to: response)
+        guard case .proposal(let proposal) = result.decision else {
+            Issue.record("Expected a proposal from the refreshed custom command")
+            return
+        }
+        #expect(proposal.explanation == "custom refreshed")
     }
 
     @Test @MainActor

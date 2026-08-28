@@ -24,14 +24,16 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
         }
     }
 
-    var detail: String {
+    var detail: String { detail(from: .standard) }
+
+    func detail(from defaults: UserDefaults) -> String {
         switch self {
         case .off: return "Do not repair spoken self-corrections"
         case .appleFoundation: return "Provided by macOS · On-device"
         case .codexCommandLine:
-            return "Codex CLI · Editable model and parameters · May send text off-device"
+            return providerDetail(for: .codex, defaults: defaults)
         case .claudeCommandLine:
-            return "Claude Code CLI · Editable model and parameters · May send text off-device"
+            return providerDetail(for: .claude, defaults: defaults)
         case .customCommandLine:
             return "Run an executable with editable arguments · May send text off-device"
         case .qwenLocal:
@@ -39,6 +41,22 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
         case .ministralLocal:
             return "Higher-quality local model · On-device · \(downloadSizeDescription)"
         }
+    }
+
+    private func providerDetail(
+        for preset: CommandLineCorrectionPreset,
+        defaults: UserDefaults
+    ) -> String {
+        let configuration = CommandLineCorrectionConfiguration.load(
+            preset: preset,
+            from: defaults
+        )
+        let connection = configuration.connectionMode.title
+        let access = configuration.usesExplicitArguments
+            ? "Custom command permissions"
+            : configuration.accessProfile.title
+        return "\(connection) · \(configuration.model) · \(access)"
+            + " · May send text off-device"
     }
 
     var downloadSizeDescription: String {
@@ -202,7 +220,7 @@ actor TranscriptEditingService {
     private var appleEditor: (any TranscriptEditor)?
     private var commandLineEditors: [TranscriptEditingModel: (
         configuration: CommandLineCorrectionConfiguration,
-        editor: CommandLineTranscriptEditor
+        editor: any TranscriptEditor
     )] = [:]
     private var localEditors: [TranscriptEditingModel: GGUFTranscriptEditor] = [:]
     private var activeLocalRepairs: [TranscriptEditingModel: Int] = [:]
@@ -263,7 +281,7 @@ actor TranscriptEditingService {
         if localModelMutations.contains(selection) {
             throw TranscriptEditingServiceError.modelOperationInProgress
         }
-        let selectedEditor = try editor(for: selection)
+        let selectedEditor = try await editor(for: selection)
         if selection.localSpec != nil {
             activeLocalRepairs[selection, default: 0] += 1
         }
@@ -275,8 +293,8 @@ actor TranscriptEditingService {
         let promptConfiguration = TranscriptEditingPromptPreferences(defaults: defaults).load()
         let request = Self.request(for: response, promptConfiguration: promptConfiguration)
         let decision: TranscriptEditDecision
-        if let commandLineEditor = selectedEditor as? CommandLineTranscriptEditor {
-            decision = try await commandLineEditor.proposeEdits(
+        if let progressEditor = selectedEditor as? any ProgressReportingTranscriptEditor {
+            decision = try await progressEditor.proposeEdits(
                 for: request,
                 progressHandler: progressHandler
             )
@@ -293,6 +311,19 @@ actor TranscriptEditingService {
         try Task.checkCancellation()
         guard !isShuttingDown else { throw TranscriptEditingServiceError.shuttingDown }
         let selection = TranscriptEditingModel.load(from: defaults)
+        if let preset = selection.commandLinePreset, preset != .custom {
+            let configuration = CommandLineCorrectionConfiguration.load(
+                preset: preset,
+                from: defaults
+            )
+            if configuration.connectionMode == .enhanced {
+                let selectedEditor = try await editor(for: selection)
+                if let editor = selectedEditor as? any PersistentTranscriptEditor {
+                    try await editor.prepare()
+                }
+            }
+            return nil
+        }
         guard selection.localSpec != nil else { return nil }
         guard !localModelMutations.contains(selection) else {
             throw TranscriptEditingServiceError.modelOperationInProgress
@@ -317,6 +348,7 @@ actor TranscriptEditingService {
     func prepareForShutdown() async {
         isShuttingDown = true
         await stopAllLocalModels()
+        await stopAllPersistentProviders()
     }
 
     func correctionModelDidChange(to selectedModel: TranscriptEditingModel) async {
@@ -325,6 +357,9 @@ actor TranscriptEditingService {
         }
         if let editor = localEditors[selectedModel] {
             await editor.updateIdleTimeout(idleTimeout)
+        }
+        for (model, cached) in commandLineEditors where model != selectedModel {
+            await (cached.editor as? any PersistentTranscriptEditor)?.stop()
         }
     }
 
@@ -361,6 +396,78 @@ actor TranscriptEditingService {
         }
     }
 
+    func persistentProviderStates() async -> [
+        TranscriptEditingModel: PersistentCorrectionRuntimeState
+    ] {
+        var states: [TranscriptEditingModel: PersistentCorrectionRuntimeState] = [:]
+        for model in TranscriptEditingModel.commandLineModels {
+            if let editor = commandLineEditors[model]?.editor as? any PersistentTranscriptEditor {
+                states[model] = await editor.runtimeState()
+            } else {
+                states[model] = .stopped
+            }
+        }
+        return states
+    }
+
+    func stopPersistentProvider(_ model: TranscriptEditingModel) async {
+        await (commandLineEditors[model]?.editor as? any PersistentTranscriptEditor)?.stop()
+    }
+
+    func preparePersistentProvider(_ model: TranscriptEditingModel) async throws {
+        let selectedEditor = try await editor(for: model)
+        try await prepare(selectedEditor)
+    }
+
+    func preparePersistentProvider(
+        _ model: TranscriptEditingModel,
+        configuration: CommandLineCorrectionConfiguration
+    ) async throws {
+        if let cached = commandLineEditors[model], cached.configuration == configuration {
+            try await prepare(cached.editor)
+            return
+        }
+        if let cached = commandLineEditors[model] {
+            await (cached.editor as? any PersistentTranscriptEditor)?.stop()
+        }
+        let selectedEditor = try providerEditor(for: model, configuration: configuration)
+        commandLineEditors[model] = (configuration, selectedEditor)
+        try await prepare(selectedEditor)
+    }
+
+    private func prepare(_ editor: any TranscriptEditor) async throws {
+        if let editor = editor as? any PersistentTranscriptEditor {
+            try await editor.prepare()
+        } else {
+            throw TranscriptEditingServiceError.commandLineNotConfigured
+        }
+    }
+
+    func discoverCodexModels() async throws -> [CodexModelOption] {
+        let saved = CommandLineCorrectionConfiguration.load(
+            preset: .codex,
+            from: defaults
+        )
+        try saved.validate()
+        let editor = CodexAppServerTranscriptEditor(
+            configuration: codexConfiguration(from: saved)
+        )
+        do {
+            let models = try await editor.supportedModels()
+            await editor.stop()
+            return models
+        } catch {
+            await editor.stop()
+            throw error
+        }
+    }
+
+    private func stopAllPersistentProviders() async {
+        for cached in commandLineEditors.values {
+            await (cached.editor as? any PersistentTranscriptEditor)?.stop()
+        }
+    }
+
     static func request(
         for response: TranscriptionResponse,
         promptConfiguration: TranscriptEditingPromptConfiguration
@@ -394,8 +501,9 @@ actor TranscriptEditingService {
             language: language,
             promptConfiguration: TranscriptEditingPromptPreferences(defaults: defaults).load()
         )
-        let providers = try selectedModels.map {
-            TranscriptCorrectionProvider(editor: try editor(for: $0))
+        var providers: [TranscriptCorrectionProvider] = []
+        for model in selectedModels {
+            providers.append(TranscriptCorrectionProvider(editor: try await editor(for: model)))
         }
         do {
             let comparison = try await TranscriptCorrectionComparator().compare(
@@ -478,7 +586,7 @@ actor TranscriptEditingService {
         try await store.delete()
     }
 
-    private func editor(for model: TranscriptEditingModel) throws -> any TranscriptEditor {
+    private func editor(for model: TranscriptEditingModel) async throws -> any TranscriptEditor {
         switch model {
         case .off:
             throw TranscriptEditingServiceError.disabled
@@ -502,26 +610,70 @@ actor TranscriptEditingService {
                commandLineEditor.configuration == saved {
                 return commandLineEditor.editor
             }
-            try saved.validate()
-            let arguments = saved.arguments.map {
-                $0.replacingOccurrences(of: "{model}", with: saved.model)
+            if let commandLineEditor = commandLineEditors[model] {
+                await stopPersistentEditor(commandLineEditor.editor)
             }
-            let configuration = try TiroEditing.CommandLineCorrectionConfiguration(
-                id: "command-line-\(saved.preset.rawValue)",
-                name: saved.preset.title,
-                executablePath: saved.executablePath,
-                arguments: arguments,
-                timeout: 120
-            )
-            let editor = CommandLineTranscriptEditor(
-                configuration: configuration,
-                requiresGrounding: false
-            )
+            let editor = try providerEditor(for: model, configuration: saved)
             commandLineEditors[model] = (saved, editor)
             return editor
         case .qwenLocal, .ministralLocal:
             return try localEditor(for: model)
         }
+    }
+
+    private func providerEditor(
+        for model: TranscriptEditingModel,
+        configuration saved: CommandLineCorrectionConfiguration
+    ) throws -> any TranscriptEditor {
+        try saved.validate()
+        if saved.preset == .codex, saved.connectionMode == .enhanced {
+            return CodexAppServerTranscriptEditor(configuration: codexConfiguration(from: saved))
+        }
+        if saved.preset == .claude, saved.connectionMode == .enhanced {
+            let arguments = saved.effectiveArguments.map {
+                if $0 == "{schemaJSON}" { return TranscriptCorrectionOutputSchema.json }
+                return $0.replacingOccurrences(of: "{model}", with: saved.model)
+            }
+            let configuration = ClaudeStreamingConfiguration(
+                executablePath: saved.executablePath,
+                arguments: arguments,
+                systemPrompt: TranscriptEditingPromptPreferences(defaults: defaults)
+                    .load()
+                    .renderedSystemPrompt(language: nil),
+                idleTimeout: TimeInterval(saved.idleTimeoutSeconds)
+            )
+            return ClaudeStreamingTranscriptEditor(configuration: configuration)
+        }
+        let arguments = saved.effectiveArguments.map {
+            $0.replacingOccurrences(of: "{model}", with: saved.model)
+        }
+        let configuration = try TiroEditing.CommandLineCorrectionConfiguration(
+            id: "command-line-\(saved.preset.rawValue)",
+            name: saved.preset.title,
+            executablePath: saved.executablePath,
+            arguments: arguments,
+            timeout: 120
+        )
+        return CommandLineTranscriptEditor(
+            configuration: configuration,
+            requiresGrounding: false
+        )
+    }
+
+    private func codexConfiguration(
+        from saved: CommandLineCorrectionConfiguration
+    ) -> CodexAppServerConfiguration {
+        CodexAppServerConfiguration(
+            executablePath: saved.executablePath,
+            model: saved.model,
+            reasoningEffort: saved.reasoningEffort.commandLineValue,
+            access: saved.codexAccess,
+            idleTimeout: TimeInterval(saved.idleTimeoutSeconds)
+        )
+    }
+
+    private func stopPersistentEditor(_ editor: any TranscriptEditor) async {
+        await (editor as? any PersistentTranscriptEditor)?.stop()
     }
 
     private func localEditor(

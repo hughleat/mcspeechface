@@ -1,4 +1,103 @@
 import Foundation
+import TiroEditing
+
+enum CorrectionProviderConnectionMode: String, Codable, CaseIterable, Sendable {
+    case enhanced
+    case commandLine
+
+    var title: String {
+        switch self {
+        case .enhanced: "Fast streaming"
+        case .commandLine: "Command line"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .enhanced: "Use native streaming and prepare the provider while recording"
+        case .commandLine: "Start a fresh provider process for each correction"
+        }
+    }
+}
+
+enum CorrectionProviderAccessProfile: String, Codable, CaseIterable, Sendable {
+    case correctionOnly
+    case readOnly
+    case standard
+    case unrestricted
+
+    var title: String {
+        switch self {
+        case .correctionOnly: "Isolated correction"
+        case .readOnly: "Read-only tools"
+        case .standard: "Agent tools (provider policy)"
+        case .unrestricted: "Unrestricted"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .correctionOnly:
+            "No file or network tools; the transcript is still sent to the provider"
+        case .readOnly:
+            "Allow read-only tools while preventing changes"
+        case .standard:
+            "Allow configured tools under the provider's normal permission policy"
+        case .unrestricted:
+            "Allow all configured tools without approval prompts"
+        }
+    }
+
+    var requiresWarning: Bool { self == .standard || self == .unrestricted }
+
+    var warningTitle: String {
+        switch self {
+        case .standard: "Allow Agent Tools?"
+        case .unrestricted: "Allow Unrestricted Agent Access?"
+        case .correctionOnly, .readOnly: ""
+        }
+    }
+
+    var warningDetail: String {
+        switch self {
+        case .standard:
+            "Dictated text is untrusted input. The provider may request actions that read "
+                + "or modify files within its sandbox."
+        case .unrestricted:
+            "Dictated text is untrusted input. The provider may run tools or modify files "
+                + "without approval prompts."
+        case .correctionOnly, .readOnly: ""
+        }
+    }
+}
+
+enum CorrectionProviderReasoningEffort: String, Codable, CaseIterable, Sendable {
+    case automatic
+    case low
+    case medium
+    case high
+    case xhigh
+    case max
+
+    var title: String {
+        switch self {
+        case .automatic: "Automatic"
+        case .low: "Low (fastest)"
+        case .medium: "Medium"
+        case .high: "High"
+        case .xhigh: "Extra high"
+        case .max: "Maximum"
+        }
+    }
+
+    var commandLineValue: String? { self == .automatic ? nil : rawValue }
+}
+
+struct CorrectionProviderModelOption: Equatable, Sendable {
+    let id: String
+    let title: String
+    let detail: String
+}
 
 enum CommandLineCorrectionPreset: String, Codable, CaseIterable, Sendable {
     case codex
@@ -19,37 +118,21 @@ enum CommandLineCorrectionPreset: String, Codable, CaseIterable, Sendable {
             CommandLineCorrectionConfiguration(
                 preset: self,
                 executablePath: "/Applications/ChatGPT.app/Contents/Resources/codex",
-                model: "gpt-5.3-codex-spark",
-                arguments: [
-                    "exec",
-                    "--ephemeral",
-                    "--skip-git-repo-check",
-                    "--sandbox", "read-only",
-                    "--ignore-user-config",
-                    "--ignore-rules",
-                    "--model", "{model}",
-                    "--output-schema", "{schemaFile}",
-                    "--output-last-message", "{outputFile}",
-                    "--json",
-                    "-",
-                ]
+                model: "gpt-5.6-luna",
+                arguments: [],
+                connectionMode: .enhanced,
+                accessProfile: .correctionOnly,
+                reasoningEffort: .low
             )
         case .claude:
             CommandLineCorrectionConfiguration(
                 preset: self,
                 executablePath: Self.defaultClaudePath,
                 model: "haiku",
-                arguments: [
-                    "-p",
-                    "--no-session-persistence",
-                    "--safe-mode",
-                    "--tools", "",
-                    "--disallowedTools", "mcp__*",
-                    "--model", "{model}",
-                    "--json-schema", "{schemaJSON}",
-                    "--output-format", "stream-json",
-                    "--verbose",
-                ]
+                arguments: [],
+                connectionMode: .enhanced,
+                accessProfile: .correctionOnly,
+                reasoningEffort: .low
             )
         case .custom:
             CommandLineCorrectionConfiguration(
@@ -80,6 +163,10 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
     var executablePath: String
     var model: String
     var arguments: [String]
+    var connectionMode: CorrectionProviderConnectionMode
+    var accessProfile: CorrectionProviderAccessProfile
+    var reasoningEffort: CorrectionProviderReasoningEffort
+    var idleTimeoutSeconds: Int
 
     var isExecutableAvailable: Bool {
         guard executablePath.hasPrefix("/") else { return false }
@@ -97,12 +184,111 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         preset: CommandLineCorrectionPreset,
         executablePath: String,
         model: String,
-        arguments: [String]
+        arguments: [String],
+        connectionMode: CorrectionProviderConnectionMode = .commandLine,
+        accessProfile: CorrectionProviderAccessProfile = .correctionOnly,
+        reasoningEffort: CorrectionProviderReasoningEffort = .automatic,
+        idleTimeoutSeconds: Int = 600
     ) {
         self.preset = preset
         self.executablePath = executablePath
         self.model = model
         self.arguments = arguments
+        self.connectionMode = preset == .custom ? .commandLine : connectionMode
+        self.accessProfile = accessProfile
+        self.reasoningEffort = reasoningEffort
+        self.idleTimeoutSeconds = idleTimeoutSeconds
+    }
+
+    var modelOptions: [CorrectionProviderModelOption] {
+        switch preset {
+        case .codex:
+            [
+                .init(id: "gpt-5.6-luna", title: "GPT-5.6 Luna", detail: "Fastest"),
+                .init(id: "gpt-5.6-terra", title: "GPT-5.6 Terra", detail: "Balanced"),
+                .init(id: "gpt-5.6-sol", title: "GPT-5.6 Sol", detail: "Most capable"),
+            ]
+        case .claude:
+            [
+                .init(id: "haiku", title: "Claude Haiku", detail: "Fastest"),
+                .init(id: "sonnet", title: "Claude Sonnet", detail: "Balanced"),
+                .init(id: "opus", title: "Claude Opus", detail: "Most capable"),
+            ]
+        case .custom: []
+        }
+    }
+
+    var effectiveArguments: [String] {
+        guard preset != .custom else { return arguments }
+        if usesExplicitArguments { return arguments }
+        var result: [String]
+        switch preset {
+        case .codex:
+            result = ["exec", "--ephemeral", "--skip-git-repo-check"]
+            switch accessProfile {
+            case .correctionOnly:
+                result += ["--sandbox", "read-only", "--ignore-user-config", "--ignore-rules"]
+            case .readOnly:
+                result += ["--sandbox", "read-only"]
+            case .standard:
+                result += ["--sandbox", "workspace-write", "--approve-for-me"]
+            case .unrestricted:
+                result += ["--dangerously-bypass-approvals-and-sandbox"]
+            }
+            result += ["--model", "{model}"]
+            if let effort = reasoningEffort.commandLineValue {
+                result += ["-c", "model_reasoning_effort=\"\(effort)\""]
+            }
+            result += [
+                "--output-schema", "{schemaFile}",
+                "--output-last-message", "{outputFile}",
+                "--json", "-",
+            ]
+        case .claude:
+            result = ["-p", "--no-session-persistence"]
+            switch accessProfile {
+            case .correctionOnly:
+                result += [
+                    "--tools", "", "--disallowedTools", "mcp__*",
+                    "--permission-mode", "dontAsk", "--disable-slash-commands",
+                    "--setting-sources", "", "--settings", #"{"autoMemoryEnabled":false}"#,
+                    "--max-turns", "1",
+                ]
+            case .readOnly:
+                result += [
+                    "--tools", "Read,Glob,Grep,WebSearch,WebFetch",
+                    "--disallowedTools", "mcp__*", "--permission-mode", "dontAsk",
+                ]
+            case .standard:
+                result += ["--tools", "default", "--permission-mode", "default"]
+            case .unrestricted:
+                result += ["--tools", "default", "--dangerously-skip-permissions"]
+            }
+            result += ["--model", "{model}"]
+            if let effort = reasoningEffort.commandLineValue {
+                result += ["--effort", effort]
+            }
+            result += [
+                "--json-schema", "{schemaJSON}",
+                "--output-format", "stream-json", "--verbose",
+            ]
+        case .custom:
+            result = arguments
+        }
+        return result
+    }
+
+    var usesExplicitArguments: Bool {
+        preset != .custom && connectionMode == .commandLine && !arguments.isEmpty
+    }
+
+    var codexAccess: CodexCorrectionAccess {
+        switch accessProfile {
+        case .correctionOnly: .correctionOnly
+        case .readOnly: .readOnly
+        case .standard: .standard
+        case .unrestricted: .unrestricted
+        }
     }
 
     func validate() throws {
@@ -112,11 +298,11 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         guard !executablePath.contains("\n"), !model.contains("\n") else {
             throw CommandLineCorrectionConfigurationError.invalidValue
         }
-        guard !arguments.contains(where: { $0.contains("{model}") }) || !model.isEmpty else {
+        guard !effectiveArguments.contains(where: { $0.contains("{model}") }) || !model.isEmpty else {
             throw CommandLineCorrectionConfigurationError.modelRequired
         }
         for placeholder in ["{schemaFile}", "{schemaJSON}", "{outputFile}"] {
-            if arguments.contains(where: { $0.contains(placeholder) && $0 != placeholder }) {
+            if effectiveArguments.contains(where: { $0.contains(placeholder) && $0 != placeholder }) {
                 throw CommandLineCorrectionConfigurationError.placeholderMustBeWholeArgument(
                     placeholder
                 )
@@ -124,8 +310,9 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         }
         guard executablePath.count <= 2_048,
               model.count <= 256,
-              arguments.count <= 128,
-              arguments.allSatisfy({ $0.count <= 4_096 }) else {
+              effectiveArguments.count <= 128,
+              effectiveArguments.allSatisfy({ $0.count <= 4_096 }),
+              (0...86_400).contains(idleTimeoutSeconds) else {
             throw CommandLineCorrectionConfigurationError.invalidValue
         }
     }
@@ -136,7 +323,7 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
     ) -> Self {
         if let configuration = decode(from: defaults, key: storageKey(for: preset)),
            configuration.preset == preset {
-            return configuration.addingStreamingOutputWhenUsingLegacyDefaults()
+            return configuration.addingStructuredDefaultsWhenUsingLegacyConfiguration()
         }
         let legacy = loadLegacy(from: defaults)
         return legacy.preset == preset ? legacy : preset.configuration
@@ -167,27 +354,63 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         return configuration
     }
 
-    private func addingStreamingOutputWhenUsingLegacyDefaults() -> Self {
+    private func addingStructuredDefaultsWhenUsingLegacyConfiguration() -> Self {
         var migrated = self
         switch preset {
         case .codex:
             guard arguments == Self.legacyCodexArguments,
-                  let insertionIndex = arguments.firstIndex(of: "-") else { return self }
+                  let insertionIndex = arguments.firstIndex(of: "-") else { return migrated }
+            migrated.connectionMode = .enhanced
+            migrated.reasoningEffort = .low
             migrated.arguments.insert("--json", at: insertionIndex)
         case .claude:
             if arguments == Self.legacyClaudeArguments {
+                migrated.connectionMode = .enhanced
+                migrated.reasoningEffort = .low
                 migrated.arguments.append(
                     contentsOf: ["--output-format", "stream-json", "--verbose"]
                 )
             } else if arguments == Self.streamingClaudeArgumentsWithBare {
+                migrated.connectionMode = .enhanced
+                migrated.reasoningEffort = .low
                 migrated.arguments.removeAll(where: { $0 == "--bare" })
             } else {
-                return self
+                return migrated
             }
         case .custom:
-            return self
+            return migrated
         }
         return migrated
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case preset, executablePath, model, arguments, connectionMode, accessProfile
+        case reasoningEffort, idleTimeoutSeconds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        preset = try container.decode(CommandLineCorrectionPreset.self, forKey: .preset)
+        executablePath = try container.decode(String.self, forKey: .executablePath)
+        model = try container.decode(String.self, forKey: .model)
+        arguments = try container.decode([String].self, forKey: .arguments)
+        connectionMode = try container.decodeIfPresent(
+            CorrectionProviderConnectionMode.self,
+            forKey: .connectionMode
+        ) ?? .commandLine
+        accessProfile = try container.decodeIfPresent(
+            CorrectionProviderAccessProfile.self,
+            forKey: .accessProfile
+        ) ?? .correctionOnly
+        reasoningEffort = try container.decodeIfPresent(
+            CorrectionProviderReasoningEffort.self,
+            forKey: .reasoningEffort
+        ) ?? .automatic
+        idleTimeoutSeconds = try container.decodeIfPresent(
+            Int.self,
+            forKey: .idleTimeoutSeconds
+        ) ?? 600
+        if preset == .custom { connectionMode = .commandLine }
     }
 
     private static let legacyCodexArguments = [

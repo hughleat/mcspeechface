@@ -41,6 +41,9 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
     private var runtimeActionTask: Task<Void, Never>?
     private var operationModel: TranscriptEditingModel?
     private var runtimeStates: [TranscriptEditingModel: LocalCorrectionRuntimeState] = [:]
+    private var providerRuntimeStates: [
+        TranscriptEditingModel: PersistentCorrectionRuntimeState
+    ] = [:]
     private var promptEditorController: TranscriptEditingPromptEditorWindowController?
     private var commandLineEditorController: CommandLineCorrectionEditorWindowController?
     private var refreshGeneration = 0
@@ -395,7 +398,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         statusColor: NSColor,
         progress: ModelLibraryRowView.ProgressState?
     ) {
-        let normalDetail = model.detail
+        let normalDetail = model.detail(from: defaults)
         switch state {
         case .checking:
             return (
@@ -404,6 +407,20 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
                 .indeterminate(accessibilityValue: "Checking availability")
             )
         case .available:
+            if model.isCommandLine,
+               CommandLineCorrectionConfiguration.load(
+                    preset: model.commandLinePreset ?? .custom,
+                    from: defaults
+               ).connectionMode == .enhanced {
+                let provider = Self.providerRuntimePresentation(
+                    providerRuntimeStates[model] ?? .stopped,
+                    selected: selected
+                )
+                return (
+                    normalDetail, .secondaryLabelColor, nil,
+                    provider.status, provider.color, provider.progress
+                )
+            }
             let status = selected ? "Selected" : (model == .off ? "" : "Ready")
             return (
                 normalDetail, .secondaryLabelColor, nil,
@@ -435,7 +452,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
                 .indeterminate(accessibilityValue: "Downloading and verifying")
             )
         case .local(.installed(let bytes)):
-            let detail = model.detail.replacingOccurrences(
+            let detail = normalDetail.replacingOccurrences(
                 of: model.downloadSizeDescription,
                 with: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
             )
@@ -482,12 +499,14 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         if model.isCommandLine {
             let actionLabel = model == .customCommandLine
                 ? "Edit Custom Command"
-                : "Edit \(model.title) command"
+                : "Configure \(model.title)"
             return ModelLibraryRowView.Action(
                 label: actionLabel,
                 symbol: "slider.horizontal.3",
                 isEnabled: operationTask == nil,
-                toolTip: "Edit the executable, model, and arguments used by \(model.title)",
+                toolTip: model == .customCommandLine
+                    ? "Edit the executable, model, and arguments"
+                    : "Choose the model, connection, effort, and access used by \(model.title)",
                 tag: row,
                 target: self,
                 selector: #selector(configureCommandLineCorrection)
@@ -626,11 +645,16 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         }
         let controller = CommandLineCorrectionEditorWindowController(
             preset: preset,
-            defaults: defaults
+            defaults: defaults,
+            service: service
         )
-        controller.onSave = { [weak self] _ in
-            self?.refresh()
-            self?.onModelChanged?(self?.selectedModel ?? .off)
+        controller.onSave = { [weak self, service] _ in
+            Task {
+                await service.stopPersistentProvider(model)
+                guard let self else { return }
+                self.refresh()
+                self.onModelChanged?(self.selectedModel)
+            }
         }
         controller.onDismiss = { [weak self] in
             self?.commandLineEditorController = nil
@@ -788,10 +812,14 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         guard runtimeRefreshTask == nil else { return }
         runtimeRefreshTask = Task { [weak self, service] in
             while !Task.isCancelled {
-                let states = await service.localRuntimeStates()
+                async let localStates = service.localRuntimeStates()
+                async let providerStates = service.persistentProviderStates()
+                let states = await (localStates, providerStates)
                 guard !Task.isCancelled else { return }
-                if self?.runtimeStates != states {
-                    self?.runtimeStates = states
+                if self?.runtimeStates != states.0
+                    || self?.providerRuntimeStates != states.1 {
+                    self?.runtimeStates = states.0
+                    self?.providerRuntimeStates = states.1
                     self?.reloadTable()
                 }
                 do {
@@ -830,6 +858,36 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
             )
         case .failed:
             return ("Load failed", .systemRed, nil)
+        }
+    }
+
+    private static func providerRuntimePresentation(
+        _ state: PersistentCorrectionRuntimeState,
+        selected: Bool
+    ) -> (
+        status: String,
+        color: NSColor,
+        progress: ModelLibraryRowView.ProgressState?
+    ) {
+        switch state {
+        case .stopped:
+            return (selected ? "Selected · Stopped" : "Ready", .secondaryLabelColor, nil)
+        case .starting:
+            return (
+                "Connecting...",
+                .secondaryLabelColor,
+                .indeterminate(accessibilityValue: "Starting provider connection")
+            )
+        case .ready:
+            return (selected ? "Selected · Connected" : "Connected", .systemGreen, nil)
+        case .correcting:
+            return (
+                "Correcting...",
+                .secondaryLabelColor,
+                .indeterminate(accessibilityValue: "Correcting transcript")
+            )
+        case .failed:
+            return ("Connection failed", .systemRed, nil)
         }
     }
 
