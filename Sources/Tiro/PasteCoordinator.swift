@@ -100,6 +100,8 @@ final class PasteCoordinator {
     private let eventDispatcher: EventDispatcher
     private let confirmationDelays: [UInt64]
     private var pendingRestoration: PendingRestoration?
+    private var confirmationTask: Task<Void, Never>?
+    private(set) var activeBackgroundConfirmationCount = 0
 
     init(
         pasteboard: any PasteboardAccess = NSPasteboard.general,
@@ -113,8 +115,12 @@ final class PasteCoordinator {
                 320_000_000, 400_000_000, 400_000_000, 400_000_000]
     }
 
-    func paste(_ text: String, to destination: any PasteDestination) async throws -> PasteResult {
-        pendingRestoration = nil
+    func paste(
+        _ text: String,
+        to destination: any PasteDestination,
+        waitForConfirmation: Bool = true
+    ) async throws -> PasteResult {
+        cancelPendingConfirmation()
 
         guard destination.isAvailable else { throw PasteError.unavailableDestination }
         guard !destination.isSecure else { throw PasteError.secureDestination }
@@ -169,6 +175,19 @@ final class PasteCoordinator {
         }
         guard observation.canConfirmConsumption else {
             pendingRestoration = nil
+            return .dispatched
+        }
+        guard waitForConfirmation else {
+            activeBackgroundConfirmationCount += 1
+            confirmationTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                _ = await confirmConsumption(
+                    by: destination,
+                    since: observation,
+                    identifier: identifier
+                )
+                activeBackgroundConfirmationCount -= 1
+            }
             return .dispatched
         }
         let wasConfirmed = await confirmConsumption(
@@ -230,9 +249,13 @@ final class PasteCoordinator {
         identifier: UUID
     ) async -> Bool {
         for delay in confirmationDelays {
-            try? await Task.sleep(nanoseconds: delay)
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return false
+            }
             guard pendingRestoration?.identifier == identifier else { return false }
-            if destination.hasConsumedPaste(since: observation) {
+            if await destination.hasConsumedPaste(since: observation) {
                 restoreClipboardIfUnchanged(identifier: identifier)
                 return true
             }
@@ -244,5 +267,13 @@ final class PasteCoordinator {
     private func discardPendingRestoration(identifier: UUID) {
         guard pendingRestoration?.identifier == identifier else { return }
         pendingRestoration = nil
+    }
+
+    func cancelPendingConfirmation() {
+        confirmationTask?.cancel()
+        confirmationTask = nil
+        if let identifier = pendingRestoration?.identifier {
+            restoreClipboardIfUnchanged(identifier: identifier)
+        }
     }
 }

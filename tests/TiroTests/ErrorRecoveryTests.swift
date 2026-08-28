@@ -41,6 +41,128 @@ struct ErrorRecoveryTests {
     }
 
     @Test @MainActor
+    func backgroundConfirmationDoesNotDelayPasteCompletion() async throws {
+        let pasteboard = makePasteboard(containing: "previous clipboard")
+        let coordinator = PasteCoordinator(
+            pasteboard: pasteboard,
+            eventDispatcher: { _ in .accepted },
+            confirmationDelays: [20_000_000]
+        )
+
+        let result = try await coordinator.paste(
+            "dictated text",
+            to: PasteDestinationStub(consumptionConfirmed: true),
+            waitForConfirmation: false
+        )
+
+        #expect(result == .dispatched)
+        #expect(pasteboard.string == "dictated text")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        #expect(pasteboard.string == "previous clipboard")
+    }
+
+    @Test @MainActor
+    func consecutiveBackgroundPastesRestoreTheOriginalClipboard() async throws {
+        let pasteboard = makePasteboard(containing: "previous clipboard")
+        let coordinator = PasteCoordinator(
+            pasteboard: pasteboard,
+            eventDispatcher: { _ in .accepted },
+            confirmationDelays: [20_000_000]
+        )
+        let destination = PasteDestinationStub(consumptionConfirmed: true)
+
+        let firstResult = try await coordinator.paste(
+            "first dictation",
+            to: destination,
+            waitForConfirmation: false
+        )
+        let secondResult = try await coordinator.paste("second dictation", to: destination)
+
+        #expect(firstResult == .dispatched)
+        #expect(secondResult == .confirmed)
+        #expect(pasteboard.string == "previous clipboard")
+    }
+
+    @Test @MainActor
+    func cancellingBackgroundConfirmationRestoresTheClipboard() async throws {
+        let pasteboard = makePasteboard(containing: "previous clipboard")
+        let coordinator = PasteCoordinator(
+            pasteboard: pasteboard,
+            eventDispatcher: { _ in .accepted },
+            confirmationDelays: [1_000_000_000]
+        )
+
+        _ = try await coordinator.paste(
+            "dictated text",
+            to: PasteDestinationStub(consumptionConfirmed: true),
+            waitForConfirmation: false
+        )
+        coordinator.cancelPendingConfirmation()
+
+        #expect(pasteboard.string == "previous clipboard")
+    }
+
+    @Test @MainActor
+    func backgroundConfirmationPreservesAUserClipboardChange() async throws {
+        let pasteboard = makePasteboard(containing: "previous clipboard")
+        let coordinator = PasteCoordinator(
+            pasteboard: pasteboard,
+            eventDispatcher: { _ in .accepted },
+            confirmationDelays: [20_000_000]
+        )
+
+        _ = try await coordinator.paste(
+            "dictated text",
+            to: PasteDestinationStub(consumptionConfirmed: true),
+            waitForConfirmation: false
+        )
+        pasteboard.clearContents()
+        _ = pasteboard.setString("user clipboard", forType: .string)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(pasteboard.string == "user clipboard")
+    }
+
+    @Test @MainActor
+    func staleInFlightConfirmationCannotChangeANewerClipboard() async throws {
+        let pasteboard = makePasteboard(containing: "previous clipboard")
+        let coordinator = PasteCoordinator(
+            pasteboard: pasteboard,
+            eventDispatcher: { _ in .accepted },
+            confirmationDelays: [0]
+        )
+        let suspendedDestination = SuspendedPasteDestination()
+
+        _ = try await coordinator.paste(
+            "first dictation",
+            to: suspendedDestination,
+            waitForConfirmation: false
+        )
+        for _ in 0..<100 {
+            if suspendedDestination.pendingProbeCount > 0 { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        #expect(suspendedDestination.pendingProbeCount == 1)
+
+        let secondResult = try await coordinator.paste(
+            "second dictation",
+            to: PasteDestinationStub(consumptionConfirmed: true)
+        )
+        #expect(secondResult == .confirmed)
+
+        pasteboard.clearContents()
+        _ = pasteboard.setString("newer clipboard", forType: .string)
+        suspendedDestination.resumeProbe(with: true)
+        for _ in 0..<100 {
+            if coordinator.activeBackgroundConfirmationCount == 0 { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+
+        #expect(coordinator.activeBackgroundConfirmationCount == 0)
+        #expect(pasteboard.string == "newer clipboard")
+    }
+
+    @Test @MainActor
     func rejectedPasteEventStillThrows() async {
         let pasteboard = makePasteboard(containing: "previous clipboard")
         let coordinator = PasteCoordinator(
@@ -190,7 +312,36 @@ private struct PasteDestinationStub: PasteDestination {
         PasteObservation(expectedValue: text, expectedCharacterCount: nil)
     }
 
-    func hasConsumedPaste(since observation: PasteObservation) -> Bool {
+    func hasConsumedPaste(since observation: PasteObservation) async -> Bool {
         consumptionConfirmed
+    }
+}
+
+@MainActor
+private final class SuspendedPasteDestination: PasteDestination {
+    private var probeContinuations: [CheckedContinuation<Bool, Never>] = []
+
+    var pendingProbeCount: Int { probeContinuations.count }
+    var isAvailable: Bool { true }
+    var isSecure: Bool { false }
+    var isFrontmost: Bool { true }
+    var isFocused: Bool { true }
+    var isCurrentPasteTargetAtDispatch: Bool { true }
+
+    func restore() async -> Bool { true }
+
+    func observePasteTarget(afterInserting text: String) -> PasteObservation {
+        PasteObservation(expectedValue: text, expectedCharacterCount: nil)
+    }
+
+    func hasConsumedPaste(since observation: PasteObservation) async -> Bool {
+        await withCheckedContinuation { continuation in
+            probeContinuations.append(continuation)
+        }
+    }
+
+    func resumeProbe(with result: Bool) {
+        guard !probeContinuations.isEmpty else { return }
+        probeContinuations.removeFirst().resume(returning: result)
     }
 }

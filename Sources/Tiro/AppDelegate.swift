@@ -126,6 +126,7 @@ import UniformTypeIdentifiers
         correctionModelRefreshTask?.cancel()
         transcriptionTask?.cancel()
         pasteRetryTask?.cancel()
+        pasteCoordinator.cancelPendingConfirmation()
         commandTranscriptionTask?.cancel()
         transcriptReviewWindow?.cancel()
         hotkeys.stop()
@@ -1061,7 +1062,11 @@ import UniformTypeIdentifiers
 #endif
         if shouldAutoPaste, let destination {
             do {
-                let result = try await pasteCoordinator.paste(completedText, to: destination)
+                let result = try await pasteCoordinator.paste(
+                    completedText,
+                    to: destination,
+                    waitForConfirmation: false
+                )
                 completionOverlay = result == .confirmed ? .pasted : .pasteSent
                 clearPasteRecovery()
             } catch {

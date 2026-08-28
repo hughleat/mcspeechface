@@ -7,7 +7,7 @@ struct ApplicationIdentity {
     let applicationName: String?
 }
 
-struct PasteObservation {
+struct PasteObservation: Sendable {
     let expectedValue: String?
     let expectedCharacterCount: Int?
 
@@ -26,7 +26,7 @@ protocol PasteDestination {
 
     func restore() async -> Bool
     func observePasteTarget(afterInserting text: String) -> PasteObservation
-    func hasConsumedPaste(since observation: PasteObservation) -> Bool
+    func hasConsumedPaste(since observation: PasteObservation) async -> Bool
 }
 
 @MainActor
@@ -183,18 +183,31 @@ struct DestinationSession: PasteDestination {
         )
     }
 
-    func hasConsumedPaste(since observation: PasteObservation) -> Bool {
-        guard let focusedElement, isFocused else { return false }
-        if let expectedValue = observation.expectedValue {
-            return stringAttribute(kAXValueAttribute as CFString, of: focusedElement) == expectedValue
-        }
-        if let expectedCharacterCount = observation.expectedCharacterCount {
-            return integerAttribute(
-                kAXNumberOfCharactersAttribute as CFString,
-                of: focusedElement
-            ) == expectedCharacterCount
-        }
-        return false
+    func hasConsumedPaste(since observation: PasteObservation) async -> Bool {
+        guard let focusedElement else { return false }
+        let target = SendablePasteTarget(
+            applicationElement: applicationElement,
+            windowElement: windowElement,
+            focusedElement: focusedElement,
+            processIdentifier: processIdentifier
+        )
+        return await Task.detached(priority: .utility) {
+            target.applyMessagingTimeout()
+            if let expectedValue = observation.expectedValue {
+                return stringAttribute(
+                    kAXValueAttribute as CFString,
+                    of: target.focusedElement
+                ) == expectedValue
+            }
+            if let expectedCharacterCount = observation.expectedCharacterCount {
+                guard target.isFrontmost, target.isFocused else { return false }
+                return integerAttribute(
+                    kAXNumberOfCharactersAttribute as CFString,
+                    of: target.focusedElement
+                ) == expectedCharacterCount
+            }
+            return false
+        }.value
     }
 
     var isFocused: Bool {
@@ -297,6 +310,36 @@ final class DestinationTracker: NSObject {
         guard let application = lastNonTiroApplication,
               !application.isTerminated else { return nil }
         return application
+    }
+}
+
+// AXUIElement is a retained Core Foundation reference; each off-main call is bounded below.
+private struct SendablePasteTarget: @unchecked Sendable {
+    let applicationElement: AXUIElement
+    let windowElement: AXUIElement
+    let focusedElement: AXUIElement
+    let processIdentifier: pid_t
+
+    func applyMessagingTimeout() {
+        AXUIElementSetMessagingTimeout(applicationElement, 0.05)
+        AXUIElementSetMessagingTimeout(windowElement, 0.05)
+        AXUIElementSetMessagingTimeout(focusedElement, 0.05)
+    }
+
+    var isFrontmost: Bool {
+        boolAttribute(kAXFrontmostAttribute as CFString, of: applicationElement)
+    }
+
+    var isFocused: Bool {
+        guard let currentWindow = currentFocusedWindow(
+            for: applicationElement,
+            focusedElement: nil
+        ), CFEqual(currentWindow, windowElement) else { return false }
+        guard let currentElement = currentFocusedElement(
+            for: applicationElement,
+            processIdentifier: processIdentifier
+        ) else { return false }
+        return CFEqual(currentElement, focusedElement)
     }
 }
 
