@@ -426,6 +426,9 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         NSColor(calibratedWhite: 0.08, alpha: reduceTransparency ? 1 : 0.94)
     }
 
+    static let rawTranscriptColor = NSColor(calibratedWhite: 0.76, alpha: 1)
+    static let correctedTranscriptColor = NSColor.white
+
     private func updateSurfaceAppearance() {
         surfaceView?.layer?.backgroundColor = Self.surfaceColor(
             reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
@@ -532,7 +535,12 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
             changeLabel.stringValue = "Not repaired"
             changeLabel.setAccessibilityLabel("The transcript has not been repaired.")
         }
-        display(revisedText, highlightedRanges: difference.revisedRanges, original: false)
+        display(
+            revisedText,
+            highlightedRanges: difference.revisedRanges,
+            original: false,
+            foregroundColor: draft.allowsCorrection ? Self.rawTranscriptColor : Self.correctedTranscriptColor
+        )
     }
 
     private func showOriginalText() {
@@ -542,11 +550,28 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         textView.setAccessibilityLabel("Original transcription")
         let difference = TranscriptDifference(original: draft.originalText, revised: revisedText)
         updateDifferenceSummary(difference, original: draft.originalText, revised: revisedText)
-        display(draft.originalText, highlightedRanges: difference.originalRanges, original: true)
+        display(
+            draft.originalText,
+            highlightedRanges: difference.originalRanges,
+            original: true,
+            foregroundColor: Self.rawTranscriptColor
+        )
     }
 
-    private func display(_ text: String, highlightedRanges: [NSRange], original: Bool) {
+    private func display(
+        _ text: String,
+        highlightedRanges: [NSRange],
+        original: Bool,
+        foregroundColor: NSColor
+    ) {
         textView.string = text
+        textView.textColor = foregroundColor
+        textView.typingAttributes[.foregroundColor] = foregroundColor
+        textView.textStorage?.addAttribute(
+            .foregroundColor,
+            value: foregroundColor,
+            range: NSRange(location: 0, length: text.utf16.count)
+        )
         applyHighlights(highlightedRanges, original: original)
     }
 

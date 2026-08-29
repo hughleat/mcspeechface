@@ -187,6 +187,42 @@ struct TranscriptReviewTests {
         controller.cancel()
     }
 
+    @Test @MainActor
+    func onRequestPreviewRendersRawTranscriptInVisibleGrey() async throws {
+        _ = NSApplication.shared
+        let controller = TranscriptReviewWindowController()
+        let draft = TranscriptReviewDraft(
+            originalText: "A raw transcript.",
+            revisedText: "A raw transcript.",
+            explanation: "",
+            audioURL: nil,
+            duration: 1,
+            action: .paste,
+            allowsCorrection: true
+        )
+        let review = Task { @MainActor in await controller.review(draft) }
+        defer { controller.cancel() }
+        await Task.yield()
+
+        let textView = try #require(allSubviews(of: NSTextView.self, in: controller.window?.contentView).first)
+        let foreground = try #require(textView.textColor?.usingColorSpace(.deviceRGB))
+        let storedForeground = try #require(
+            (textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)?
+                .usingColorSpace(.deviceRGB)
+        )
+        let typingForeground = try #require(
+            (textView.typingAttributes[.foregroundColor] as? NSColor)?.usingColorSpace(.deviceRGB)
+        )
+        let background = try #require(textView.backgroundColor.usingColorSpace(.deviceRGB))
+        #expect(foreground == TranscriptReviewWindowController.rawTranscriptColor.usingColorSpace(.deviceRGB))
+        #expect(storedForeground == foreground)
+        #expect(typingForeground == foreground)
+        #expect(foreground.brightnessComponent > background.brightnessComponent + 0.5)
+
+        controller.cancel()
+        #expect(await review.value == .cancelled)
+    }
+
     private func words(in text: String, ranges: [NSRange]) -> [String] {
         let value = text as NSString
         return ranges.map(value.substring(with:))
