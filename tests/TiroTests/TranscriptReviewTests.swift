@@ -17,6 +17,18 @@ struct TranscriptReviewTests {
         #expect(TranscriptReviewPreference.load(from: defaults) == .whenChanged)
     }
 
+    @Test func correctionTimingRoundTripsAndInvalidValuesFallBack() throws {
+        let suiteName = "CorrectionTimingTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        #expect(CorrectionTimingPreference.load(from: defaults) == .automatic)
+        CorrectionTimingPreference.onRequest.save(to: defaults)
+        #expect(CorrectionTimingPreference.load(from: defaults) == .onRequest)
+        defaults.set("unexpected", forKey: CorrectionTimingPreference.defaultsKey)
+        #expect(CorrectionTimingPreference.load(from: defaults) == .automatic)
+    }
+
     @Test func preferenceDecidesWhetherReviewIsNeeded() {
         #expect(!TranscriptReviewPreference.never.shouldReview(textChanged: true))
         #expect(!TranscriptReviewPreference.whenChanged.shouldReview(textChanged: false))
@@ -59,6 +71,8 @@ struct TranscriptReviewTests {
     @Test func committingCannotBeCancelledAfterAcceptance() {
         #expect(DictationWorkflowState.reviewing.handlesEscape)
         #expect(DictationWorkflowState.correcting.handlesEscape)
+        #expect(DictationWorkflowState.addingCorrectionInstruction.handlesEscape)
+        #expect(DictationWorkflowState.transcribingCorrectionInstruction.handlesEscape)
         #expect(DictationWorkflowState.correcting.commandName == "correcting")
         #expect(!DictationWorkflowState.committing.handlesEscape)
         #expect(DictationWorkflowState.committing.commandName == "committing")
@@ -141,6 +155,36 @@ struct TranscriptReviewTests {
         pasteButton.performClick(nil)
 
         #expect(await review.value == .accepted("Send it tomorrow."))
+    }
+
+    @Test @MainActor
+    func onRequestPreviewOffersRepairAndReturnsItsEditableText() async throws {
+        _ = NSApplication.shared
+        let controller = TranscriptReviewWindowController()
+        let draft = TranscriptReviewDraft(
+            originalText: "Um, send it tomorrow.",
+            revisedText: "Um, send it tomorrow.",
+            explanation: "",
+            audioURL: nil,
+            duration: 1,
+            action: .paste,
+            allowsCorrection: true
+        )
+        let review = Task { @MainActor in await controller.review(draft) }
+        await Task.yield()
+
+        let repairButton = try #require(allSubviews(of: NSButton.self, in: controller.window?.contentView)
+            .first { $0.title == "Repair" })
+        #expect(controller.canRequestCorrection)
+        #expect(!repairButton.isHidden)
+        repairButton.performClick(nil)
+
+        #expect(await review.value == .correctionRequested(
+            text: "Um, send it tomorrow.",
+            fallbackText: "Um, send it tomorrow.",
+            instructionText: nil
+        ))
+        controller.cancel()
     }
 
     private func words(in text: String, ranges: [NSRange]) -> [String] {

@@ -106,6 +106,13 @@ record, change models, open Settings, or quit. You can change the shortcut and
 turn off **Paste after transcription** in **Settings > General**. A completed
 transcript is still copied to the clipboard if automatic paste fails.
 
+Corrections can run **Automatically**, **On request**, or be **Off**. In On
+request mode, Tiro shows the transcript immediately: Right Command accepts it,
+while Option + Right Command repairs it with the selected correction model. Hold
+Option + Right Command to dictate an extra instruction before repair, such as
+"change Tuesday to Thursday". The preview then shows the corrected text and its
+changes before you paste.
+
 ## Privacy
 
 - **Local transcription:** Parakeet and Whisper run on your Mac. Tiro requires Apple Speech to use its on-device mode; if that mode is unavailable for a language, Tiro will not use Apple Speech for it.

@@ -30,6 +30,27 @@ struct ModifierEventStateTests {
             changedKeyIsSameFamily: false
         ))
 
+        assert(ModifierEventState.isCorrectionGesture(
+            optionIsDown: true,
+            configuredModifierIsOption: false,
+            correctionGesturesAllowed: true
+        ))
+        assert(!ModifierEventState.isCorrectionGesture(
+            optionIsDown: false,
+            configuredModifierIsOption: false,
+            correctionGesturesAllowed: true
+        ))
+        assert(!ModifierEventState.isCorrectionGesture(
+            optionIsDown: true,
+            configuredModifierIsOption: true,
+            correctionGesturesAllowed: true
+        ))
+        assert(!ModifierEventState.isCorrectionGesture(
+            optionIsDown: true,
+            configuredModifierIsOption: false,
+            correctionGesturesAllowed: false
+        ))
+
         print("Modifier event state assertions passed")
     }
 }

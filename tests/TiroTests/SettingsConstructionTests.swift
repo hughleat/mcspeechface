@@ -55,6 +55,11 @@ struct SettingsConstructionTests {
         let controller = SettingsWindowController(service: TiroService())
 
         #expect(controller.window != nil)
+        let timing = allSubviews(
+            of: NSPopUpButton.self,
+            in: controller.window?.contentView
+        ).first { $0.accessibilityLabel() == "Correction timing" }
+        #expect(timing?.itemTitles == CorrectionTimingPreference.allCases.map(\.title))
     }
 
     @Test @MainActor

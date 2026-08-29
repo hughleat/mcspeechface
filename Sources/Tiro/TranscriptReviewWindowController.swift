@@ -16,12 +16,38 @@ struct TranscriptReviewDraft {
     let audioURL: URL?
     let duration: TimeInterval
     let action: Action
+    let allowsCorrection: Bool
+    let correctionIsAvailable: Bool
+    let allowsCorrectionInstruction: Bool
+
+    init(
+        originalText: String,
+        revisedText: String,
+        explanation: String,
+        audioURL: URL?,
+        duration: TimeInterval,
+        action: Action,
+        allowsCorrection: Bool = false,
+        correctionIsAvailable: Bool = true,
+        allowsCorrectionInstruction: Bool = true
+    ) {
+        self.originalText = originalText
+        self.revisedText = revisedText
+        self.explanation = explanation
+        self.audioURL = audioURL
+        self.duration = duration
+        self.action = action
+        self.allowsCorrection = allowsCorrection
+        self.correctionIsAvailable = correctionIsAvailable
+        self.allowsCorrectionInstruction = allowsCorrectionInstruction
+    }
 
     var textChanged: Bool { originalText != revisedText }
 }
 
 enum TranscriptReviewResult: Equatable {
     case accepted(String)
+    case correctionRequested(text: String, fallbackText: String, instructionText: String?)
     case cancelled
 }
 
@@ -36,11 +62,30 @@ enum TranscriptReviewVersion: Equatable {
 
 private final class TranscriptReviewPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command),
+              let key = event.charactersIgnoringModifiers?.lowercased() else {
+            return super.performKeyEquivalent(with: event)
+        }
+        let selector: Selector? = switch (key, event.modifierFlags.contains(.shift)) {
+        case ("a", _): #selector(NSText.selectAll(_:))
+        case ("c", _): #selector(NSText.copy(_:))
+        case ("x", _): #selector(NSText.cut(_:))
+        case ("v", _): #selector(NSText.paste(_:))
+        case ("z", false): Selector(("undo:"))
+        case ("z", true): Selector(("redo:"))
+        default: nil
+        }
+        guard let selector else { return super.performKeyEquivalent(with: event) }
+        return NSApp.sendAction(selector, to: nil, from: self)
+    }
 }
 
 @MainActor
 final class TranscriptReviewWindowController: NSWindowController, NSWindowDelegate, NSTextViewDelegate {
     private let statusLabel = NSTextField(labelWithString: "Ready to paste")
+    private let statusDot = NSView()
     private let durationLabel = NSTextField(labelWithString: "00:00")
     private let playButton = NSButton()
     private let playbackSlider = NSSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
@@ -54,14 +99,26 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     private let explanationLabel = NSTextField(wrappingLabelWithString: "")
     private let textView = NSTextView()
     private let acceptButton = NSButton()
+    private let correctionButton = NSButton()
+    private let cancelButton = NSButton()
     private weak var surfaceView: NSView?
     private var continuation: CheckedContinuation<TranscriptReviewResult, Never>?
     private var draft: TranscriptReviewDraft?
     private var revisedText = ""
     private var audioPlayer: AVAudioPlayer?
     private var playbackTimer: Timer?
+    private var isBusy = false
+    private var additionalInstructionBase: String?
+
+    var onCancelBusy: (() -> Void)?
 
     var isReviewing: Bool { continuation != nil }
+    var canRequestCorrection: Bool {
+        isReviewing
+            && draft?.allowsCorrection == true
+            && draft?.correctionIsAvailable == true
+            && !isBusy
+    }
 
     init() {
         let panel = TranscriptReviewPanel(
@@ -87,9 +144,12 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     func review(_ draft: TranscriptReviewDraft) async -> TranscriptReviewResult {
         guard continuation == nil else { return .cancelled }
         self.draft = draft
+        isBusy = false
+        additionalInstructionBase = nil
         updateSurfaceAppearance()
         revisedText = draft.revisedText
         statusLabel.stringValue = draft.action.statusTitle
+        statusDot.layer?.backgroundColor = NSColor.systemGreen.cgColor
         acceptButton.title = draft.action.buttonTitle
         acceptButton.isEnabled = true
         acceptButton.setAccessibilityLabel("Accept and \(draft.action.buttonTitle.lowercased()) transcription")
@@ -98,12 +158,17 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         playbackSlider.maxValue = max(1, draft.duration)
         configureAudio(url: draft.audioURL)
         configureComparison(for: draft)
+        configureCorrectionButton(for: draft)
+        setInteractive(true)
         showCorrectedText()
         positionOnActiveScreen()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeFirstResponder(textView)
-        AccessibilityAnnouncements.post("Transcription ready to review.", from: textView)
+        let announcement = draft.explanation.isEmpty
+            ? "Transcription ready to review."
+            : "Transcription ready to review. \(draft.explanation)"
+        AccessibilityAnnouncements.post(announcement, from: textView)
 
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation = $0 }
@@ -123,12 +188,96 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         )))
     }
 
+    func requestCorrection() {
+        submitCorrectionRequest(fallbackText: nil)
+    }
+
+    private func submitCorrectionRequest(
+        fallbackText: String?,
+        instructionText: String? = nil
+    ) {
+        guard canRequestCorrection, let draft else { return }
+        if selectedVersion == .corrected { revisedText = textView.string }
+        let text = selectedVersion.acceptedText(
+            original: draft.originalText,
+            editedCorrection: revisedText
+        )
+        showCorrectionProgress(providerName: nil, phase: "Correcting")
+        resolve(
+            with: .correctionRequested(
+                text: text,
+                fallbackText: fallbackText ?? text,
+                instructionText: instructionText
+            ),
+            hidesWindow: false
+        )
+    }
+
+    func beginAdditionalInstruction() -> Bool {
+        guard canRequestCorrection, draft?.allowsCorrectionInstruction == true,
+              let draft else { return false }
+        if selectedVersion == .corrected { revisedText = textView.string }
+        additionalInstructionBase = selectedVersion.acceptedText(
+            original: draft.originalText,
+            editedCorrection: revisedText
+        )
+        showBusyStatus("Listening for an instruction…")
+        return true
+    }
+
+    func showInstructionTranscriptionProgress() {
+        showBusyStatus("Transcribing your instruction…")
+    }
+
+    func showInstructionFailure(_ message: String) {
+        guard let draft else { return }
+        isBusy = false
+        statusLabel.stringValue = draft.action.statusTitle
+        statusDot.layer?.backgroundColor = NSColor.systemGreen.cgColor
+        explanationLabel.stringValue = message
+        explanationLabel.isHidden = false
+        setInteractive(true)
+        additionalInstructionBase = nil
+        AccessibilityAnnouncements.post(message, from: explanationLabel)
+        window?.makeFirstResponder(textView)
+    }
+
+    func appendInstructionAndRequestCorrection(_ instruction: String) {
+        guard isReviewing, draft?.allowsCorrection == true else { return }
+        let trimmedInstruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInstruction.isEmpty else {
+            showInstructionFailure("No correction instruction was detected.")
+            return
+        }
+        let fallbackText = additionalInstructionBase ?? revisedText
+        let base = fallbackText.trimmingCharacters(in: .whitespacesAndNewlines)
+        revisedText = base.isEmpty ? trimmedInstruction : "\(base)\n\n\(trimmedInstruction)"
+        additionalInstructionBase = nil
+        comparisonControl.selectedSegment = 0
+        textView.string = revisedText
+        isBusy = false
+        submitCorrectionRequest(
+            fallbackText: fallbackText,
+            instructionText: trimmedInstruction
+        )
+    }
+
+    func showCorrectionProgress(providerName: String?, phase: String) {
+        let suffix = providerName.map { " with \($0)" } ?? ""
+        showBusyStatus("\(phase)\(suffix)…")
+    }
+
     func cancel() {
-        resolve(with: .cancelled)
+        if continuation != nil {
+            resolve(with: .cancelled)
+        } else {
+            resetAndHide()
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
-        cancel()
+        if isBusy { onCancelBusy?() }
+        else { cancel() }
     }
 
     private func makeContentView() -> NSView {
@@ -142,7 +291,6 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         root.layer?.masksToBounds = true
         surfaceView = root
 
-        let statusDot = NSView()
         statusDot.wantsLayer = true
         statusDot.layer?.backgroundColor = NSColor.systemGreen.cgColor
         statusDot.layer?.cornerRadius = 7
@@ -183,6 +331,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         comparisonHeader.spacing = 8
 
         textView.isRichText = false
+        textView.allowsUndo = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.delegate = self
@@ -206,7 +355,6 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         explanationLabel.font = .systemFont(ofSize: 12)
         explanationLabel.maximumNumberOfLines = 2
 
-        let cancelButton = NSButton()
         configureIconButton(cancelButton, symbol: "xmark", toolTip: "Cancel")
         cancelButton.target = self
         cancelButton.action = #selector(cancelReview)
@@ -215,6 +363,17 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         configureIconButton(undoButton, symbol: "arrow.uturn.backward", toolTip: "Restore corrected text")
         undoButton.target = self
         undoButton.action = #selector(restoreRevision)
+
+        correctionButton.title = "Repair"
+        correctionButton.image = NSImage(
+            systemSymbolName: "wand.and.sparkles",
+            accessibilityDescription: nil
+        )
+        correctionButton.imagePosition = .imageLeading
+        correctionButton.target = self
+        correctionButton.action = #selector(requestTranscriptCorrection)
+        correctionButton.bezelStyle = .rounded
+        correctionButton.toolTip = "Repair now, or hold Option with the dictation shortcut to add an instruction"
 
         acceptButton.title = "Paste"
         acceptButton.target = self
@@ -232,7 +391,9 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         acceptButton.keyEquivalent = "\r"
         acceptButton.keyEquivalentModifierMask = .command
         acceptButton.setAccessibilityLabel("Accept and paste transcription")
-        let actions = NSStackView(views: [cancelButton, undoButton, NSView(), acceptButton])
+        let actions = NSStackView(views: [
+            cancelButton, undoButton, NSView(), correctionButton, acceptButton,
+        ])
         actions.orientation = .horizontal
         actions.alignment = .centerY
         actions.spacing = 8
@@ -280,6 +441,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     }
 
     private func configureComparison(for draft: TranscriptReviewDraft) {
+        comparisonControl.setLabel(draft.allowsCorrection ? "Transcript" : "Corrected", forSegment: 0)
         updateDifferenceSummary(
             TranscriptDifference(original: draft.originalText, revised: draft.revisedText),
             original: draft.originalText,
@@ -288,6 +450,39 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         comparisonControl.selectedSegment = 0
         explanationLabel.stringValue = draft.explanation
         explanationLabel.isHidden = draft.explanation.isEmpty
+    }
+
+    private func configureCorrectionButton(for draft: TranscriptReviewDraft) {
+        correctionButton.isHidden = !draft.allowsCorrection
+        correctionButton.isEnabled = draft.allowsCorrection && draft.correctionIsAvailable
+        correctionButton.setAccessibilityLabel("Repair transcription")
+        correctionButton.toolTip = if !draft.correctionIsAvailable {
+            "Choose a correction model in Settings > Models"
+        } else if draft.allowsCorrectionInstruction {
+            "Repair now, or hold Option with the dictation shortcut to add an instruction"
+        } else {
+            "Repair transcription"
+        }
+    }
+
+    private func setInteractive(_ interactive: Bool) {
+        isBusy = !interactive
+        acceptButton.isEnabled = interactive
+        cancelButton.isEnabled = true
+        correctionButton.isEnabled = interactive
+            && draft?.allowsCorrection == true
+            && draft?.correctionIsAvailable == true
+        comparisonControl.isEnabled = interactive
+        textView.isEditable = interactive && selectedVersion == .corrected
+    }
+
+    private func showBusyStatus(_ title: String) {
+        let changed = statusLabel.stringValue != title
+        isBusy = true
+        statusLabel.stringValue = title
+        statusDot.layer?.backgroundColor = NSColor.systemYellow.cgColor
+        setInteractive(false)
+        if changed { AccessibilityAnnouncements.post(title, from: statusLabel) }
     }
 
     private func updateDifferenceSummary(
@@ -330,9 +525,13 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         guard let draft else { return }
         comparisonControl.selectedSegment = 0
         textView.isEditable = true
-        textView.setAccessibilityLabel("Corrected transcription")
+        textView.setAccessibilityLabel(draft.allowsCorrection ? "Transcription" : "Corrected transcription")
         let difference = TranscriptDifference(original: draft.originalText, revised: revisedText)
         updateDifferenceSummary(difference, original: draft.originalText, revised: revisedText)
+        if draft.allowsCorrection, difference.changeCount == 0 {
+            changeLabel.stringValue = "Not repaired"
+            changeLabel.setAccessibilityLabel("The transcript has not been repaired.")
+        }
         display(revisedText, highlightedRanges: difference.revisedRanges, original: false)
     }
 
@@ -392,14 +591,24 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         window.setFrameOrigin(NSPoint(x: frame.midX - window.frame.width / 2, y: frame.maxY - window.frame.height - 16))
     }
 
-    private func resolve(with result: TranscriptReviewResult) {
+    private func resolve(
+        with result: TranscriptReviewResult,
+        hidesWindow: Bool = true
+    ) {
         guard let continuation else { return }
         self.continuation = nil
+        stopPlayback()
+        if hidesWindow { resetAndHide() }
+        continuation.resume(returning: result)
+    }
+
+    private func resetAndHide() {
         stopPlayback()
         audioPlayer = nil
         window?.orderOut(nil)
         draft = nil
-        continuation.resume(returning: result)
+        isBusy = false
+        additionalInstructionBase = nil
     }
 
     private func stopPlayback() {
@@ -467,6 +676,10 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         window?.makeFirstResponder(textView)
     }
 
-    @objc private func cancelReview() { cancel() }
+    @objc private func cancelReview() {
+        if isBusy { onCancelBusy?() }
+        else { cancel() }
+    }
     @objc private func acceptReview() { accept() }
+    @objc private func requestTranscriptCorrection() { requestCorrection() }
 }

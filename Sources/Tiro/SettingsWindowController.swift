@@ -16,6 +16,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onPrivacySettingsLoaded: (() -> Void)?
 
     private let autoPasteButton = NSButton(checkboxWithTitle: "Paste after transcription", target: nil, action: nil)
+    private let correctionTimingButton = NSPopUpButton()
+    private let correctionTimingDetailLabel = NSTextField(wrappingLabelWithString: "")
     private let reviewPreferenceButton = NSPopUpButton()
     private let soundFeedbackButton = NSButton(checkboxWithTitle: "Recording feedback", target: nil, action: nil)
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Launch Tiro at login", target: nil, action: nil)
@@ -143,6 +145,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         transcriptEditingView.refresh()
         snippetEditor.load()
         autoPasteButton.state = UserDefaults.standard.bool(forKey: "autoPaste") ? .on : .off
+        selectCorrectionTiming(CorrectionTimingPreference.load())
         selectReviewPreference(TranscriptReviewPreference.load())
         soundFeedbackButton.state = UserDefaults.standard.bool(forKey: "soundFeedback") ? .on : .off
         let automaticUpdates = UserDefaults.standard.bool(
@@ -194,6 +197,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         autoPasteButton.target = self
         autoPasteButton.action = #selector(autoPasteChanged)
+        correctionTimingButton.target = self
+        correctionTimingButton.action = #selector(correctionTimingChanged)
+        correctionTimingButton.removeAllItems()
+        correctionTimingButton.addItems(withTitles: CorrectionTimingPreference.allCases.map(\.title))
+        correctionTimingButton.setAccessibilityLabel("Correction timing")
+        correctionTimingDetailLabel.textColor = .secondaryLabelColor
+        correctionTimingDetailLabel.font = .systemFont(ofSize: 12)
+        correctionTimingDetailLabel.maximumNumberOfLines = 2
         reviewPreferenceButton.target = self
         reviewPreferenceButton.action = #selector(reviewPreferenceChanged)
         reviewPreferenceButton.removeAllItems()
@@ -280,7 +291,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let stack = NSStackView(views: [
             dictationLabel, dictationPreferencesView,
             shortcutLabel, shortcutRecorder,
-            autoPasteButton, reviewPreferenceRow(), soundFeedbackButton, launchAtLoginButton,
+            autoPasteButton, correctionTimingRow(), correctionTimingDetailLabel, reviewPreferenceRow(),
+            soundFeedbackButton, launchAtLoginButton,
             commandLineLabel, commandLineToolView,
             NSView()
         ])
@@ -293,6 +305,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         dictationPreferencesView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         shortcutRecorder.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         commandLineToolView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        correctionTimingDetailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 520).isActive = true
         return stack
     }
 
@@ -388,6 +401,33 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return row
     }
 
+    private func correctionTimingRow() -> NSView {
+        let label = NSTextField(labelWithString: "Correction timing")
+        let row = NSStackView(views: [label, NSView(), correctionTimingButton])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 12
+        row.widthAnchor.constraint(equalToConstant: 520).isActive = true
+        return row
+    }
+
+    private func selectCorrectionTiming(_ preference: CorrectionTimingPreference) {
+        guard let index = CorrectionTimingPreference.allCases.firstIndex(of: preference) else {
+            return
+        }
+        correctionTimingButton.selectItem(at: index)
+        updateCorrectionTimingControls(preference)
+    }
+
+    private func updateCorrectionTimingControls(_ preference: CorrectionTimingPreference) {
+        reviewPreferenceButton.isEnabled = preference != .onRequest
+        correctionTimingDetailLabel.stringValue = switch preference {
+        case .automatic: "The selected correction model runs after transcription."
+        case .onRequest: "Correction waits until you choose Repair in the transcript preview."
+        case .off: "The selected correction model is not used."
+        }
+    }
+
     private func selectReviewPreference(_ preference: TranscriptReviewPreference) {
         guard let index = TranscriptReviewPreference.allCases.firstIndex(of: preference) else {
             return
@@ -414,6 +454,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let preferences = TranscriptReviewPreference.allCases
         guard preferences.indices.contains(reviewPreferenceButton.indexOfSelectedItem) else { return }
         preferences[reviewPreferenceButton.indexOfSelectedItem].save()
+    }
+
+    @objc private func correctionTimingChanged() {
+        let preferences = CorrectionTimingPreference.allCases
+        guard preferences.indices.contains(correctionTimingButton.indexOfSelectedItem) else { return }
+        let preference = preferences[correctionTimingButton.indexOfSelectedItem]
+        preference.save()
+        updateCorrectionTimingControls(preference)
     }
 
     @objc private func soundFeedbackChanged() {

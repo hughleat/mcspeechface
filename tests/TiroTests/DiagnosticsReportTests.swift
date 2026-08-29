@@ -18,6 +18,7 @@ struct DiagnosticsReportTests {
             "Accessibility:",
             "Speech Recognition:",
             "Auto-paste:",
+            "Correction timing:",
             "Review before pasting:",
             "Recording feedback:",
             "Launch at login:",

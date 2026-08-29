@@ -9,4 +9,12 @@ enum ModifierEventState {
     ) -> Bool {
         changedKeyIsSameFamily && !familyFlagIsDown
     }
+
+    static func isCorrectionGesture(
+        optionIsDown: Bool,
+        configuredModifierIsOption: Bool,
+        correctionGesturesAllowed: Bool
+    ) -> Bool {
+        optionIsDown && !configuredModifierIsOption && correctionGesturesAllowed
+    }
 }

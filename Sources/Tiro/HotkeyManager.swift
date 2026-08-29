@@ -2,14 +2,31 @@ import AppKit
 import ApplicationServices
 
 final class HotkeyManager {
+    private enum GestureKind {
+        case standard
+        case correction
+    }
+
     var onTap: (() -> Void)?
     var onHoldStart: (() -> Bool)?
     var onHoldEnd: (() -> Void)?
     var onHoldCancel: (() -> Void)?
+    var allowsCorrectionGesture: (() -> Bool)?
+    var onCorrectionTap: (() -> Void)?
+    var onCorrectionHoldStart: (() -> Bool)?
+    var onCorrectionHoldEnd: (() -> Void)?
+    var onCorrectionHoldCancel: (() -> Void)?
     var onEscape: (() -> Void)?
     var shouldHandleEscape: (() -> Bool)?
 
     private(set) var shortcut: DictationShortcut
+
+    var supportsCorrectionGesture: Bool {
+        switch shortcut.key {
+        case .modifier(let modifier): modifier.eventFlag != .maskAlternate
+        case .ordinary: !shortcut.modifiers.contains(.option)
+        }
+    }
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -22,6 +39,7 @@ final class HotkeyManager {
     private var holdTriggered = false
     private var holdThresholdReached = false
     private var holdWorkItem: DispatchWorkItem?
+    private var gestureKind: GestureKind?
     private var releasedShortcutMismatchCount = 0
     private let escapeKeyCode: Int64 = 53
 
@@ -163,7 +181,18 @@ final class HotkeyManager {
                shortcutIsDown,
                keyCode != Int64(modifier.keyCode),
                let physicalKeyCode = UInt16(exactly: keyCode),
-               DictationShortcut.ModifierKey(keyCode: physicalKeyCode) != nil {
+               let changedModifier = DictationShortcut.ModifierKey(keyCode: physicalKeyCode) {
+                if changedModifier.eventFlag == .maskAlternate,
+                   modifier.eventFlag != .maskAlternate,
+                   (gestureKind == .correction || allowsCorrectionGesture?() == true) {
+                    if event.flags.contains(.maskAlternate), !holdTriggered {
+                        restartGesture(as: .correction)
+                    } else if gestureKind == .correction {
+                        transitionShortcut(isDown: false)
+                        blockedModifierUntilRelease = modifier
+                    }
+                    return Unmanaged.passUnretained(event)
+                }
                 cancelCurrentGesture()
                 return Unmanaged.passUnretained(event)
             }
@@ -176,12 +205,23 @@ final class HotkeyManager {
             }
             let isDown = Self.isDown(modifier, in: event.flags)
             if isDown {
-                if Self.otherModifierIsDown(excluding: modifier) {
+                let correctionGesture = ModifierEventState.isCorrectionGesture(
+                    optionIsDown: event.flags.contains(.maskAlternate),
+                    configuredModifierIsOption: modifier.eventFlag == .maskAlternate,
+                    correctionGesturesAllowed: allowsCorrectionGesture?() == true
+                )
+                if Self.otherModifierIsDown(
+                    excluding: modifier,
+                    allowingOption: correctionGesture
+                ) {
                     modifierGestureCanceled = true
                     return Unmanaged.passUnretained(event)
                 }
                 modifierGestureCanceled = false
-                transitionShortcut(isDown: true)
+                transitionShortcut(
+                    isDown: true,
+                    kind: correctionGesture ? .correction : .standard
+                )
             } else if modifierGestureCanceled {
                 modifierGestureCanceled = false
             } else {
@@ -201,8 +241,19 @@ final class HotkeyManager {
                     return Unmanaged.passUnretained(event)
                 }
                 let modifiers = DictationShortcut.Modifiers(eventFlags: event.flags)
-                guard modifiers == shortcut.modifiers else { return Unmanaged.passUnretained(event) }
-                transitionShortcut(isDown: true)
+                let correctionGesture = ModifierEventState.isCorrectionGesture(
+                    optionIsDown: modifiers.contains(.option),
+                    configuredModifierIsOption: shortcut.modifiers.contains(.option),
+                    correctionGesturesAllowed: allowsCorrectionGesture?() == true
+                )
+                let expectedModifiers = correctionGesture
+                    ? shortcut.modifiers.union(.option)
+                    : shortcut.modifiers
+                guard modifiers == expectedModifiers else { return Unmanaged.passUnretained(event) }
+                transitionShortcut(
+                    isDown: true,
+                    kind: correctionGesture ? .correction : .standard
+                )
                 return nil
             }
             if type == .keyUp, shortcutIsDown {
@@ -213,32 +264,60 @@ final class HotkeyManager {
         }
     }
 
-    private func transitionShortcut(isDown: Bool) {
+    private func transitionShortcut(
+        isDown: Bool,
+        kind: GestureKind = .standard
+    ) {
         if isDown, !shortcutIsDown {
             shortcutIsDown = true
-            holdTriggered = false
-            holdThresholdReached = false
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self, self.shortcutIsDown else { return }
-                self.holdThresholdReached = true
-                self.holdTriggered = self.onHoldStart?() == true
-            }
-            holdWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+            beginGesture(kind)
         } else if !isDown, shortcutIsDown {
             shortcutIsDown = false
             holdWorkItem?.cancel()
             holdWorkItem = nil
             let wasHoldTriggered = holdTriggered
             let thresholdWasReached = holdThresholdReached
+            let completedKind = gestureKind
             holdTriggered = false
             holdThresholdReached = false
+            gestureKind = nil
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if wasHoldTriggered { self.onHoldEnd?() }
-                else if !thresholdWasReached { self.onTap?() }
+                switch completedKind {
+                case .correction:
+                    if wasHoldTriggered { self.onCorrectionHoldEnd?() }
+                    else if !thresholdWasReached { self.onCorrectionTap?() }
+                case .standard:
+                    if wasHoldTriggered { self.onHoldEnd?() }
+                    else if !thresholdWasReached { self.onTap?() }
+                case nil:
+                    break
+                }
             }
         }
+    }
+
+    private func beginGesture(_ kind: GestureKind) {
+        gestureKind = kind
+        holdTriggered = false
+        holdThresholdReached = false
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.shortcutIsDown else { return }
+            self.holdThresholdReached = true
+            self.holdTriggered = switch self.gestureKind {
+            case .correction: self.onCorrectionHoldStart?() == true
+            case .standard: self.onHoldStart?() == true
+            case nil: false
+            }
+        }
+        holdWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+    }
+
+    private func restartGesture(as kind: GestureKind) {
+        holdWorkItem?.cancel()
+        holdWorkItem = nil
+        beginGesture(kind)
     }
 
     private func resetShortcutState() {
@@ -247,6 +326,7 @@ final class HotkeyManager {
         shortcutIsDown = false
         holdTriggered = false
         holdThresholdReached = false
+        gestureKind = nil
         modifierGestureCanceled = false
     }
 
@@ -326,15 +406,23 @@ final class HotkeyManager {
     private func cancelActiveGesture() {
         holdWorkItem?.cancel()
         holdWorkItem = nil
-        if holdTriggered { onHoldCancel?() }
+        if holdTriggered {
+            if gestureKind == .correction { onCorrectionHoldCancel?() }
+            else { onHoldCancel?() }
+        }
         holdTriggered = false
         holdThresholdReached = false
+        gestureKind = nil
     }
 
-    private static func otherModifierIsDown(excluding configured: DictationShortcut.ModifierKey) -> Bool {
+    private static func otherModifierIsDown(
+        excluding configured: DictationShortcut.ModifierKey,
+        allowingOption: Bool = false
+    ) -> Bool {
         let flags = CGEventSource.flagsState(.combinedSessionState)
         return DictationShortcut.ModifierKey.allCases.contains { modifier in
             modifier != configured
+                && (!allowingOption || modifier.eventFlag != .maskAlternate)
                 && isDown(modifier, in: flags)
         }
     }
