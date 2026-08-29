@@ -41,6 +41,58 @@ public struct LocalTranscriptEditingModelSpec: Equatable, Sendable {
         sha256: "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5"
     )
 
+    public static let qwen35SmallLocal = LocalTranscriptEditingModelSpec(
+        id: "qwen3.5-0.8b-q4",
+        name: "Qwen 3.5 0.8B",
+        detail: "Local · 563 MB · Multilingual",
+        fileName: "Qwen3.5-0.8B-Q4_0.gguf",
+        downloadURL: URL(string:
+            "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/" +
+            "8fea620810c4afa23dd6443f999a48574c1611a3/Qwen3.5-0.8B-Q4_0.gguf?download=true"
+        )!,
+        expectedBytes: 563_036_064,
+        sha256: "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"
+    )
+
+    public static let qwen3SmallLocal = LocalTranscriptEditingModelSpec(
+        id: "qwen3-0.6b-q4",
+        name: "Qwen 3 0.6B",
+        detail: "Local · 429 MB · Multilingual",
+        fileName: "Qwen3-0.6B-Q4_0.gguf",
+        downloadURL: URL(string:
+            "https://huggingface.co/ggml-org/Qwen3-0.6B-GGUF/resolve/" +
+            "b5f37287796e5be0ea3dab2e7430873fb3f73e49/Qwen3-0.6B-Q4_0.gguf?download=true"
+        )!,
+        expectedBytes: 428_970_080,
+        sha256: "da2572f16c06133561ce56accaa822216f2391ef4d37fba427801cd6736417d4"
+    )
+
+    public static let granite4Local = LocalTranscriptEditingModelSpec(
+        id: "granite-4.0-1b-q4",
+        name: "Granite 4.0 1B",
+        detail: "Local · 1.02 GB · Multilingual",
+        fileName: "granite-4.0-1b-Q4_K_M.gguf",
+        downloadURL: URL(string:
+            "https://huggingface.co/ibm-granite/granite-4.0-1b-GGUF/resolve/" +
+            "b27c2fe3f211b7f44e80fa620177aea371099aaa/granite-4.0-1b-Q4_K_M.gguf?download=true"
+        )!,
+        expectedBytes: 1_023_645_440,
+        sha256: "22ec0f9cc99a90185312de3c882c84e7bd6789bdd050389844380a01a831d7f1"
+    )
+
+    public static let smolLM3Local = LocalTranscriptEditingModelSpec(
+        id: "smollm3-3b-q4",
+        name: "SmolLM3 3B",
+        detail: "Local · 1.92 GB · Multilingual",
+        fileName: "SmolLM3-Q4_K_M.gguf",
+        downloadURL: URL(string:
+            "https://huggingface.co/ggml-org/SmolLM3-3B-GGUF/resolve/" +
+            "4965cb60b150737b68a0408c36aeefb65078f894/SmolLM3-Q4_K_M.gguf?download=true"
+        )!,
+        expectedBytes: 1_915_305_312,
+        sha256: "8334b850b7bd46238c16b0c550df2138f0889bf433809008cc17a8b05761863e"
+    )
+
     public static let ministral3Local = LocalTranscriptEditingModelSpec(
         id: "ministral-3-3b-q4",
         name: "Ministral 3 3B",

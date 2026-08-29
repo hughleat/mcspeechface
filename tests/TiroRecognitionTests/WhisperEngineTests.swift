@@ -91,6 +91,7 @@ struct WhisperEngineTests {
             .base,
             .small,
             .distilLargeV3,
+            .distilLargeV3Turbo,
             .largeV3,
             .turbo,
         ])
@@ -103,6 +104,10 @@ struct WhisperEngineTests {
         #expect(
             WhisperModel.distilLargeV3.spec.variant
                 == "distil-whisper_distil-large-v3_594MB"
+        )
+        #expect(
+            WhisperModel.distilLargeV3Turbo.spec.directoryName
+                == "distil-whisper_distil-large-v3_turbo_600MB"
         )
         #expect(WhisperModel.largeV3.spec.variant == "large-v3-v20240930_626MB")
         #expect(

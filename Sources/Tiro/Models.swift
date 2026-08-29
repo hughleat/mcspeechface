@@ -300,10 +300,18 @@ struct DictationModel: Hashable {
         .init(
             key: "coreml-whisper-distil-large-v3",
             name: "Distil Whisper Large V3",
-            detail: "Multilingual · Fast high accuracy",
+            detail: "English · Fast high accuracy",
             provisioning: .downloadable(bytes: 594_000_000),
-            languageSupport: .selectable,
+            languageSupport: .english,
             isSupported: WhisperModel.distilLargeV3.isSupportedOnCurrentDevice
+        ),
+        .init(
+            key: "coreml-whisper-distil-large-v3-turbo",
+            name: "Distil Whisper Large V3 Turbo",
+            detail: "English · Faster high accuracy",
+            provisioning: .downloadable(bytes: 600_000_000),
+            languageSupport: .english,
+            isSupported: WhisperModel.distilLargeV3Turbo.isSupportedOnCurrentDevice
         ),
         .init(
             key: "coreml-whisper-large-v3",

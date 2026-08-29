@@ -10,6 +10,7 @@ public enum WhisperModel: String, CaseIterable, Codable, Sendable {
     case base = "openai_whisper-base"
     case small = "openai_whisper-small"
     case distilLargeV3 = "distil-whisper_distil-large-v3_594MB"
+    case distilLargeV3Turbo = "distil-whisper_distil-large-v3_turbo_600MB"
     case largeV3 = "large-v3-v20240930_626MB"
     case turbo = "large-v3-v20240930_turbo_632MB"
 
@@ -39,7 +40,7 @@ public enum WhisperModel: String, CaseIterable, Codable, Sendable {
                 variant: rawValue,
                 directoryName: "openai_whisper-small"
             )
-        case .distilLargeV3:
+        case .distilLargeV3, .distilLargeV3Turbo:
             WhisperModelSpec(
                 model: self,
                 variant: rawValue,
@@ -69,6 +70,7 @@ public enum WhisperModel: String, CaseIterable, Codable, Sendable {
         case .base: .whisperBaseCoreML
         case .small: .whisperSmallCoreML
         case .distilLargeV3: .whisperDistilLargeV3CoreML
+        case .distilLargeV3Turbo: .whisperDistilLargeV3TurboCoreML
         case .largeV3: .whisperLargeV3CoreML
         case .turbo: .whisperTurboCoreML
         }

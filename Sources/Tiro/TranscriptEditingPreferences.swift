@@ -7,7 +7,11 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
     case codexCommandLine
     case claudeCommandLine
     case customCommandLine
+    case qwen35SmallLocal
+    case qwen3SmallLocal
     case qwenLocal
+    case granite4Local
+    case smolLM3Local
     case ministralLocal
 
     static let defaultsKey = "transcriptEditingModel"
@@ -19,7 +23,11 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
         case .codexCommandLine: "Codex"
         case .claudeCommandLine: "Claude"
         case .customCommandLine: "Custom Command"
+        case .qwen35SmallLocal: "Qwen 3.5 0.8B"
+        case .qwen3SmallLocal: "Qwen 3 0.6B"
         case .qwenLocal: "Qwen 3 1.7B"
+        case .granite4Local: "Granite 4.0 1B"
+        case .smolLM3Local: "SmolLM3 3B"
         case .ministralLocal: "Ministral 3 3B"
         }
     }
@@ -36,8 +44,16 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
             return providerDetail(for: .claude, defaults: defaults)
         case .customCommandLine:
             return "Run an executable with editable arguments · May send text off-device"
+        case .qwen35SmallLocal:
+            return "Newest lightweight Qwen · On-device · \(downloadSizeDescription)"
+        case .qwen3SmallLocal:
+            return "Fastest local model · On-device · \(downloadSizeDescription)"
         case .qwenLocal:
             return "Balanced local model · On-device · \(downloadSizeDescription)"
+        case .granite4Local:
+            return "Compact general-purpose model · On-device · \(downloadSizeDescription)"
+        case .smolLM3Local:
+            return "Stronger local model · On-device · \(downloadSizeDescription)"
         case .ministralLocal:
             return "Higher-quality local model · On-device · \(downloadSizeDescription)"
         }
@@ -69,7 +85,11 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
 
     var localSpec: LocalTranscriptEditingModelSpec? {
         switch self {
+        case .qwen35SmallLocal: .qwen35SmallLocal
+        case .qwen3SmallLocal: .qwen3SmallLocal
         case .qwenLocal: .qwen3Local
+        case .granite4Local: .granite4Local
+        case .smolLM3Local: .smolLM3Local
         case .ministralLocal: .ministral3Local
         case .off, .appleFoundation, .codexCommandLine, .claudeCommandLine,
              .customCommandLine: nil
@@ -81,7 +101,8 @@ enum TranscriptEditingModel: String, CaseIterable, Hashable, Sendable {
         case .codexCommandLine: .codex
         case .claudeCommandLine: .claude
         case .customCommandLine: .custom
-        case .off, .appleFoundation, .qwenLocal, .ministralLocal: nil
+        case .off, .appleFoundation, .qwen35SmallLocal, .qwen3SmallLocal,
+             .qwenLocal, .granite4Local, .smolLM3Local, .ministralLocal: nil
         }
     }
 
@@ -169,7 +190,8 @@ struct TranscriptEditingModelSnapshot: Equatable, Sendable {
             appleAvailability == .available
         case .codexCommandLine, .claudeCommandLine, .customCommandLine:
             commandLineAvailability[model] == .available
-        case .qwenLocal, .ministralLocal:
+        case .qwen35SmallLocal, .qwen3SmallLocal, .qwenLocal,
+             .granite4Local, .smolLM3Local, .ministralLocal:
             if case .installed = localStatuses[model] { true } else { false }
         }
     }
@@ -616,7 +638,8 @@ actor TranscriptEditingService {
             let editor = try providerEditor(for: model, configuration: saved)
             commandLineEditors[model] = (saved, editor)
             return editor
-        case .qwenLocal, .ministralLocal:
+        case .qwen35SmallLocal, .qwen3SmallLocal, .qwenLocal,
+             .granite4Local, .smolLM3Local, .ministralLocal:
             return try localEditor(for: model)
         }
     }

@@ -109,6 +109,10 @@ final class TiroService {
                 model: .distilLargeV3,
                 modelsRootDirectory: root
             ),
+            "coreml-whisper-distil-large-v3-turbo": CoreMLWhisperEngine(
+                model: .distilLargeV3Turbo,
+                modelsRootDirectory: root
+            ),
             "coreml-whisper-large-v3": CoreMLWhisperEngine(model: .largeV3, modelsRootDirectory: root),
             "coreml-whisper-turbo": CoreMLWhisperEngine(model: .turbo, modelsRootDirectory: root),
         ]

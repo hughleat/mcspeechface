@@ -62,9 +62,11 @@ rg -q -F 'FluidAudio-Apache-2.0.txt' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'Argmax-OSS-MIT.txt' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'Argmax-OSS-NOTICES.txt' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'THIRD_PARTY_NOTICES.md' "$ROOT/scripts/build_native_app.sh"
-rg -q -F 'LLAMA_RUNTIME_RELEASE="b9637"' "$ROOT/scripts/build_native_app.sh"
-rg -q -F '762283319feb3de30886dc850d42f0e426b06600e7f9639d34e06506597309ca' \
+rg -q -F 'LLAMA_RUNTIME_RELEASE="b10687"' "$ROOT/scripts/build_native_app.sh"
+rg -q -F '03798972d2a6fe4a77288e897517f3a770d0057b9bc58e46cbe3eebc2b166b0f' \
     "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'build ${LLAMA_RUNTIME_RELEASE#b}' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'commit $LLAMA_RUNTIME_COMMIT' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'CMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET"' \
     "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'BUILD_SHARED_LIBS=OFF' "$ROOT/scripts/build_native_app.sh"

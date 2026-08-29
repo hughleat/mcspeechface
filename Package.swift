@@ -19,7 +19,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/argmaxinc/argmax-oss-swift.git",
-            exact: "1.0.0"
+            exact: "1.1.0"
         ),
     ],
     targets: [

@@ -50,14 +50,15 @@ struct SettingsConstructionTests {
     }
 
     @Test @MainActor
-    func settingsWindowCanBeConstructedDuringLaunch() {
+    func settingsWindowCanBeConstructedDuringLaunch() throws {
         _ = NSApplication.shared
         let controller = SettingsWindowController(service: TiroService())
 
         #expect(controller.window != nil)
+        let contentView = try #require(controller.window?.contentView)
         let timing = allSubviews(
             of: NSPopUpButton.self,
-            in: controller.window?.contentView
+            in: contentView
         ).first { $0.accessibilityLabel() == "Correction timing" }
         #expect(timing?.itemTitles == CorrectionTimingPreference.allCases.map(\.title))
     }
@@ -112,8 +113,7 @@ struct SettingsConstructionTests {
         )
         #expect(incomplete.canSelect(.off))
         #expect(!incomplete.canSelect(.appleFoundation))
-        #expect(!incomplete.canSelect(.qwenLocal))
-        #expect(!incomplete.canSelect(.ministralLocal))
+        #expect(TranscriptEditingModel.localModels.allSatisfy { !incomplete.canSelect($0) })
 
         let ready = TranscriptEditingModelSnapshot(
             appleAvailability: .available,
@@ -132,8 +132,7 @@ struct SettingsConstructionTests {
         #expect(ready.canSelect(.codexCommandLine))
         #expect(ready.canSelect(.claudeCommandLine))
         #expect(ready.canSelect(.customCommandLine))
-        #expect(ready.canSelect(.qwenLocal))
-        #expect(ready.canSelect(.ministralLocal))
+        #expect(TranscriptEditingModel.localModels.allSatisfy { ready.canSelect($0) })
     }
 
     @Test

@@ -18,9 +18,9 @@ SPONSORSHIP_ENABLED=0
 DEPLOYMENT_TARGET="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$ROOT/native/Info.plist")"
 TARGET_ARCHITECTURE="arm64"
 DMG_TEMPLATE_SHA256="d4dde813f3fe08e56783a99a75ae4e729f2dc401f4eeb812bd658fcb0b90f277"
-LLAMA_RUNTIME_RELEASE="b9637"
-LLAMA_RUNTIME_COMMIT="aedb2a5"
-LLAMA_RUNTIME_SHA256="762283319feb3de30886dc850d42f0e426b06600e7f9639d34e06506597309ca"
+LLAMA_RUNTIME_RELEASE="b10687"
+LLAMA_RUNTIME_COMMIT="c841aee"
+LLAMA_RUNTIME_SHA256="03798972d2a6fe4a77288e897517f3a770d0057b9bc58e46cbe3eebc2b166b0f"
 LLAMA_RUNTIME_URL="https://github.com/ggml-org/llama.cpp/archive/refs/tags/$LLAMA_RUNTIME_RELEASE.tar.gz"
 LLAMA_RUNTIME_CACHE="$ROOT/.build/LlamaRuntime"
 BUILD_LOCK="$ROOT/.build/native-build.lock"
@@ -223,6 +223,7 @@ prepare_llama_runtime() {
     local extraction="$LLAMA_RUNTIME_CACHE/.extract-$LLAMA_RUNTIME_RELEASE-$$"
     local staging="$runtime.partial"
     local digest
+    local version
 
     mkdir -p "$LLAMA_RUNTIME_CACHE"
     if [[ -f "$archive" ]]; then
@@ -248,6 +249,14 @@ prepare_llama_runtime() {
         if ! mv "$extraction" "$source"; then
             rm -rf "$extraction"
             return 1
+        fi
+    fi
+
+    if [[ -x "$runtime/tiro-llama-server" ]]; then
+        version="$("$runtime/tiro-llama-server" --version 2>&1 || true)"
+        if [[ "$version" != *"build ${LLAMA_RUNTIME_RELEASE#b}"* \
+            || "$version" != *"commit $LLAMA_RUNTIME_COMMIT"* ]]; then
+            rm -rf "$runtime"
         fi
     fi
 

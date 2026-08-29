@@ -14,6 +14,7 @@ public enum RecognitionModel: String, Codable, Sendable {
     case whisperBaseCoreML = "whisper-base-coreml"
     case whisperSmallCoreML = "whisper-small-coreml"
     case whisperDistilLargeV3CoreML = "whisper-distil-large-v3-coreml"
+    case whisperDistilLargeV3TurboCoreML = "whisper-distil-large-v3-turbo-coreml"
     case whisperLargeV3CoreML = "whisper-large-v3-coreml"
     case whisperTurboCoreML = "whisper-large-v3-turbo-coreml"
 }

@@ -205,7 +205,8 @@ struct TranscriptReviewTests {
         defer { controller.cancel() }
         await Task.yield()
 
-        let textView = try #require(allSubviews(of: NSTextView.self, in: controller.window?.contentView).first)
+        let contentView = try #require(controller.window?.contentView)
+        let textView = try #require(allSubviews(of: NSTextView.self, in: contentView).first)
         let foreground = try #require(textView.textColor?.usingColorSpace(.deviceRGB))
         let scrollView = try #require(textView.enclosingScrollView)
         let textContainer = try #require(textView.textContainer)

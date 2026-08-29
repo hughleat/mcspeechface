@@ -305,7 +305,8 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         case .appleFoundation: return appleAvailable
         case .codexCommandLine, .claudeCommandLine, .customCommandLine:
             return commandLineAvailable
-        case .qwenLocal, .ministralLocal:
+        case .qwen35SmallLocal, .qwen3SmallLocal, .qwenLocal,
+             .granite4Local, .smolLM3Local, .ministralLocal:
             if case .installed = localStatus { return true }
             return false
         }

@@ -18,6 +18,7 @@ struct DictationModelCatalogTests {
             "coreml-whisper-base",
             "coreml-whisper-small",
             "coreml-whisper-distil-large-v3",
+            "coreml-whisper-distil-large-v3-turbo",
             "coreml-whisper-large-v3",
             "coreml-whisper-turbo",
         ])
@@ -37,20 +38,25 @@ struct DictationModelCatalogTests {
 
     @Test
     func modelFamiliesExposeTheirActualLanguageControls() {
-        #expect(DictationModel.catalog[0].languageSupport == .selectable)
-        #expect(DictationModel.catalog[1].languageSupport == .english)
-        #expect(DictationModel.catalog[2].languageSupport == .english)
-        #expect(DictationModel.catalog[3].languageSupport == .automatic)
-        #expect(
-            DictationModel.catalog[4...7].allSatisfy {
-                $0.languageSupport == .english
-            }
-        )
-        #expect(
-            DictationModel.catalog.dropFirst(8).allSatisfy {
-                $0.languageSupport == .selectable
-            }
-        )
+        let support = Dictionary(uniqueKeysWithValues: DictationModel.catalog.map {
+            ($0.key, $0.languageSupport)
+        })
+        #expect(support["apple-speech"] == .selectable)
+        #expect(support["coreml-parakeet-v3"] == .automatic)
+
+        let englishModels = [
+            "coreml-compact", "coreml-parakeet-v2", "coreml-parakeet-unified",
+            "coreml-whisper-tiny-english", "coreml-whisper-base-english",
+            "coreml-whisper-small-english", "coreml-whisper-distil-large-v3",
+            "coreml-whisper-distil-large-v3-turbo",
+        ]
+        #expect(englishModels.allSatisfy { support[$0] == .english })
+
+        let multilingualWhisperModels = [
+            "coreml-whisper-tiny", "coreml-whisper-base", "coreml-whisper-small",
+            "coreml-whisper-large-v3", "coreml-whisper-turbo",
+        ]
+        #expect(multilingualWhisperModels.allSatisfy { support[$0] == .selectable })
     }
 
     @Test

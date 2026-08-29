@@ -6,22 +6,27 @@ import Testing
 struct LocalTranscriptEditingTests {
     @Test
     func downloadableCorrectionModelsHavePinnedArtifacts() {
-        let spec = LocalTranscriptEditingModelSpec.qwen3Local
+        let artifacts: [(LocalTranscriptEditingModelSpec, String, Int64, String)] = [
+            (.qwen35SmallLocal, "8fea620810c4afa23dd6443f999a48574c1611a3", 563_036_064,
+             "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"),
+            (.qwen3SmallLocal, "b5f37287796e5be0ea3dab2e7430873fb3f73e49", 428_970_080,
+             "da2572f16c06133561ce56accaa822216f2391ef4d37fba427801cd6736417d4"),
+            (.qwen3Local, "daeb8e2d528a760970442092f6bf1e55c3b659eb", 1_282_439_264,
+             "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5"),
+            (.granite4Local, "b27c2fe3f211b7f44e80fa620177aea371099aaa", 1_023_645_440,
+             "22ec0f9cc99a90185312de3c882c84e7bd6789bdd050389844380a01a831d7f1"),
+            (.smolLM3Local, "4965cb60b150737b68a0408c36aeefb65078f894", 1_915_305_312,
+             "8334b850b7bd46238c16b0c550df2138f0889bf433809008cc17a8b05761863e"),
+            (.ministral3Local, "eb599d408350ea2bb60452cb86be7c7b2fc28227", 2_147_023_008,
+             "9ed150d4367e68df0ac8e1540f6ddc65b42d0ee26378329d1ecbca60f93fc5f8"),
+        ]
 
-        #expect(spec.id == "qwen3-1.7b-q4")
-        #expect(spec.fileName == "Qwen3-1.7B-Q4_K_M.gguf")
-        #expect(spec.expectedBytes == 1_282_439_264)
-        #expect(spec.sha256 == "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5")
-        #expect(spec.downloadURL.scheme == "https")
-        #expect(spec.downloadURL.path.contains("/resolve/daeb8e2d528a760970442092f6bf1e55c3b659eb/"))
-
-        let ministral = LocalTranscriptEditingModelSpec.ministral3Local
-        #expect(ministral.id == "ministral-3-3b-q4")
-        #expect(ministral.fileName == "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf")
-        #expect(ministral.expectedBytes == 2_147_023_008)
-        #expect(ministral.sha256 == "9ed150d4367e68df0ac8e1540f6ddc65b42d0ee26378329d1ecbca60f93fc5f8")
-        #expect(ministral.downloadURL.scheme == "https")
-        #expect(ministral.downloadURL.path.contains("/resolve/eb599d408350ea2bb60452cb86be7c7b2fc28227/"))
+        for (spec, revision, bytes, checksum) in artifacts {
+            #expect(spec.downloadURL.scheme == "https")
+            #expect(spec.downloadURL.path.contains("/resolve/\(revision)/"))
+            #expect(spec.expectedBytes == bytes)
+            #expect(spec.sha256 == checksum)
+        }
     }
 
     @Test
