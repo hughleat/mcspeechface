@@ -339,6 +339,11 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         textView.textColor = .white
         textView.backgroundColor = NSColor(calibratedWhite: 0.07, alpha: 0.6)
         textView.textContainerInset = NSSize(width: 10, height: 10)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.frame = NSRect(x: 0, y: 0, width: 0, height: 115)
         textView.insertionPointColor = .white
         textView.setAccessibilityLabel("Corrected transcription")
         let scroll = NSScrollView()
