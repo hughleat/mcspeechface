@@ -288,10 +288,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let dictationLabel = sectionLabel("Dictation")
         let shortcutLabel = sectionLabel("Shortcut")
         let commandLineLabel = sectionLabel("Command Line")
+        let correctionTiming = correctionTimingRow()
+        let reviewPreference = reviewPreferenceRow()
         let stack = NSStackView(views: [
             dictationLabel, dictationPreferencesView,
             shortcutLabel, shortcutRecorder,
-            autoPasteButton, correctionTimingRow(), correctionTimingDetailLabel, reviewPreferenceRow(),
+            autoPasteButton, correctionTiming, correctionTimingDetailLabel, reviewPreference,
             soundFeedbackButton, launchAtLoginButton,
             commandLineLabel, commandLineToolView,
             NSView()
@@ -305,6 +307,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         dictationPreferencesView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         shortcutRecorder.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         commandLineToolView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        correctionTiming.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        reviewPreference.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         correctionTimingDetailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 520).isActive = true
         return stack
     }
@@ -397,7 +401,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
-        row.widthAnchor.constraint(equalToConstant: 520).isActive = true
         return row
     }
 
@@ -407,7 +410,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
-        row.widthAnchor.constraint(equalToConstant: 520).isActive = true
         return row
     }
 

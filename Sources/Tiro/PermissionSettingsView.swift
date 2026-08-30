@@ -74,6 +74,7 @@ final class PermissionSettingsView: NSStackView {
     private func buildContent() {
         orientation = .vertical
         alignment = .leading
+        distribution = .fill
         spacing = 0
 
         microphone.onAction = { [weak self] in self?.requestMicrophone() }
@@ -81,18 +82,25 @@ final class PermissionSettingsView: NSStackView {
         speechRecognition.onAction = { [weak self] in self?.requestSpeechRecognition() }
         let firstSeparator = divider()
         let secondSeparator = divider()
+        let spacer = NSView()
         [
             microphone,
             firstSeparator,
             accessibility,
             secondSeparator,
             speechRecognition,
+            spacer,
         ].forEach(addArrangedSubview)
+        for row in [microphone, accessibility, speechRecognition] {
+            row.setContentHuggingPriority(.required, for: .vertical)
+        }
+        spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
         microphone.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         firstSeparator.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         accessibility.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         secondSeparator.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         speechRecognition.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        spacer.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
 
         observers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
@@ -201,6 +209,7 @@ private final class PermissionRow: NSView {
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 3
+        labels.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
         actionButton.title = buttonTitle
@@ -218,7 +227,7 @@ private final class PermissionRow: NSView {
             addSubview($0)
         }
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 92),
+            heightAnchor.constraint(equalToConstant: 92),
             icon.leadingAnchor.constraint(equalTo: leadingAnchor),
             icon.topAnchor.constraint(equalTo: topAnchor, constant: 22),
             icon.widthAnchor.constraint(equalToConstant: 24),
@@ -226,7 +235,7 @@ private final class PermissionRow: NSView {
             labels.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
             labels.topAnchor.constraint(equalTo: topAnchor, constant: 20),
             labels.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -20),
-            labels.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -16),
+            labels.trailingAnchor.constraint(equalTo: trailing.leadingAnchor, constant: -16),
             trailing.trailingAnchor.constraint(equalTo: trailingAnchor),
             trailing.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])

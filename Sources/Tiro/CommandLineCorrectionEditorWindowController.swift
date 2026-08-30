@@ -58,6 +58,7 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
     private var testedConfiguration: CommandLineCorrectionConfiguration?
     private var connectionState = PersistentCorrectionRuntimeState.stopped
     private var customModelSelected = false
+    private var lastUsesCommandLine: Bool?
 
     init(
         preset: CommandLineCorrectionPreset,
@@ -68,13 +69,13 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         self.defaults = defaults
         self.service = service
         let panel = CommandLineCorrectionPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: preset == .custom ? 610 : 650),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: preset == .custom ? 610 : 430),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         panel.title = preset == .custom ? "Custom Correction Command" : "\(preset.title) Correction"
-        panel.minSize = NSSize(width: 580, height: preset == .custom ? 500 : 560)
+        panel.minSize = NSSize(width: 580, height: preset == .custom ? 500 : 420)
         panel.center()
         super.init(window: panel)
         panel.delegate = self
@@ -650,6 +651,15 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         connectionButton.isEnabled = connectionState != .starting
             && connectionState != .correcting
             && (connectionState.isRunning || selectedConnectionMode == .enhanced)
+        resizePanelIfNeeded(usesCommandLine: usesCommandLine)
+    }
+
+    private func resizePanelIfNeeded(usesCommandLine: Bool) {
+        guard preset != .custom, lastUsesCommandLine != usesCommandLine, let window else { return }
+        lastUsesCommandLine = usesCommandLine
+        let targetHeight: CGFloat = usesCommandLine ? 650 : 430
+        window.minSize = NSSize(width: 580, height: usesCommandLine ? 560 : 420)
+        window.setContentSize(NSSize(width: window.contentLayoutRect.width, height: targetHeight))
     }
 
     private func updateCommandPreview() {

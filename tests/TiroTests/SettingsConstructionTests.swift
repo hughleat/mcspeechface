@@ -61,6 +61,32 @@ struct SettingsConstructionTests {
             in: contentView
         ).first { $0.accessibilityLabel() == "Correction timing" }
         #expect(timing?.itemTitles == CorrectionTimingPreference.allCases.map(\.title))
+
+        controller.window?.setContentSize(NSSize(width: 720, height: 520))
+        contentView.layoutSubtreeIfNeeded()
+        let timingRow = try #require(timing?.superview as? NSStackView)
+        let generalStack = try #require(timingRow.superview as? NSStackView)
+        #expect(timingRow.frame.width <= generalStack.bounds.width + 0.5)
+    }
+
+    @Test @MainActor
+    func permissionRowsStayCompactWhenThePageIsTall() {
+        _ = NSApplication.shared
+        let view = PermissionSettingsView(frame: NSRect(x: 0, y: 0, width: 520, height: 500))
+
+        view.layoutSubtreeIfNeeded()
+
+        for index in [0, 2, 4] {
+            let row = view.arrangedSubviews[index]
+            #expect(row.frame.height <= 100)
+            let explanation = allSubviews(of: NSTextField.self, in: row)
+                .first { $0.stringValue.contains("McSpeechface")
+                    || $0.stringValue.contains("global shortcut")
+                    || $0.stringValue.contains("Apple Speech") }
+            #expect(explanation?.frame.width ?? 0 > 200)
+            #expect(explanation?.frame.height ?? 0 >= explanation?.fittingSize.height ?? 0)
+        }
+        #expect(view.arrangedSubviews.last?.frame.height ?? 0 > 100)
     }
 
     @Test @MainActor
@@ -345,6 +371,7 @@ struct SettingsConstructionTests {
         )
 
         #expect(controller.window?.title == "Claude Correction")
+        #expect(controller.window?.contentLayoutRect.height == 430)
         #expect(modelPopup?.selectedItem?.representedObject as? String == configuration.model)
         #expect(accessPopup?.selectedItem?.representedObject as? String ==
             CorrectionProviderAccessProfile.correctionOnly.rawValue)
@@ -370,6 +397,7 @@ struct SettingsConstructionTests {
             view = current.superview
         }
         #expect(!isEffectivelyHidden)
+        #expect(controller.window?.contentLayoutRect.height == 650)
     }
 
     @Test
@@ -722,13 +750,21 @@ struct SettingsConstructionTests {
     func correctionPromptEditorsShareAResizableRememberedSplit() throws {
         _ = NSApplication.shared
         let controller = TranscriptEditingPromptEditorWindowController()
+        let window = try #require(controller.window)
         let contentView = try #require(controller.window?.contentView)
         let splitView = try #require(allSubviews(of: NSSplitView.self, in: contentView).first)
 
         #expect(splitView.isVertical == false)
         #expect(splitView.arrangedSubviews.count == 2)
-        #expect(splitView.autosaveName == "CorrectionPromptEditorSplit")
+        #expect(splitView.autosaveName == "CorrectionPromptEditorSplitV2")
         #expect(allSubviews(of: NSTextView.self, in: splitView).count == 2)
+        window.setFrame(
+            NSRect(origin: window.frame.origin, size: window.minSize),
+            display: false
+        )
+        contentView.layoutSubtreeIfNeeded()
+        #expect(splitView.frame.height >= 260)
+        #expect(splitView.frame.minY >= 190)
     }
 
     @Test

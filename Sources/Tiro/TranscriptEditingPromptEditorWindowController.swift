@@ -70,7 +70,7 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
             defer: false
         )
         window.title = "Correction Prompts"
-        window.minSize = NSSize(width: 560, height: 490)
+        window.minSize = NSSize(width: 560, height: 520)
         super.init(window: window)
         window.delegate = self
         buildContent()
@@ -160,30 +160,42 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         buttons.orientation = .horizontal
         buttons.alignment = .centerY
         buttons.spacing = 8
-        let stack = NSStackView(views: [
-            splitView,
+        let footerSpacer = NSView()
+        footerSpacer.setContentHuggingPriority(.defaultLow, for: .vertical)
+        let footer = NSStackView(views: [
             riskLabel,
             placeholderLabel,
             statusLabel,
+            footerSpacer,
             buttons,
         ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.setCustomSpacing(4, after: splitView)
-        stack.setCustomSpacing(12, after: placeholderLabel)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(stack)
+        footer.orientation = .vertical
+        footer.alignment = .leading
+        footer.distribution = .fill
+        footer.spacing = 8
+        footer.setCustomSpacing(12, after: placeholderLabel)
+        footer.setContentHuggingPriority(.required, for: .vertical)
+        footer.setContentCompressionResistancePriority(.required, for: .vertical)
+        splitView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        splitView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        splitView.translatesAutoresizingMaskIntoConstraints = false
+        footer.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(splitView)
+        contentView.addSubview(footer)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
-            splitView.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            riskLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            placeholderLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            buttons.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            splitView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            splitView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            splitView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
+            splitView.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -12),
+            splitView.heightAnchor.constraint(greaterThanOrEqualToConstant: 260),
+            footer.leadingAnchor.constraint(equalTo: splitView.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: splitView.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
+            footer.heightAnchor.constraint(equalToConstant: 170),
+            riskLabel.widthAnchor.constraint(equalTo: footer.widthAnchor),
+            placeholderLabel.widthAnchor.constraint(equalTo: footer.widthAnchor),
+            buttons.widthAnchor.constraint(equalTo: footer.widthAnchor),
+            statusLabel.widthAnchor.constraint(equalTo: footer.widthAnchor),
         ])
         window?.initialFirstResponder = systemPromptTextView
         systemPromptTextView.nextKeyView = userPromptTextView
@@ -209,10 +221,21 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         let splitView = NSSplitView()
         splitView.isVertical = false
         splitView.dividerStyle = .thin
-        splitView.autosaveName = "CorrectionPromptEditorSplit"
+        let autosaveName = "CorrectionPromptEditorSplitV2"
+        let hasSavedLayout = UserDefaults.standard.object(
+            forKey: "NSSplitView Subview Frames \(autosaveName)"
+        ) != nil
+        splitView.autosaveName = autosaveName
         splitView.addArrangedSubview(makePane(label: systemLabel, editor: systemEditor))
         splitView.addArrangedSubview(makePane(label: userLabel, editor: userEditor))
-        splitView.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
+        if !hasSavedLayout {
+            DispatchQueue.main.async { [weak splitView] in
+                guard let splitView else { return }
+                splitView.window?.contentView?.layoutSubtreeIfNeeded()
+                guard splitView.bounds.height > 0 else { return }
+                splitView.setPosition(splitView.bounds.height * 0.62, ofDividerAt: 0)
+            }
+        }
         return splitView
     }
 
