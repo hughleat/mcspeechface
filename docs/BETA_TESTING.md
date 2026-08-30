@@ -27,6 +27,9 @@ check.
 4. For the product-identity migration, confirm the old data directory is moved
    rather than copied and free disk space does not fall by the size of installed models.
 5. Confirm settings, vocabulary, history, and downloaded models remain available.
+   If files existed under both identities, confirm older conflicting copies were
+   preserved under `Previous Installation Conflicts` in McSpeechface's Application
+   Support folder.
 6. If launch at login was enabled, enable it again for McSpeechface, remove any
    earlier entry still shown in System Settings, then confirm McSpeechface starts
    only once after logging out and back in.

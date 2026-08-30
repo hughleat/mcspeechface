@@ -18,7 +18,7 @@ struct LegacyInstallationMigratorTests {
         #expect(try String(contentsOf: current.appendingPathComponent("model.bin")) == "model")
     }
 
-    @Test func mergesWithoutOverwritingExistingFiles() throws {
+    @Test func archivesConflictsWithoutOverwritingExistingFiles() throws {
         let fixture = try MigrationFixture()
         defer { fixture.remove() }
         let previous = fixture.root.appendingPathComponent("Previous", isDirectory: true)
@@ -31,10 +31,105 @@ struct LegacyInstallationMigratorTests {
 
         let report = try LegacyInstallationMigrator.migrateDirectory(from: previous, to: current)
 
-        #expect(report.movedItems == ["missing.txt"])
-        #expect(report.skippedItems == ["shared.txt"])
+        #expect(report.movedItems == [
+            "shared.txt -> Previous Installation Conflicts/shared.txt",
+            "missing.txt",
+        ])
+        #expect(report.skippedItems.isEmpty)
         #expect(try String(contentsOf: current.appendingPathComponent("shared.txt")) == "new")
+        #expect(
+            try String(
+                contentsOf: current.appendingPathComponent(
+                    "Previous Installation Conflicts/shared.txt"
+                )
+            ) == "old"
+        )
+        #expect(!FileManager.default.fileExists(atPath: previous.path))
+    }
+
+    @Test func deduplicatesAConflictAlreadyInTheArchive() throws {
+        let fixture = try MigrationFixture()
+        defer { fixture.remove() }
+        let previous = fixture.root.appendingPathComponent("Previous", isDirectory: true)
+        let current = fixture.root.appendingPathComponent("Current", isDirectory: true)
+        let archive = current.appendingPathComponent(
+            "Previous Installation Conflicts",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: previous, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: previous.appendingPathComponent("shared.txt"))
+        try Data("new".utf8).write(to: current.appendingPathComponent("shared.txt"))
+        try Data("old".utf8).write(to: archive.appendingPathComponent("shared.txt"))
+
+        let report = try LegacyInstallationMigrator.migrateDirectory(from: previous, to: current)
+
+        #expect(report.movedItems == [
+            "shared.txt -> Previous Installation Conflicts/shared.txt"
+        ])
+        #expect(report.skippedItems.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: previous.path))
+    }
+
+    @Test func hiddenFilesAreMigrated() throws {
+        let fixture = try MigrationFixture()
+        defer { fixture.remove() }
+        let previous = fixture.root.appendingPathComponent("Previous", isDirectory: true)
+        let current = fixture.root.appendingPathComponent("Current", isDirectory: true)
+        try FileManager.default.createDirectory(at: previous, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        try Data("state".utf8).write(to: previous.appendingPathComponent(".state"))
+
+        let report = try LegacyInstallationMigrator.migrateDirectory(from: previous, to: current)
+
+        #expect(report.movedItems == [".state"])
+        #expect(report.skippedItems.isEmpty)
+        #expect(try String(contentsOf: current.appendingPathComponent(".state")) == "state")
+        #expect(!FileManager.default.fileExists(atPath: previous.path))
+    }
+
+    @Test func conflictArchiveSymlinkCannotRedirectEarlierData() throws {
+        let fixture = try MigrationFixture()
+        defer { fixture.remove() }
+        let previous = fixture.root.appendingPathComponent("Previous", isDirectory: true)
+        let current = fixture.root.appendingPathComponent("Current", isDirectory: true)
+        let external = fixture.root.appendingPathComponent("External", isDirectory: true)
+        try FileManager.default.createDirectory(at: previous, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: previous.appendingPathComponent("shared.txt"))
+        try Data("new".utf8).write(to: current.appendingPathComponent("shared.txt"))
+        try FileManager.default.createSymbolicLink(
+            at: current.appendingPathComponent("Previous Installation Conflicts"),
+            withDestinationURL: external
+        )
+
+        #expect(throws: LegacyInstallationMigrator.MigrationError.self) {
+            try LegacyInstallationMigrator.migrateDirectory(from: previous, to: current)
+        }
         #expect(try String(contentsOf: previous.appendingPathComponent("shared.txt")) == "old")
+        #expect(!FileManager.default.fileExists(atPath: external.appendingPathComponent("shared.txt").path))
+    }
+
+    @Test func hiddenSymlinksAreReportedAndLeftUntouched() throws {
+        let fixture = try MigrationFixture()
+        defer { fixture.remove() }
+        let previous = fixture.root.appendingPathComponent("Previous", isDirectory: true)
+        let current = fixture.root.appendingPathComponent("Current", isDirectory: true)
+        let external = fixture.root.appendingPathComponent("External", isDirectory: true)
+        try FileManager.default.createDirectory(at: previous, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: previous.appendingPathComponent(".external"),
+            withDestinationURL: external
+        )
+
+        let report = try LegacyInstallationMigrator.migrateDirectory(from: previous, to: current)
+
+        #expect(report.skippedItems == [".external"])
+        #expect(FileManager.default.fileExists(atPath: previous.appendingPathComponent(".external").path))
+        #expect(!FileManager.default.fileExists(atPath: current.appendingPathComponent(".external").path))
     }
 
     @Test func preferencesFillOnlyMissingValues() throws {
@@ -85,7 +180,7 @@ struct LegacyInstallationMigratorTests {
         )
 
         #expect(removed)
-        #expect(defaults.persistentDomain(forName: previousDomain) == nil)
+        #expect(defaults.persistentDomain(forName: previousDomain)?.isEmpty != false)
         #expect(
             defaults.persistentDomain(forName: currentDomain)?["shortcut"] as? String
                 == "right-command"
@@ -112,6 +207,45 @@ struct LegacyInstallationMigratorTests {
             )
         }
         #expect(defaults.persistentDomain(forName: previousDomain) != nil)
+    }
+
+    @Test func retryRemovesAnEmptyPreviousPreferenceFile() throws {
+        let fixture = try MigrationFixture()
+        defer { fixture.remove() }
+        let file = fixture.root.appendingPathComponent("previous.plist")
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [String: Any](),
+            format: .binary,
+            options: 0
+        )
+        try data.write(to: file)
+
+        try LegacyInstallationMigrator.removeEmptyPreferenceFileIfPresent(
+            domain: "previous",
+            preferencesDirectory: fixture.root
+        )
+
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+
+    @Test func retryPreservesANonemptyPreviousPreferenceFile() throws {
+        let fixture = try MigrationFixture()
+        defer { fixture.remove() }
+        let file = fixture.root.appendingPathComponent("previous.plist")
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: ["shortcut": "right-command"],
+            format: .binary,
+            options: 0
+        )
+        try data.write(to: file)
+
+        #expect(throws: LegacyInstallationMigrator.MigrationError.self) {
+            try LegacyInstallationMigrator.removeEmptyPreferenceFileIfPresent(
+                domain: "previous",
+                preferencesDirectory: fixture.root
+            )
+        }
+        #expect(FileManager.default.fileExists(atPath: file.path))
     }
 
     @Test func leavesDirectorySymlinksAndTheirTargetsUntouched() throws {

@@ -54,9 +54,11 @@ changed. Reinstall the command-line tool from
 owned earlier command link during installation. After confirming your models
 and settings are present, enable **Launch McSpeechface at login** again if you
 used it before; remove any earlier entry still shown in **System Settings >
-General > Login Items**. Then remove the older app from Applications. If migration
-cannot finish safely, McSpeechface leaves unresolved earlier items untouched,
-shows a warning without starting normally, and retries on its next launch.
+General > Login Items**. Then remove the older app from Applications. When an
+earlier data file conflicts with a current one, McSpeechface preserves the
+earlier copy in `Previous Installation Conflicts` inside its Application Support
+folder. Unsafe filesystem objects remain untouched and stop startup with a clear
+warning.
 
 <p align="center">
   <img src="docs/images/mcspeechface-setup.png" width="602" alt="Private, local first-run setup with Parakeet Compact selected">

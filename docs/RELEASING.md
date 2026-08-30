@@ -105,6 +105,8 @@ The complete hands-on checklist is in [`BETA_TESTING.md`](BETA_TESTING.md).
 Release artifacts use the app path `McSpeechface.app`, executable name
 `McSpeechface`, and bundle identifier `com.hughleat.mcspeechface`. The first
 launch migration moves data and preferences from earlier betas without copying
-downloaded models. Because the bundle identifier changed, testers must approve
+downloaded models. Conflicting older files are preserved under `Previous
+Installation Conflicts` inside the current Application Support folder. Because
+the bundle identifier changed, testers must approve
 Microphone, Accessibility, and, when using Apple Speech, Speech Recognition
 again after upgrading.
