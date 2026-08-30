@@ -57,9 +57,17 @@ final class DictationPreferencesView: NSStackView {
         languagePicker.action = #selector(selectionChanged)
         languagePicker.setAccessibilityLabel("Language")
 
-        let modeRow = row(label: "Mode", control: modeControl)
-        let punctuationRow = row(label: "Punctuation", control: punctuationPicker)
-        let languageRow = row(label: "Language", control: languagePicker)
+        let modeRow = row(
+            label: "Mode",
+            helpText: "Standard applies spoken formatting, vocabulary replacements, and snippets. Verbatim returns the model's transcript without those changes.",
+            control: modeControl
+        )
+        let punctuationRow = row(
+            label: "Punctuation",
+            helpText: "Automatic keeps punctuation produced by the model. Spoken replaces phrases such as 'comma' and 'full stop'. None removes punctuation. New line and new paragraph work in every Standard punctuation mode.",
+            control: punctuationPicker
+        )
+        let languageRow = row(label: "Language", helpText: nil, control: languagePicker)
         addArrangedSubview(modeRow)
         addArrangedSubview(punctuationRow)
         addArrangedSubview(languageRow)
@@ -68,10 +76,16 @@ final class DictationPreferencesView: NSStackView {
         }
     }
 
-    private func row(label: String, control: NSView) -> NSStackView {
-        let title = NSTextField(labelWithString: label)
-        title.textColor = .secondaryLabelColor
-        title.widthAnchor.constraint(equalToConstant: 92).isActive = true
+    private func row(label: String, helpText: String?, control: NSView) -> NSStackView {
+        let title: NSView
+        if let helpText {
+            title = SettingsInfoLabel(label, helpText: helpText, textColor: .secondaryLabelColor)
+        } else {
+            let label = NSTextField(labelWithString: label)
+            label.textColor = .secondaryLabelColor
+            title = label
+        }
+        title.widthAnchor.constraint(equalToConstant: 124).isActive = true
         let spacer = NSView()
         let row = NSStackView(views: [title, spacer, control])
         row.orientation = .horizontal

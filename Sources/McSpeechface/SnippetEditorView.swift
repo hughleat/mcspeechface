@@ -64,8 +64,11 @@ final class SnippetEditorView: NSStackView, NSTableViewDataSource, NSTableViewDe
         alignment = .leading
         spacing = 8
 
-        let label = NSTextField(labelWithString: "Snippets")
-        label.font = .systemFont(ofSize: 13, weight: .medium)
+        let label = SettingsInfoLabel(
+            "Snippets",
+            helpText: "Snippets expand a short spoken trigger into longer reusable text. Use Replacements instead for names, terminology, and corrected spellings.",
+            font: .systemFont(ofSize: 13, weight: .medium)
+        )
         table.addTableColumn(column(identifier: "trigger", title: "When McSpeechface hears"))
         table.addTableColumn(column(identifier: "content", title: "McSpeechface inserts"))
         table.dataSource = self

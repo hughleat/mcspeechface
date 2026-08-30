@@ -398,7 +398,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func reviewPreferenceRow() -> NSView {
-        let label = NSTextField(labelWithString: "Review before pasting")
+        let label = SettingsInfoLabel(
+            "Review before pasting",
+            helpText: "Controls when the transcript preview appears before text is pasted or copied. The preview lets you edit, play the recording, or add more dictation. In On request mode it also offers Repair."
+        )
         let row = NSStackView(views: [label, NSView(), reviewPreferenceButton])
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -407,7 +410,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func correctionTimingRow() -> NSView {
-        let label = NSTextField(labelWithString: "Correction timing")
+        let label = SettingsInfoLabel(
+            "Correction timing",
+            helpText: "Choose whether the selected correction model runs after every transcription, only when you press Repair in the preview, or not at all. On request avoids correction delay during ordinary dictation."
+        )
         let row = NSStackView(views: [label, NSView(), correctionTimingButton])
         row.orientation = .horizontal
         row.alignment = .centerY

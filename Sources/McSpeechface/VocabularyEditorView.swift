@@ -83,14 +83,17 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
         alignment = .leading
         spacing = 10
 
-        let label = NSTextField(labelWithString: "Vocabulary")
-        label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let label = SettingsInfoLabel(
+            "Applies in",
+            helpText: "All apps is the shared vocabulary used everywhere. An app-specific profile inherits those replacements and can add or override entries only when dictating into that app.",
+            font: .systemFont(ofSize: 13, weight: .medium)
+        )
 
-        profilePicker.addItem(withTitle: "Global")
+        profilePicker.addItem(withTitle: "All apps")
         profilePicker.target = self
         profilePicker.action = #selector(profileChanged)
-        profilePicker.toolTip = "Choose vocabulary scope"
-        profilePicker.setAccessibilityLabel("Vocabulary scope")
+        profilePicker.toolTip = "Choose where these vocabulary replacements apply"
+        profilePicker.setAccessibilityLabel("Vocabulary applies in")
 
         let spokenColumn = column(identifier: "spoken", title: "When McSpeechface hears")
         let writtenColumn = column(identifier: "written", title: "McSpeechface writes")
@@ -149,7 +152,7 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
     private func rebuildProfilePicker(selectingBundleID bundleID: String?) {
         let selectedBundleID = bundleID ?? selectedProfile?.bundle_id
         profilePicker.removeAllItems()
-        profilePicker.addItem(withTitle: "Global")
+        profilePicker.addItem(withTitle: "All apps")
         for profile in profilesDocument.profiles {
             let title = profile.name.isEmpty ? profile.displayBundleID : profile.displayName
             profilePicker.addItem(withTitle: title)

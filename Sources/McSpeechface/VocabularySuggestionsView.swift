@@ -54,8 +54,11 @@ final class VocabularySuggestionsView: NSStackView, NSTableViewDataSource, NSTab
         alignment = .leading
         spacing = 8
 
-        let label = NSTextField(labelWithString: "Vocabulary Suggestions")
-        label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let label = SettingsInfoLabel(
+            "Vocabulary Suggestions",
+            helpText: "McSpeechface learns possible replacements from corrections you save. Accept one for its source app or for all apps; dismissing it leaves your vocabulary unchanged.",
+            font: .systemFont(ofSize: 13, weight: .medium)
+        )
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("suggestion"))
         column.title = "Suggestions"

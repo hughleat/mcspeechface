@@ -127,8 +127,11 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         scrollView.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 206).isActive = true
 
-        let idleTimeoutLabel = NSTextField(labelWithString: "Unload local model after")
-        idleTimeoutLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        let idleTimeoutLabel = SettingsInfoLabel(
+            "Unload local model after",
+            helpText: "Keeping a local correction model loaded makes later corrections start faster but uses memory. It unloads after this period without a correction; Stop unloads it immediately.",
+            font: .systemFont(ofSize: 13, weight: .medium)
+        )
         for timeout in LocalCorrectionIdleTimeout.allCases {
             idleTimeoutPopup.addItem(withTitle: timeout.title)
             idleTimeoutPopup.lastItem?.tag = timeout.rawValue
@@ -155,8 +158,11 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         storageLabel.textColor = .secondaryLabelColor
         storageLabel.alignment = .right
         storageLabel.isHidden = true
-        let instructionsLabel = NSTextField(labelWithString: "Correction Prompts")
-        instructionsLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        let instructionsLabel = SettingsInfoLabel(
+            "Correction Prompts",
+            helpText: "These system and user templates tell every correction provider how to revise a transcript. Editing them changes local, Apple, Codex, Claude, and custom-command corrections.",
+            font: .systemFont(ofSize: 13, weight: .medium)
+        )
         let promptsButton = NSButton(
             title: "Edit…",
             target: self,

@@ -70,6 +70,101 @@ struct SettingsConstructionTests {
     }
 
     @Test @MainActor
+    func contextualHelpIsAccessibleAndVocabularyScopeIsPlainEnglish() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let help = SettingsInfoButton(
+            topic: "Example setting",
+            helpText: "This explains the consequence of the setting."
+        )
+        let host = NSView()
+        help.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(help)
+        NSLayoutConstraint.activate([
+            help.centerXAnchor.constraint(equalTo: host.centerXAnchor),
+            help.centerYAnchor.constraint(equalTo: host.centerYAnchor),
+        ])
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        #expect(help.accessibilityLabel() == "About Example setting")
+        #expect(help.accessibilityHelp() == "This explains the consequence of the setting.")
+        #expect(help.toolTip == "About Example setting")
+
+        help.performClick(nil)
+        let popover = try #require(help.helpPopover)
+        #expect(popover.isShown)
+        #expect(popover.contentSize.width > 0)
+        #expect(popover.contentSize.height > 0)
+        let popoverText = allSubviews(
+            of: NSTextField.self,
+            in: try #require(popover.contentViewController?.view)
+        ).map(\.stringValue)
+        #expect(popoverText.contains("Example setting"))
+        #expect(popoverText.contains("This explains the consequence of the setting."))
+
+        help.performClick(nil)
+        #expect(!popover.isShown)
+
+        help.performClick(nil)
+        let reopenedPopover = try #require(help.helpPopover)
+        #expect(reopenedPopover.isShown)
+        NotificationCenter.default.post(
+            name: NSApplication.didResignActiveNotification,
+            object: NSApp
+        )
+        #expect(!reopenedPopover.isShown)
+
+        let vocabulary = VocabularyEditorView(service: McSpeechfaceService())
+        let scope = try #require(allSubviews(of: NSPopUpButton.self, in: vocabulary).first {
+            $0.accessibilityLabel() == "Vocabulary applies in"
+        })
+        #expect(scope.itemTitles.first == "All apps")
+        #expect(allSubviews(of: SettingsInfoButton.self, in: vocabulary).contains {
+            $0.accessibilityLabel() == "About Applies in"
+        })
+    }
+
+    @Test @MainActor
+    func contextualHelpStaysInsideNarrowAndWideSettingsLayouts() {
+        _ = NSApplication.shared
+        let settings = SettingsWindowController(service: McSpeechfaceService())
+        defer { settings.close() }
+        for width in [500.0, 1_200.0] {
+            let general = DictationPreferencesView()
+            assertHelpLayout(in: general, width: width, expectedCount: 2)
+
+            let corrections = TranscriptEditingSettingsView(service: TranscriptEditingService())
+            corrections.cancelWork()
+            assertHelpLayout(in: corrections, width: width, expectedCount: 2)
+
+            let vocabulary = VocabularyEditorView(service: McSpeechfaceService())
+            assertHelpLayout(in: vocabulary, width: width, expectedCount: 1)
+
+            let snippets = SnippetEditorView(service: McSpeechfaceService())
+            assertHelpLayout(in: snippets, width: width, expectedCount: 1)
+
+            let suggestions = VocabularySuggestionsView(service: McSpeechfaceService())
+            assertHelpLayout(in: suggestions, width: width, expectedCount: 1)
+        }
+
+        for width in [720.0, 1_200.0] {
+            settings.window?.setContentSize(NSSize(width: width, height: 640))
+            guard let content = settings.window?.contentView else {
+                Issue.record("Settings window has no content view")
+                continue
+            }
+            content.layoutSubtreeIfNeeded()
+            assertHelpFrames(in: content, expectedCount: 4)
+        }
+    }
+
+    @Test @MainActor
     func permissionRowsStayCompactWhenThePageIsTall() {
         _ = NSApplication.shared
         let view = PermissionSettingsView(frame: NSRect(x: 0, y: 0, width: 520, height: 500))
@@ -943,6 +1038,35 @@ struct SettingsConstructionTests {
         #expect(TranscriptEditingModel.model(cliKey: "codex") == .codexCommandLine)
         #expect(TranscriptEditingModel.model(cliKey: "qwen-3-0.6b") == .qwen3SmallLocal)
         #expect(TranscriptEditingModel.model(cliKey: "missing") == nil)
+    }
+}
+
+@MainActor
+private func assertHelpLayout(in view: NSView, width: CGFloat, expectedCount: Int) {
+    let host = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 700))
+    view.translatesAutoresizingMaskIntoConstraints = false
+    host.addSubview(view)
+    NSLayoutConstraint.activate([
+        view.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+        view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+        view.topAnchor.constraint(equalTo: host.topAnchor),
+        view.bottomAnchor.constraint(equalTo: host.bottomAnchor),
+    ])
+    host.layoutSubtreeIfNeeded()
+
+    assertHelpFrames(in: view, expectedCount: expectedCount)
+}
+
+@MainActor
+private func assertHelpFrames(in view: NSView, expectedCount: Int) {
+    let helpButtons = allSubviews(of: SettingsInfoButton.self, in: view)
+    #expect(helpButtons.count == expectedCount)
+    for button in helpButtons {
+        let alignmentRect = button.alignmentRect(forFrame: button.frame)
+        let frame = view.convert(alignmentRect, from: button.superview)
+        #expect(view.bounds.contains(frame))
+        #expect(frame.width >= button.fittingSize.width - 0.5)
+        #expect(abs(frame.height - 18) < 0.5)
     }
 }
 
