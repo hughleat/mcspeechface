@@ -54,17 +54,27 @@ final class SettingsInfoButton: NSButton, NSPopoverDelegate {
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = 9
-        content.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
         message.widthAnchor.constraint(equalToConstant: 304).isActive = true
 
+        let container = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: container.topAnchor, constant: 24),
+            content.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 24),
+            container.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: 24),
+            container.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: 24),
+        ])
+
         let controller = NSViewController()
-        controller.view = content
+        controller.view = container
         let popover = NSPopover()
         popover.animates = false
         popover.behavior = .applicationDefined
         popover.delegate = self
         popover.contentViewController = controller
-        popover.contentSize = NSSize(width: 340, height: content.fittingSize.height)
+        let contentSize = content.fittingSize
+        popover.contentSize = NSSize(width: contentSize.width + 48, height: contentSize.height + 48)
         helpPopover = popover
         popover.show(relativeTo: bounds, of: self, preferredEdge: .maxY)
         monitorOutsideClicks()

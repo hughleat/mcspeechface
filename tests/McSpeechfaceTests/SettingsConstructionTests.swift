@@ -83,9 +83,10 @@ struct SettingsConstructionTests {
             backing: .buffered,
             defer: false
         )
+        let explanation = "This longer explanation describes the consequence of the setting and wraps across several lines so the popover layout is exercised."
         let help = SettingsInfoButton(
             topic: "Example setting",
-            helpText: "This explains the consequence of the setting."
+            helpText: explanation
         )
         let host = NSView()
         help.translatesAutoresizingMaskIntoConstraints = false
@@ -98,7 +99,7 @@ struct SettingsConstructionTests {
         window.makeKeyAndOrderFront(nil)
         defer { window.close() }
         #expect(help.accessibilityLabel() == "About Example setting")
-        #expect(help.accessibilityHelp() == "This explains the consequence of the setting.")
+        #expect(help.accessibilityHelp() == explanation)
         #expect(help.toolTip == "About Example setting")
 
         help.performClick(nil)
@@ -106,12 +107,27 @@ struct SettingsConstructionTests {
         #expect(popover.isShown)
         #expect(popover.contentSize.width > 0)
         #expect(popover.contentSize.height > 0)
-        let popoverText = allSubviews(
+        let popoverContent = try #require(popover.contentViewController?.view)
+        popoverContent.layoutSubtreeIfNeeded()
+        let popoverFields = allSubviews(
             of: NSTextField.self,
-            in: try #require(popover.contentViewController?.view)
-        ).map(\.stringValue)
-        #expect(popoverText.contains("Example setting"))
-        #expect(popoverText.contains("This explains the consequence of the setting."))
+            in: popoverContent
+        )
+        #expect(popoverFields.map(\.stringValue).contains("Example setting"))
+        let message = try #require(popoverFields.first { $0.stringValue == explanation })
+        let messageFrame = popoverContent.convert(
+            message.alignmentRect(forFrame: message.frame),
+            from: message.superview
+        )
+        #expect(messageFrame.minX >= 23.5)
+        #expect(popoverContent.bounds.maxX - messageFrame.maxX >= 23.5)
+        #expect(messageFrame.minY >= 23.5)
+        let title = try #require(popoverFields.first { $0.stringValue == "Example setting" })
+        let titleFrame = popoverContent.convert(
+            title.alignmentRect(forFrame: title.frame),
+            from: title.superview
+        )
+        #expect(popoverContent.bounds.maxY - titleFrame.maxY >= 23.5)
 
         help.performClick(nil)
         #expect(!popover.isShown)
