@@ -76,6 +76,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.center()
         window.minSize = NSSize(width: 720, height: 520)
         window.setFrameAutosaveName("McSpeechfaceSettingsWindow")
+        window.isReleasedWhenClosed = false
+        window.hidesOnDeactivate = false
         super.init(window: window)
         window.delegate = self
         modelManagementView.onModelChanged = { [weak self] model in

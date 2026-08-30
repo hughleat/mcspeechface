@@ -160,7 +160,7 @@ final class PermissionSettingsView: NSStackView {
 
     private func openSystemSettings(_ pane: String) {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
-        NSWorkspace.shared.open(url)
+        PermissionSettingsReturn.settings.recordOpen(NSWorkspace.shared.open(url))
     }
 
     private static func microphoneStatusText(_ status: AVAuthorizationStatus) -> String {

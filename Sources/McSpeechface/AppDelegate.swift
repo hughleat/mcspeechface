@@ -178,6 +178,18 @@ import UniformTypeIdentifiers
         commandServer.stop()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard let destination = PermissionSettingsReturn.consume(
+            setupCompleted: UserDefaults.standard.bool(forKey: "setupCompleted")
+        ) else { return }
+        switch destination {
+        case .settings:
+            settingsWindow.showPermissionsSettings()
+        case .setup:
+            showSetup()
+        }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !localCorrectionShutdownPrepared else { return .terminateNow }
         localCorrectionShutdownPrepared = true
@@ -921,10 +933,14 @@ import UniformTypeIdentifiers
     }
 
     @objc private func openAccessibilitySettings() {
+        presentAccessibilitySettings(returningTo: .settings)
+    }
+
+    private func presentAccessibilitySettings(returningTo destination: PermissionSettingsReturn) {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
-        NSWorkspace.shared.open(url)
+        destination.recordOpen(NSWorkspace.shared.open(url))
     }
 
     private func requestMicrophoneAccess() {
@@ -935,7 +951,7 @@ import UniformTypeIdentifiers
             return
         }
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") else { return }
-        NSWorkspace.shared.open(url)
+        PermissionSettingsReturn.setup.recordOpen(NSWorkspace.shared.open(url))
     }
 
     @objc private func toggleRecording() {
@@ -1880,7 +1896,9 @@ import UniformTypeIdentifiers
             shortcutName: hotkeys.shortcut.displayName
         )
         controller.onRequestMicrophone = { [weak self] in self?.requestMicrophoneAccess() }
-        controller.onOpenAccessibility = { [weak self] in self?.openAccessibilitySettings() }
+        controller.onOpenAccessibility = { [weak self] in
+            self?.presentAccessibilitySettings(returningTo: .setup)
+        }
         controller.onModelsChanged = { [weak self] models in
             self?.applyModelInventory(models)
         }

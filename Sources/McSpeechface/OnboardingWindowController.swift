@@ -59,6 +59,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         window.minSize = NSSize(width: 600, height: 540)
         window.center()
         window.isReleasedWhenClosed = false
+        window.hidesOnDeactivate = false
         super.init(window: window)
         window.delegate = self
         buildContent()
@@ -498,7 +499,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         } else if let url = URL(string:
             "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
         ) {
-            NSWorkspace.shared.open(url)
+            PermissionSettingsReturn.setup.recordOpen(NSWorkspace.shared.open(url))
         }
     }
 
