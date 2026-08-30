@@ -203,7 +203,7 @@ struct ModelManagementViewTests {
         guard available.count == 2 else { return }
         let view = ModelManagementView(service: McSpeechfaceService())
         let button = try #require(allSubviews(of: NSButton.self, in: view).first {
-            $0.title == "Compare Installed Models…"
+            $0.title == "Compare Transcription Models…"
         })
         var comparisonRequests = 0
         view.onCompareModels = { comparisonRequests += 1 }

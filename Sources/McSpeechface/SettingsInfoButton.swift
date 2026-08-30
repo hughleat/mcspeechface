@@ -44,11 +44,19 @@ final class SettingsInfoButton: NSButton, NSPopoverDelegate {
             return
         }
 
+        let popover = makeHelpPopover()
+        helpPopover = popover
+        popover.show(relativeTo: bounds, of: self, preferredEdge: .maxY)
+        monitorOutsideClicks()
+    }
+
+    func makeHelpPopover() -> NSPopover {
         let title = NSTextField(labelWithString: topic)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         let message = NSTextField(wrappingLabelWithString: helpText)
         message.textColor = .secondaryLabelColor
         message.maximumNumberOfLines = 0
+        message.preferredMaxLayoutWidth = 304
 
         let content = NSStackView(views: [title, message])
         content.orientation = .vertical
@@ -75,9 +83,7 @@ final class SettingsInfoButton: NSButton, NSPopoverDelegate {
         popover.contentViewController = controller
         let contentSize = content.fittingSize
         popover.contentSize = NSSize(width: contentSize.width + 48, height: contentSize.height + 48)
-        helpPopover = popover
-        popover.show(relativeTo: bounds, of: self, preferredEdge: .maxY)
-        monitorOutsideClicks()
+        return popover
     }
 
     func popoverDidClose(_ notification: Notification) {

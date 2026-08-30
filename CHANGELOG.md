@@ -3,6 +3,23 @@
 Notable changes to McSpeechface are recorded here. McSpeechface is currently in public beta,
 so releases may also refine existing behaviour and compatibility.
 
+## 0.1.0-beta.10 - 2026-08-30
+
+### Changed
+
+- Clarified settings with contextual help for dictation modes, replacements,
+  snippets, correction providers, and the `mcspeechface` command-line tool.
+- Aligned Privacy controls consistently and gave help popovers more breathing
+  room.
+
+### Fixed
+
+- Fixed **Launch McSpeechface at login** by packaging and locating its embedded
+  login-item helper correctly.
+- Kept the Permissions window open while returning from System Settings and
+  refreshed Accessibility status after permission was granted.
+- Replaced the incomplete "Models are" startup message with stable model status.
+
 ## 0.1.0-beta.9 - 2026-08-30
 
 ### Changed

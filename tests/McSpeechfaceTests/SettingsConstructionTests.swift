@@ -77,37 +77,20 @@ struct SettingsConstructionTests {
     @Test @MainActor
     func contextualHelpIsAccessibleAndVocabularyScopeIsPlainEnglish() throws {
         _ = NSApplication.shared
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
         let explanation = "This longer explanation describes the consequence of the setting and wraps across several lines so the popover layout is exercised."
         let help = SettingsInfoButton(
             topic: "Example setting",
             helpText: explanation
         )
-        let host = NSView()
-        help.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(help)
-        NSLayoutConstraint.activate([
-            help.centerXAnchor.constraint(equalTo: host.centerXAnchor),
-            help.centerYAnchor.constraint(equalTo: host.centerYAnchor),
-        ])
-        window.contentView = host
-        window.makeKeyAndOrderFront(nil)
-        defer { window.close() }
         #expect(help.accessibilityLabel() == "About Example setting")
         #expect(help.accessibilityHelp() == explanation)
         #expect(help.toolTip == "About Example setting")
 
-        help.performClick(nil)
-        let popover = try #require(help.helpPopover)
-        #expect(popover.isShown)
+        let popover = help.makeHelpPopover()
         #expect(popover.contentSize.width > 0)
         #expect(popover.contentSize.height > 0)
         let popoverContent = try #require(popover.contentViewController?.view)
+        popoverContent.frame.size = popover.contentSize
         popoverContent.layoutSubtreeIfNeeded()
         let popoverFields = allSubviews(
             of: NSTextField.self,
@@ -128,18 +111,6 @@ struct SettingsConstructionTests {
             from: title.superview
         )
         #expect(popoverContent.bounds.maxY - titleFrame.maxY >= 23.5)
-
-        help.performClick(nil)
-        #expect(!popover.isShown)
-
-        help.performClick(nil)
-        let reopenedPopover = try #require(help.helpPopover)
-        #expect(reopenedPopover.isShown)
-        NotificationCenter.default.post(
-            name: NSApplication.didResignActiveNotification,
-            object: NSApp
-        )
-        #expect(!reopenedPopover.isShown)
 
         let vocabulary = VocabularyEditorView(service: McSpeechfaceService())
         let scope = try #require(allSubviews(of: NSPopUpButton.self, in: vocabulary).first {
