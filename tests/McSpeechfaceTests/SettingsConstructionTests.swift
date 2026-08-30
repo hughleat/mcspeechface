@@ -4,7 +4,7 @@ import Testing
 import McSpeechfaceEditing
 @testable import McSpeechface
 
-@Suite
+@Suite(.serialized)
 struct SettingsConstructionTests {
     @Test @MainActor
     func inlineErrorStateOffersAnAccessibleRetryActionOnlyWhenRequested() throws {
