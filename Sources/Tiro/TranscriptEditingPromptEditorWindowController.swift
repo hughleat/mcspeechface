@@ -221,7 +221,7 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         let splitView = NSSplitView()
         splitView.isVertical = false
         splitView.dividerStyle = .thin
-        let autosaveName = "CorrectionPromptEditorSplitV2"
+        let autosaveName = "CorrectionPromptEditorSplitV3"
         let hasSavedLayout = UserDefaults.standard.object(
             forKey: "NSSplitView Subview Frames \(autosaveName)"
         ) != nil

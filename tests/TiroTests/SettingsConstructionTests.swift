@@ -747,8 +747,11 @@ struct SettingsConstructionTests {
     }
 
     @Test @MainActor
-    func correctionPromptEditorsShareAResizableRememberedSplit() throws {
+    func correctionPromptEditorsShareAResizableRememberedSplit() async throws {
         _ = NSApplication.shared
+        let autosaveKey = "NSSplitView Subview Frames CorrectionPromptEditorSplitV3"
+        UserDefaults.standard.removeObject(forKey: autosaveKey)
+        defer { UserDefaults.standard.removeObject(forKey: autosaveKey) }
         let controller = TranscriptEditingPromptEditorWindowController()
         let window = try #require(controller.window)
         let contentView = try #require(controller.window?.contentView)
@@ -756,8 +759,11 @@ struct SettingsConstructionTests {
 
         #expect(splitView.isVertical == false)
         #expect(splitView.arrangedSubviews.count == 2)
-        #expect(splitView.autosaveName == "CorrectionPromptEditorSplitV2")
+        #expect(splitView.autosaveName == "CorrectionPromptEditorSplitV3")
         #expect(allSubviews(of: NSTextView.self, in: splitView).count == 2)
+        await Task.yield()
+        contentView.layoutSubtreeIfNeeded()
+        #expect(splitView.arrangedSubviews[0].frame.height > splitView.arrangedSubviews[1].frame.height)
         window.setFrame(
             NSRect(origin: window.frame.origin, size: window.minSize),
             display: false
