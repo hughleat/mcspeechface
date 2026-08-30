@@ -125,13 +125,22 @@ record, change models, open Settings, or quit. You can change the shortcut and
 turn off **Paste after transcription** in **Settings > General**. A completed
 transcript is still copied to the clipboard if automatic paste fails.
 
+### Optional Transcript Repair
+
 Corrections can run **Automatically**, **On request**, or be **Off**. In On
 request mode, McSpeechface shows the transcript immediately: Right Command accepts it
 and Option + Right Command repairs it with the selected correction model. Choose
 **Add more**, or hold Option + Right Command, to append another recording. Added
 speech stays uncorrected in transcript mode; after a repair, it is included in a
-new repair. The preview keeps the accumulated original and revised text available
-before you paste.
+new repair. The editable preview keeps the accumulated original and revised text
+available before you paste.
+
+Correction is separate from speech recognition. You can use Apple Intelligence,
+download a local language model, or configure Codex, Claude, or another command-line
+provider in **Settings > Models > Corrections**. The same page lets you edit the
+complete system and user prompt templates, compare providers on a saved transcript,
+and choose how long downloaded local models remain loaded for faster follow-up
+repairs. Correction models are optional and are never downloaded automatically.
 
 ## Privacy
 
@@ -157,7 +166,7 @@ in `~/Library/Application Support/McSpeechface/data/`. McSpeechface's diagnostic
 excludes transcripts, audio, clipboard contents, vocabulary, file paths, and
 application names.
 
-## Models
+## Transcription Models
 
 | Need | Suggested model | Download |
 | --- | --- | ---: |
@@ -185,6 +194,26 @@ Models**.
   <br><sub>The library shows each model's download size and installation state; the selected model can be changed at any time.</sub>
 </p>
 
+## Correction Models
+
+McSpeechface can repair filler words, stumbles, repetition, and spoken revisions
+after transcription. Start with **On request** correction timing so the original
+transcript appears immediately and repair adds latency only when you ask for it.
+
+| Provider | Runs | Setup |
+| --- | --- | --- |
+| Apple Intelligence | On this Mac | Available on supported Macs and macOS versions |
+| Qwen, Granite, SmolLM, and Ministral | On this Mac | Download only the local model you select |
+| Codex or Claude | May use the provider's service | Configure an installed, signed-in command-line tool |
+| Custom Command | Wherever your command runs | Choose an executable and editable arguments |
+
+The local catalogue currently includes Qwen 3.5 0.8B, Qwen 3 0.6B and 1.7B,
+Granite 4.0 1B, SmolLM3 3B, and Ministral 3 3B. McSpeechface shows whether a
+provider is ready, downloading, loaded, or unavailable. A **Stop** action unloads
+a running local model immediately; the idle timeout controls automatic unloading.
+External providers may send transcript text and prompts off-device, so McSpeechface
+labels them before selection.
+
 ## Do More
 
 Choose **Transcribe Audio File...** from the waveform menu or drop an audio
@@ -198,9 +227,19 @@ Identification** model.
   <br><sub>Transcribe existing audio and optionally identify speakers.</sub>
 </p>
 
-Vocabulary rules fix names and specialist terms automatically. McSpeechface also
-supports reusable snippets, spoken formatting, learned suggestions, and
-different vocabulary for individual applications.
+In **Settings > Vocabulary**, the three tabs serve different jobs:
+
+- **Replacements** fix a name, specialist term, or short phrase wherever it is
+  spoken, such as `yana` becoming `Janne`. They can apply in all apps or only a
+  selected application.
+- **Snippets** expand a short spoken trigger into a longer saved block, such as
+  `my signature` inserting a complete sign-off or address.
+- **Suggestions** are replacements McSpeechface has learned enough evidence to
+  propose; you decide whether to accept them.
+
+Standard dictation mode also supports spoken formatting such as `new line` and
+`new paragraph`. Verbatim mode returns the speech model's output without spoken
+formatting, replacements, or snippets.
 
 <p align="center">
   <img src="docs/images/mcspeechface-vocabulary.png" width="720" alt="McSpeechface's structured vocabulary replacement editor">
@@ -215,6 +254,19 @@ for replay and model comparison.
   <img src="docs/images/mcspeechface-history.png" width="620" alt="McSpeechface's searchable local transcription history">
   <br><sub>Your optional transcription history stays on your Mac.</sub>
 </p>
+
+For scripts and terminal workflows, install the bundled `mcspeechface` helper
+from **Settings > General**. It can transcribe files, identify speakers, record
+until Control-D, copy results, return JSON, and opt into correction without
+loading a second model process. For example:
+
+```sh
+mcspeechface transcribe meeting.m4a --diarize --json
+mcspeechface record --correct --copy
+```
+
+See the [command-line guide](docs/COMMAND_LINE.md) for models, one-off correction
+instructions, session-based recording, and the complete syntax.
 
 ## Remove McSpeechface
 
