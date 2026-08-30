@@ -832,6 +832,40 @@ struct SettingsConstructionTests {
     }
 
     @Test @MainActor
+    func historyRowActionsStayAtTheTrailingEdge() throws {
+        _ = NSApplication.shared
+        let target = HistoryView(service: TiroService())
+        let entries = [
+            historyEntry(text: "Short transcript"),
+            historyEntry(text: String(repeating: "A much longer transcript ", count: 8)),
+        ]
+
+        for (index, entry) in entries.enumerated() {
+            let row = HistoryRowView(identifier: NSUserInterfaceItemIdentifier("HistoryRow-\(index)"))
+            row.frame = NSRect(x: 0, y: 0, width: 520, height: 66)
+            row.configure(
+                entry: entry,
+                metadata: "Today  ·  Parakeet 0.6B v3  ·  0.3s",
+                row: index,
+                isPlaying: false,
+                target: target
+            )
+            row.needsUpdateConstraints = true
+            row.updateConstraintsForSubtreeIfNeeded()
+            row.needsLayout = true
+            row.layoutSubtreeIfNeeded()
+
+            let buttons = allSubviews(of: NSButton.self, in: row)
+            let deleteButton = try #require(buttons.first {
+                $0.accessibilityLabel()?.hasPrefix("Delete transcription") == true
+            })
+            let trailingEdge = deleteButton.convert(deleteButton.bounds, to: row).maxX
+            #expect(abs(trailingEdge - (row.bounds.maxX - 8)) <= 0.5)
+            #expect(row.autoresizingMask.contains(.width))
+        }
+    }
+
+    @Test @MainActor
     func settingsSidebarIconsAreDecorative() {
         let imageView = NSImageView()
         SettingsNavigationController.configureSidebarIcon(imageView, symbolName: "gearshape")
@@ -932,6 +966,23 @@ private func transcriptionResponse(
         source_filename: nil,
         segments: [],
         saved_to_history: false
+    )
+}
+
+private func historyEntry(text: String) -> HistoryEntry {
+    HistoryEntry(
+        id: UUID().uuidString,
+        timestamp: "2026-08-30T12:00:00Z",
+        model: "coreml-parakeet-v3",
+        transcriptionSeconds: 0.3,
+        text: text,
+        rawText: nil,
+        correctedText: nil,
+        originBundleID: nil,
+        originAppName: nil,
+        sourceFilename: nil,
+        audioAvailable: true,
+        audioFile: nil
     )
 }
 

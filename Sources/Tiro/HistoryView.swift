@@ -204,6 +204,7 @@ final class HistoryView: NSStackView, NSSearchFieldDelegate, NSTableViewDataSour
         let identifier = NSUserInterfaceItemIdentifier("HistoryRow")
         let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? HistoryRowView)
             ?? HistoryRowView(identifier: identifier)
+        cell.frame.size.width = tableColumn?.width ?? tableView.bounds.width
         let entry = entries[row]
         cell.configure(
             entry: entry,
@@ -398,13 +399,15 @@ enum HistoryAccessibility {
     }
 }
 
-private final class HistoryRowView: NSTableCellView {
+final class HistoryRowView: NSTableCellView {
     private let excerptLabel = NSTextField(labelWithString: "")
     private let metadataLabel = NSTextField(labelWithString: "")
     private let copyButton = NSButton()
     private let correctButton = NSButton()
     private let playButton = NSButton()
     private let deleteButton = NSButton()
+    private lazy var labels = NSStackView(views: [excerptLabel, metadataLabel])
+    private lazy var buttons = NSStackView(views: [copyButton, correctButton, playButton, deleteButton])
 
     init(identifier: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -414,34 +417,50 @@ private final class HistoryRowView: NSTableCellView {
 
     required init?(coder: NSCoder) { nil }
 
+    override func layout() {
+        super.layout()
+        let buttonSize = buttons.fittingSize
+        buttons.frame = NSRect(
+            x: bounds.maxX - 8 - buttonSize.width,
+            y: (bounds.height - buttonSize.height) / 2,
+            width: buttonSize.width,
+            height: buttonSize.height
+        )
+        labels.frame = NSRect(
+            x: 8,
+            y: 0,
+            width: max(0, buttons.frame.minX - 18),
+            height: bounds.height
+        )
+        labels.needsLayout = true
+        buttons.needsLayout = true
+        labels.layoutSubtreeIfNeeded()
+        buttons.layoutSubtreeIfNeeded()
+    }
+
     private func buildContent() {
+        autoresizingMask = [.width]
         excerptLabel.font = .systemFont(ofSize: 13)
         excerptLabel.maximumNumberOfLines = 2
         excerptLabel.lineBreakMode = .byTruncatingTail
+        excerptLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         metadataLabel.font = .systemFont(ofSize: 11)
         metadataLabel.textColor = .secondaryLabelColor
         metadataLabel.lineBreakMode = .byTruncatingMiddle
+        metadataLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let labels = NSStackView(views: [excerptLabel, metadataLabel])
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 3
-        let buttons = NSStackView(views: [copyButton, correctButton, playButton, deleteButton])
         buttons.orientation = .horizontal
         buttons.alignment = .centerY
         buttons.spacing = 4
-        labels.translatesAutoresizingMaskIntoConstraints = false
-        buttons.translatesAutoresizingMaskIntoConstraints = false
+        labels.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        labels.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        buttons.setContentHuggingPriority(.required, for: .horizontal)
+        buttons.setContentCompressionResistancePriority(.required, for: .horizontal)
         addSubview(labels)
         addSubview(buttons)
-
-        NSLayoutConstraint.activate([
-            labels.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            labels.centerYAnchor.constraint(equalTo: centerYAnchor),
-            labels.trailingAnchor.constraint(equalTo: buttons.leadingAnchor, constant: -10),
-            buttons.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            buttons.centerYAnchor.constraint(equalTo: centerYAnchor)
-        ])
         for button in [copyButton, correctButton, playButton, deleteButton] {
             button.widthAnchor.constraint(equalToConstant: 28).isActive = true
             button.heightAnchor.constraint(equalToConstant: 28).isActive = true
