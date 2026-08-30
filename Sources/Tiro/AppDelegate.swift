@@ -1402,7 +1402,7 @@ import UniformTypeIdentifiers
             action: willPaste ? .paste : .copy,
             allowsCorrection: timing == .onRequest,
             correctionIsAvailable: correctionIsAvailable,
-            allowsCorrectionInstruction: hotkeys.supportsCorrectionGesture
+            correctionInstructionShortcut: correctionInstructionShortcut
         )
         let shouldReview = timing == .onRequest || TranscriptReviewPreference.load().shouldReview(
             textChanged: draft.textChanged,
@@ -1416,6 +1416,14 @@ import UniformTypeIdentifiers
         let reviewWindow = transcriptReviewWindow ?? TranscriptReviewWindowController()
         transcriptReviewWindow = reviewWindow
         reviewWindow.onCancelBusy = { [weak self] in self?.cancelRecording() }
+        reviewWindow.onRequestAdditionalInstruction = { [weak self] in
+            guard let self else { return }
+            if self.state == .addingCorrectionInstruction {
+                self.stopCorrectionInstructionRecording()
+            } else {
+                _ = self.startCorrectionInstructionRecording()
+            }
+        }
         while !Task.isCancelled, transcriptionID == operationID {
             state = .reviewing
             menuToggleItem.title = willPaste ? "Paste Transcription" : "Copy Transcription"
@@ -1442,14 +1450,20 @@ import UniformTypeIdentifiers
                     audioURL: audioURL,
                     duration: response.transcription_seconds,
                     action: willPaste ? .paste : .copy,
-                    allowsCorrection: requestedOutcome.failed,
+                    allowsCorrection: true,
                     correctionIsAvailable: true,
-                    allowsCorrectionInstruction: hotkeys.supportsCorrectionGesture
+                    correctionInstructionShortcut: correctionInstructionShortcut
                 )
             case .cancelled: return nil
             }
         }
         return nil
+    }
+
+    private var correctionInstructionShortcut: String? {
+        hotkeys.supportsCorrectionGesture
+            ? "Option + \(hotkeys.shortcut.displayName)"
+            : nil
     }
 
     private func correctionOutcome(

@@ -150,8 +150,15 @@ struct TranscriptReviewTests {
 
         let pasteButton = try #require(allSubviews(of: NSButton.self, in: controller.window?.contentView)
             .first { $0.title == "Paste" })
+        let background = try #require(
+            pasteButton.layer?.backgroundColor.flatMap(NSColor.init(cgColor:))?
+                .usingColorSpace(.deviceRGB)
+        )
         #expect(controller.isReviewing)
         #expect(pasteButton.isEnabled)
+        #expect(!pasteButton.isBordered)
+        #expect(background.greenComponent > background.redComponent + 0.35)
+        #expect(background.alphaComponent > 0.9)
         pasteButton.performClick(nil)
 
         #expect(await review.value == .accepted("Send it tomorrow."))
@@ -185,6 +192,48 @@ struct TranscriptReviewTests {
             instructionText: nil
         ))
         controller.cancel()
+    }
+
+    @Test @MainActor
+    func onRequestPreviewOffersVisibleAddMoreActionWithConfiguredShortcut() async throws {
+        _ = NSApplication.shared
+        let controller = TranscriptReviewWindowController()
+        var requestCount = 0
+        controller.onRequestAdditionalInstruction = {
+            requestCount += 1
+            if requestCount == 1 {
+                #expect(controller.beginAdditionalInstruction())
+            }
+        }
+        let draft = TranscriptReviewDraft(
+            originalText: "Send the report tomorrow.",
+            revisedText: "Send the report tomorrow.",
+            explanation: "",
+            audioURL: nil,
+            duration: 1,
+            action: .paste,
+            allowsCorrection: true,
+            correctionInstructionShortcut: "Option + Right Command"
+        )
+        let review = Task { @MainActor in await controller.review(draft) }
+        await Task.yield()
+
+        let addMoreButton = try #require(
+            allSubviews(of: NSButton.self, in: controller.window?.contentView)
+                .first { $0.title == "Add more" }
+        )
+        #expect(!addMoreButton.isHidden)
+        #expect(addMoreButton.isEnabled)
+        #expect(addMoreButton.toolTip?.contains("Option + Right Command") == true)
+        addMoreButton.performClick(nil)
+        #expect(requestCount == 1)
+        #expect(addMoreButton.title == "Done")
+        #expect(addMoreButton.isEnabled)
+        addMoreButton.performClick(nil)
+        #expect(requestCount == 2)
+
+        controller.cancel()
+        #expect(await review.value == .cancelled)
     }
 
     @Test @MainActor

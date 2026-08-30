@@ -19,6 +19,7 @@ struct TranscriptReviewDraft {
     let allowsCorrection: Bool
     let correctionIsAvailable: Bool
     let allowsCorrectionInstruction: Bool
+    let correctionInstructionShortcut: String?
 
     init(
         originalText: String,
@@ -29,7 +30,8 @@ struct TranscriptReviewDraft {
         action: Action,
         allowsCorrection: Bool = false,
         correctionIsAvailable: Bool = true,
-        allowsCorrectionInstruction: Bool = true
+        allowsCorrectionInstruction: Bool = true,
+        correctionInstructionShortcut: String? = nil
     ) {
         self.originalText = originalText
         self.revisedText = revisedText
@@ -40,6 +42,7 @@ struct TranscriptReviewDraft {
         self.allowsCorrection = allowsCorrection
         self.correctionIsAvailable = correctionIsAvailable
         self.allowsCorrectionInstruction = allowsCorrectionInstruction
+        self.correctionInstructionShortcut = correctionInstructionShortcut
     }
 
     var textChanged: Bool { originalText != revisedText }
@@ -100,6 +103,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     private let textView = NSTextView()
     private let acceptButton = NSButton()
     private let correctionButton = NSButton()
+    private let instructionButton = NSButton()
     private let cancelButton = NSButton()
     private weak var surfaceView: NSView?
     private var continuation: CheckedContinuation<TranscriptReviewResult, Never>?
@@ -111,6 +115,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     private var additionalInstructionBase: String?
 
     var onCancelBusy: (() -> Void)?
+    var onRequestAdditionalInstruction: (() -> Void)?
 
     var isReviewing: Bool { continuation != nil }
     var canRequestCorrection: Bool {
@@ -159,6 +164,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         configureAudio(url: draft.audioURL)
         configureComparison(for: draft)
         configureCorrectionButton(for: draft)
+        configureInstructionButton(for: draft)
         setInteractive(true)
         showCorrectedText()
         positionOnActiveScreen()
@@ -222,10 +228,19 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
             editedCorrection: revisedText
         )
         showBusyStatus("Listening for an instruction…")
+        instructionButton.title = "Done"
+        instructionButton.image = NSImage(
+            systemSymbolName: "stop.fill",
+            accessibilityDescription: nil
+        )
+        instructionButton.isEnabled = true
+        instructionButton.setAccessibilityLabel("Finish correction instruction")
+        instructionButton.toolTip = "Finish recording the correction instruction"
         return true
     }
 
     func showInstructionTranscriptionProgress() {
+        configureInstructionButtonForIdleState()
         showBusyStatus("Transcribing your instruction…")
     }
 
@@ -236,6 +251,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         statusDot.layer?.backgroundColor = NSColor.systemGreen.cgColor
         explanationLabel.stringValue = message
         explanationLabel.isHidden = false
+        configureInstructionButton(for: draft)
         setInteractive(true)
         additionalInstructionBase = nil
         AccessibilityAnnouncements.post(message, from: explanationLabel)
@@ -378,26 +394,34 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         correctionButton.target = self
         correctionButton.action = #selector(requestTranscriptCorrection)
         correctionButton.bezelStyle = .rounded
-        correctionButton.toolTip = "Repair now, or hold Option with the dictation shortcut to add an instruction"
+        correctionButton.toolTip = "Repair transcription"
+
+        instructionButton.title = "Add more"
+        instructionButton.image = NSImage(
+            systemSymbolName: "mic.fill",
+            accessibilityDescription: nil
+        )
+        instructionButton.imagePosition = .imageLeading
+        instructionButton.target = self
+        instructionButton.action = #selector(requestAdditionalInstruction)
+        instructionButton.bezelStyle = .rounded
 
         acceptButton.title = "Paste"
         acceptButton.target = self
         acceptButton.action = #selector(acceptReview)
-        acceptButton.bezelStyle = .rounded
+        acceptButton.isBordered = false
+        acceptButton.wantsLayer = true
+        acceptButton.layer?.cornerRadius = 7
+        acceptButton.layer?.masksToBounds = true
         acceptButton.font = .systemFont(ofSize: 13, weight: .semibold)
-        acceptButton.bezelColor = NSColor(
-            calibratedRed: 0.12,
-            green: 0.47,
-            blue: 0.24,
-            alpha: 1
-        )
         acceptButton.contentTintColor = .white
         acceptButton.isEnabled = true
+        updateAcceptButtonAppearance()
         acceptButton.keyEquivalent = "\r"
         acceptButton.keyEquivalentModifierMask = .command
         acceptButton.setAccessibilityLabel("Accept and paste transcription")
         let actions = NSStackView(views: [
-            cancelButton, undoButton, NSView(), correctionButton, acceptButton,
+            cancelButton, undoButton, NSView(), instructionButton, correctionButton, acceptButton,
         ])
         actions.orientation = .horizontal
         actions.alignment = .centerY
@@ -423,6 +447,10 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
             playButton.heightAnchor.constraint(equalToConstant: 28),
             cancelButton.widthAnchor.constraint(equalToConstant: 34),
             undoButton.widthAnchor.constraint(equalToConstant: 34),
+            instructionButton.heightAnchor.constraint(equalToConstant: 32),
+            correctionButton.heightAnchor.constraint(equalToConstant: 32),
+            acceptButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 76),
+            acceptButton.heightAnchor.constraint(equalToConstant: 32),
         ])
         return root
     }
@@ -466,22 +494,66 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         correctionButton.setAccessibilityLabel("Repair transcription")
         correctionButton.toolTip = if !draft.correctionIsAvailable {
             "Choose a correction model in Settings > Models"
-        } else if draft.allowsCorrectionInstruction {
-            "Repair now, or hold Option with the dictation shortcut to add an instruction"
+        } else if let shortcut = draft.correctionInstructionShortcut {
+            "Repair now, or hold \(shortcut) to add an instruction"
         } else {
             "Repair transcription"
         }
     }
 
+    private func configureInstructionButton(for draft: TranscriptReviewDraft) {
+        configureInstructionButtonForIdleState()
+        instructionButton.isHidden = !draft.allowsCorrection
+        instructionButton.isEnabled = draft.allowsCorrection
+            && draft.correctionIsAvailable
+            && draft.allowsCorrectionInstruction
+        instructionButton.toolTip = if !draft.correctionIsAvailable {
+            "Choose a correction model in Settings > Models"
+        } else if let shortcut = draft.correctionInstructionShortcut {
+            "Dictate another instruction, or hold \(shortcut)"
+        } else {
+            "Dictate another correction instruction"
+        }
+        let accessibilityLabel = if let shortcut = draft.correctionInstructionShortcut {
+            "Add more correction instructions. Shortcut: hold \(shortcut)."
+        } else {
+            "Add more correction instructions"
+        }
+        instructionButton.setAccessibilityLabel(accessibilityLabel)
+    }
+
+    private func configureInstructionButtonForIdleState() {
+        instructionButton.title = "Add more"
+        instructionButton.image = NSImage(
+            systemSymbolName: "mic.fill",
+            accessibilityDescription: nil
+        )
+    }
+
     private func setInteractive(_ interactive: Bool) {
         isBusy = !interactive
         acceptButton.isEnabled = interactive
+        updateAcceptButtonAppearance()
         cancelButton.isEnabled = true
         correctionButton.isEnabled = interactive
             && draft?.allowsCorrection == true
             && draft?.correctionIsAvailable == true
+        instructionButton.isEnabled = interactive
+            && draft?.allowsCorrection == true
+            && draft?.correctionIsAvailable == true
+            && draft?.allowsCorrectionInstruction == true
         comparisonControl.isEnabled = interactive
         textView.isEditable = interactive && selectedVersion == .corrected
+    }
+
+    private func updateAcceptButtonAppearance() {
+        let color = NSColor(
+            calibratedRed: 0.04,
+            green: 0.42,
+            blue: 0.18,
+            alpha: acceptButton.isEnabled ? 1 : 0.35
+        )
+        acceptButton.layer?.backgroundColor = color.cgColor
     }
 
     private func showBusyStatus(_ title: String) {
@@ -712,4 +784,5 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     }
     @objc private func acceptReview() { accept() }
     @objc private func requestTranscriptCorrection() { requestCorrection() }
+    @objc private func requestAdditionalInstruction() { onRequestAdditionalInstruction?() }
 }
