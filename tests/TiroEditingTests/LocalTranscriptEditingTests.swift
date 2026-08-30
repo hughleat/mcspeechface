@@ -63,6 +63,45 @@ struct LocalTranscriptEditingTests {
     }
 
     @Test
+    func recognisesCurrentAndLegacyLlamaServerListeningMessages() {
+        let current = Data(
+            "0.03 I srv llama_server: listening on http://127.0.0.1:55977\n".utf8
+        )
+        let legacy = Data(
+            "server is listening on http://127.0.0.1:49152\n".utf8
+        )
+
+        #expect(LlamaServerLog.listeningPort(in: current) == 55_977)
+        #expect(LlamaServerLog.listeningPort(in: legacy) == 49_152)
+        #expect(LlamaServerLog.listeningPort(in: Data("model loaded\n".utf8)) == nil)
+    }
+
+    @Test
+    func localEditorReportsLoadingThenCorrection() async throws {
+        let model = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "fixture-\(UUID().uuidString).gguf"
+        )
+        try Data("fixture".utf8).write(to: model)
+        defer { try? FileManager.default.removeItem(at: model) }
+        let server = RecordingLocalCorrectionServer()
+        let editor = GGUFTranscriptEditor(
+            spec: .qwen3Local,
+            modelURL: model,
+            server: server
+        )
+        let progress = ProgressRecorder()
+
+        _ = try await editor.proposeEdits(
+            for: TranscriptEditRequest(text: "Um, send it today."),
+            progressHandler: { update in
+                progress.append(update)
+            }
+        )
+
+        #expect(progress.values.map(\.phase) == [.starting, .working])
+    }
+
+    @Test
     func installsVerifiedModelAtomically() async throws {
         let data = Data("small test model".utf8)
         let fixture = try Fixture(data: data)
@@ -193,7 +232,9 @@ struct LocalTranscriptEditingTests {
             executableURL: URL(fileURLWithPath: executablePath),
             modelURL: store.modelURL
         )
-        let decision = try await editor.proposeEdits(for: request)
+        let decision = try await withStoppedEditor(editor) {
+            try await editor.proposeEdits(for: request)
+        }
 
         guard case .proposal(let proposal) = decision else {
             Issue.record("Expected Qwen to remove dictated fillers and the editing request")
@@ -232,7 +273,9 @@ struct LocalTranscriptEditingTests {
             executableURL: URL(fileURLWithPath: executablePath),
             modelURL: store.modelURL
         )
-        let decision = try await editor.proposeEdits(for: request)
+        let decision = try await withStoppedEditor(editor) {
+            try await editor.proposeEdits(for: request)
+        }
 
         guard case .proposal(let proposal) = decision else {
             Issue.record("Expected Qwen to apply the spoken edit and custom instruction")
@@ -286,6 +329,20 @@ struct LocalTranscriptEditingTests {
     }
 }
 
+private func withStoppedEditor<Result>(
+    _ editor: GGUFTranscriptEditor,
+    operation: () async throws -> Result
+) async throws -> Result {
+    do {
+        let result = try await operation()
+        await editor.stop()
+        return result
+    } catch {
+        await editor.stop()
+        throw error
+    }
+}
+
 private actor RecordingLocalCorrectionServer: LocalCorrectionServing {
     private(set) var prepareCount = 0
     private(set) var generateCount = 0
@@ -312,13 +369,31 @@ private actor RecordingLocalCorrectionServer: LocalCorrectionServing {
         state = .ready
     }
 
-    func generate(request: TranscriptEditRequest, grammar: String) -> String {
+    func generate(
+        request: TranscriptEditRequest,
+        grammar: String,
+        didBecomeReady: @Sendable () -> Void
+    ) -> String {
         generateCount += 1
         state = .ready
+        didBecomeReady()
         return #"{"hasChanges":true,"explanation":"Removed a filler.","revisedText":"Send it today."}"#
     }
 
     func stop() {
         state = .stopped
+    }
+}
+
+private final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedValues: [TranscriptEditingProgress] = []
+
+    var values: [TranscriptEditingProgress] {
+        lock.withLock { recordedValues }
+    }
+
+    func append(_ value: TranscriptEditingProgress) {
+        lock.withLock { recordedValues.append(value) }
     }
 }

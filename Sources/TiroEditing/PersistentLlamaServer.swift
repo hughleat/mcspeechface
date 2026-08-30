@@ -22,7 +22,11 @@ protocol LocalCorrectionServing: Sendable {
     func beginUse() async
     func endUse() async
     func prepare() async throws
-    func generate(request: TranscriptEditRequest, grammar: String) async throws -> String
+    func generate(
+        request: TranscriptEditRequest,
+        grammar: String,
+        didBecomeReady: @Sendable () -> Void
+    ) async throws -> String
     func stop() async
 }
 
@@ -54,7 +58,7 @@ actor PersistentLlamaServer: LocalCorrectionServing {
 
     deinit {
         idleTask?.cancel()
-        process?.terminate()
+        if let process { Self.terminate(process) }
         if let runtimeDirectory {
             try? FileManager.default.removeItem(at: runtimeDirectory)
         }
@@ -102,12 +106,19 @@ actor PersistentLlamaServer: LocalCorrectionServing {
 
     func generate(
         request: TranscriptEditRequest,
-        grammar: String
+        grammar: String,
+        didBecomeReady: @Sendable () -> Void
     ) async throws -> String {
+        let requestedGeneration = lifecycleGeneration
         try await acquireOperation()
         cancelIdleStop()
         do {
+            if case .failed(let reason) = state,
+               requestedGeneration != lifecycleGeneration {
+                throw GGUFTranscriptEditorError.generationFailed(reason)
+            }
             try await ensureReady()
+            didBecomeReady()
             guard let endpoint else {
                 throw GGUFTranscriptEditorError.generationFailed(
                     "The local correction server has no endpoint."
@@ -380,18 +391,16 @@ actor PersistentLlamaServer: LocalCorrectionServing {
 
     private func stopProcess() {
         if let process {
-            let identifier = process.processIdentifier
-            if process.isRunning {
-                process.terminate()
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) {
-                    guard process.isRunning,
-                          process.processIdentifier == identifier else { return }
-                    Darwin.kill(identifier, SIGKILL)
-                }
-            }
+            Self.terminate(process)
         }
         self.process = nil
         clearRuntimeResources()
+    }
+
+    private static func terminate(_ process: Process) {
+        guard process.isRunning else { return }
+        Darwin.kill(process.processIdentifier, SIGKILL)
+        process.waitUntilExit()
     }
 
     private func clearRuntimeResources() {
@@ -541,14 +550,7 @@ private final class BoundedProcessLog: @unchecked Sendable {
         lock.lock()
         let snapshot = data
         lock.unlock()
-        let marker = "server is listening on http://127.0.0.1:"
-        guard let line = String(decoding: snapshot, as: UTF8.self)
-            .split(whereSeparator: \Character.isNewline)
-            .reversed()
-            .first(where: { $0.contains(marker) }),
-              let markerRange = line.range(of: marker) else { return nil }
-        let digits = line[markerRange.upperBound...].prefix(while: \Character.isNumber)
-        return UInt16(digits)
+        return LlamaServerLog.listeningPort(in: snapshot)
     }
 
     private func append(_ chunk: Data) {
@@ -558,5 +560,27 @@ private final class BoundedProcessLog: @unchecked Sendable {
         if data.count > maximumBytes {
             data.removeFirst(data.count - maximumBytes)
         }
+    }
+}
+
+enum LlamaServerLog {
+    private static let listeningMarkers = [
+        "listening on http://127.0.0.1:",
+        "server is listening on http://127.0.0.1:",
+    ]
+
+    static func listeningPort(in data: Data) -> UInt16? {
+        let lines = String(decoding: data, as: UTF8.self)
+            .split(whereSeparator: \Character.isNewline)
+            .reversed()
+        for line in lines {
+            for marker in listeningMarkers {
+                guard let markerRange = line.range(of: marker) else { continue }
+                let digits = line[markerRange.upperBound...]
+                    .prefix(while: \Character.isNumber)
+                if let port = UInt16(digits) { return port }
+            }
+        }
+        return nil
     }
 }

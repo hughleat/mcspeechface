@@ -20,7 +20,7 @@ public enum GGUFTranscriptEditorError: LocalizedError {
     }
 }
 
-public actor GGUFTranscriptEditor: TranscriptEditor {
+public actor GGUFTranscriptEditor: ProgressReportingTranscriptEditor {
     public nonisolated let id: String
     public nonisolated let name: String
 
@@ -104,6 +104,13 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
     public func proposeEdits(
         for request: TranscriptEditRequest
     ) async throws -> TranscriptEditDecision {
+        try await proposeEdits(for: request, progressHandler: nil)
+    }
+
+    public func proposeEdits(
+        for request: TranscriptEditRequest,
+        progressHandler: (@Sendable (TranscriptEditingProgress) -> Void)?
+    ) async throws -> TranscriptEditDecision {
         guard case .available = await availability() else {
             if let executableURL,
                !FileManager.default.isExecutableFile(atPath: executableURL.path) {
@@ -124,9 +131,13 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
             throw GGUFTranscriptEditorError.transcriptTooLong
         }
 
+        progressHandler?(TranscriptEditingProgress(providerName: name, phase: .starting))
         let output = try await server.generate(
             request: request,
-            grammar: Self.jsonGrammar
+            grammar: Self.jsonGrammar,
+            didBecomeReady: {
+                progressHandler?(TranscriptEditingProgress(providerName: name, phase: .working))
+            }
         )
         return try Self.decision(
             from: output,
@@ -199,7 +210,7 @@ public actor GGUFTranscriptEditor: TranscriptEditor {
         string ::= "\"" char* "\""
         char ::= [^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" hex hex hex hex)
         hex ::= [0-9a-fA-F]
-        ws ::= [ \t\n\r]*
+        ws ::= | " " | "\n" [ \t]{0,20}
         """#
 
     private struct GeneratedDecision: Decodable {
