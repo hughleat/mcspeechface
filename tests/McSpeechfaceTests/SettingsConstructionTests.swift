@@ -229,7 +229,8 @@ struct SettingsConstructionTests {
             ]
 
             for control in controls {
-                let trailingEdge = control.convert(control.bounds, to: view).maxX
+                let alignedFrame = control.alignmentRect(forFrame: control.frame)
+                let trailingEdge = view.convert(alignedFrame, from: control.superview).maxX
                 #expect(abs(trailingEdge - view.bounds.maxX) < 0.5)
                 #expect(control.frame.width >= control.fittingSize.width - 0.5)
             }
