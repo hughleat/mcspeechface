@@ -115,6 +115,25 @@ final class PasteCoordinator {
                 320_000_000, 400_000_000, 400_000_000, 400_000_000]
     }
 
+    func copy(_ text: String) throws {
+        cancelPendingConfirmation()
+        guard let snapshot = PasteboardSnapshot(pasteboard) else {
+            throw PasteError.couldNotSnapshotPasteboard
+        }
+        guard pasteboard.changeCount == snapshot.changeCount else {
+            throw PasteError.clipboardChanged
+        }
+
+        pasteboard.clearContents()
+        let clearedChangeCount = pasteboard.changeCount
+        guard pasteboard.setString(text, forType: .string) else {
+            if pasteboard.changeCount == clearedChangeCount {
+                snapshot.restore(to: pasteboard)
+            }
+            throw PasteError.couldNotWritePasteboard
+        }
+    }
+
     func paste(
         _ text: String,
         to destination: any PasteDestination,

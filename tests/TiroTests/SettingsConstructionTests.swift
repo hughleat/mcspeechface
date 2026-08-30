@@ -422,6 +422,54 @@ struct SettingsConstructionTests {
         #expect(proposal.explanation == "custom refreshed")
     }
 
+    @Test
+    func correctionExecutionSnapshotDoesNotFollowLaterSettingsChanges() async throws {
+        let suite = "correction-execution-snapshot-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = TranscriptEditingService(defaults: defaults)
+        let firstCommand = Tiro.CommandLineCorrectionConfiguration(
+            preset: .custom,
+            executablePath: "/usr/bin/true",
+            model: "first",
+            arguments: []
+        )
+        try firstCommand.save(to: defaults)
+        let firstPrompt = TranscriptEditingPromptConfiguration(
+            systemPrompt: "First system prompt",
+            userPromptTemplate: "{transcript}"
+        )
+        try TranscriptEditingPromptPreferences(defaults: defaults).save(firstPrompt)
+
+        let snapshot = await service.executionSnapshot(for: .customCommandLine)
+        let firstUseToken = try await service.reserveExecution(for: snapshot)
+        let secondUseToken = try await service.reserveExecution(for: snapshot)
+
+        let secondCommand = Tiro.CommandLineCorrectionConfiguration(
+            preset: .custom,
+            executablePath: "/usr/bin/false",
+            model: "second",
+            arguments: []
+        )
+        try secondCommand.save(to: defaults)
+        TranscriptEditingPromptPreferences(defaults: defaults).reset()
+        let changedSnapshot = await service.executionSnapshot(for: .customCommandLine)
+
+        #expect(snapshot.commandLineConfiguration == firstCommand)
+        #expect(snapshot.promptConfiguration == firstPrompt)
+        #expect(await service.stopPersistentProvider(.customCommandLine) == false)
+        await service.releaseExecution(firstUseToken)
+        await service.releaseExecution(firstUseToken)
+        await #expect(throws: TranscriptEditingServiceError.self) {
+            try await service.proposeEdits(
+                to: transcriptionResponse(language: "English"),
+                snapshot: changedSnapshot
+            )
+        }
+        await service.releaseExecution(secondUseToken)
+        #expect(await service.stopPersistentProvider(.customCommandLine))
+    }
+
     @Test @MainActor
     func correctionModelsCanOnlyBeSelectedWhenReady() {
         #expect(TranscriptEditingSettingsView.allowsSelection(
@@ -755,6 +803,29 @@ struct SettingsConstructionTests {
         )
         #expect(fixture.installer.state == .conflict)
     }
+
+    @Test
+    func correctionModelsHaveStableCommandLineKeys() {
+        let mappings = TranscriptEditingModel.allCases.map { ($0.rawValue, $0.cliKey) }
+        #expect(mappings.map(\.1) == [
+            "off",
+            "apple-foundation",
+            "codex",
+            "claude",
+            "custom-command",
+            "qwen-3.5-0.8b",
+            "qwen-3-0.6b",
+            "qwen-3-1.7b",
+            "granite-4-1b",
+            "smollm3-3b",
+            "ministral-3-3b",
+        ])
+        #expect(Set(mappings.map(\.1)).count == mappings.count)
+        #expect(TranscriptEditingModel.model(cliKey: "apple-foundation") == .appleFoundation)
+        #expect(TranscriptEditingModel.model(cliKey: "codex") == .codexCommandLine)
+        #expect(TranscriptEditingModel.model(cliKey: "qwen-3-0.6b") == .qwen3SmallLocal)
+        #expect(TranscriptEditingModel.model(cliKey: "missing") == nil)
+    }
 }
 
 @MainActor
@@ -778,7 +849,8 @@ private func transcriptionResponse(
         origin_bundle_id: nil,
         origin_app_name: nil,
         source_filename: nil,
-        segments: []
+        segments: [],
+        saved_to_history: false
     )
 }
 

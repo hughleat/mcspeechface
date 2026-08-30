@@ -635,4 +635,5 @@ struct TranscriptionResponse {
     let origin_app_name: String?
     let source_filename: String?
     let segments: [TranscriptSegment]
+    let saved_to_history: Bool
 }

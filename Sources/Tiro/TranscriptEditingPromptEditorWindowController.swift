@@ -317,7 +317,8 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
                 window?.makeFirstResponder(systemPromptTextView)
             case .missingTranscriptPlaceholder, .repeatedTranscriptPlaceholder,
                     .userPromptTemplateTooLong, .renderedPromptTooLong,
-                    .insufficientLocalModelTranscriptCapacity:
+                    .insufficientLocalModelTranscriptCapacity,
+                    .additionalInstructionsTooLong:
                 userPromptTextView.setAccessibilityHelp(message)
                 window?.makeFirstResponder(userPromptTextView)
             }

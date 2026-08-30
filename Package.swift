@@ -51,7 +51,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TiroTests",
-            dependencies: ["Tiro", "TiroEditing"],
+            dependencies: ["Tiro", "TiroEditing", "TiroRecognition"],
             path: "tests/TiroTests",
             exclude: [
                 "ModifierEventStateTests.swift",
@@ -60,6 +60,7 @@ let package = Package(
             ],
             sources: [
                 "BuildFeaturesTests.swift",
+                "CommandTranscriptCompletionTests.swift",
                 "DiagnosticsReportTests.swift",
                 "CommandLineToolInstallerTests.swift",
                 "DictationModelCatalogTests.swift",

@@ -6,33 +6,54 @@ enum CLIOutputFormat {
     case json
 }
 
+struct CLICorrectionOptions: Equatable {
+    let enabled: Bool
+    let model: String?
+    let instructions: String?
+
+    static let disabled = CLICorrectionOptions(
+        enabled: false,
+        model: nil,
+        instructions: nil
+    )
+}
+
 enum CLIInvocation: Equatable {
     case help
     case version
     case status(format: CLIOutputFormat)
     case models(format: CLIOutputFormat)
+    case correctionModels(format: CLIOutputFormat)
     case transcribe(
         path: String,
         model: String?,
         copy: Bool,
         saveHistory: Bool,
         diarize: Bool,
+        correction: CLICorrectionOptions,
         format: CLIOutputFormat
     )
     case recordForeground(
         model: String?,
         copy: Bool,
         saveHistory: Bool,
+        correction: CLICorrectionOptions,
         format: CLIOutputFormat
     )
-    case recordStart(model: String?, saveHistory: Bool, format: CLIOutputFormat)
+    case recordStart(
+        model: String?,
+        saveHistory: Bool,
+        correction: CLICorrectionOptions,
+        format: CLIOutputFormat
+    )
     case recordStop(session: String, copy: Bool, format: CLIOutputFormat)
     case recordCancel(session: String, format: CLIOutputFormat)
 
     var format: CLIOutputFormat {
         switch self {
-        case .status(let format), .models(let format), .transcribe(_, _, _, _, _, let format),
-             .recordForeground(_, _, _, let format), .recordStart(_, _, let format),
+        case .status(let format), .models(let format), .correctionModels(let format),
+             .transcribe(_, _, _, _, _, _, let format),
+             .recordForeground(_, _, _, _, let format), .recordStart(_, _, _, let format),
              .recordStop(_, _, let format),
              .recordCancel(_, let format):
             format
@@ -63,7 +84,11 @@ enum CLIArguments {
       tiro record cancel SESSION [--json]
       tiro status [--json]
       tiro models [--json]
+      tiro correction-models [--json]
       tiro --version
+
+    correction options for transcribe, diarize, record, and record start:
+      --correct [--correction-model KEY] [--instructions TEXT|--instructions=TEXT]
     """
 
     static func parse(
@@ -103,6 +128,17 @@ enum CLIArguments {
                 format = .json
             }
             return .models(format: format)
+        case "correction-models":
+            var format = CLIOutputFormat.text
+            for argument in arguments.dropFirst() {
+                guard argument == "--json" else {
+                    throw CLIArgumentError.message(
+                        "Unknown correction-models option: \(argument)"
+                    )
+                }
+                format = .json
+            }
+            return .correctionModels(format: format)
         case "transcribe":
             return try parseTranscribe(
                 Array(arguments.dropFirst()),
@@ -132,6 +168,7 @@ enum CLIArguments {
         var copy = false
         var saveHistory = true
         var diarize = diarizeByDefault
+        var correction = CorrectionOptionsParser()
         var format = CLIOutputFormat.text
         var index = 0
 
@@ -146,6 +183,8 @@ enum CLIArguments {
                 diarize = true
             case "--json":
                 format = .json
+            case let option where CorrectionOptionsParser.handles(option):
+                try correction.parse(option, in: arguments, index: &index)
             case "--model":
                 index += 1
                 guard index < arguments.count, !arguments[index].hasPrefix("-") else {
@@ -189,6 +228,7 @@ enum CLIArguments {
             copy: copy,
             saveHistory: saveHistory,
             diarize: diarize,
+            correction: correction.options,
             format: format
         )
     }
@@ -202,11 +242,14 @@ enum CLIArguments {
             var model: String?
             var saveHistory = true
             var format = CLIOutputFormat.text
+            var correction = CorrectionOptionsParser()
             var index = 1
             while index < arguments.count {
                 switch arguments[index] {
                 case "--no-history": saveHistory = false
                 case "--json": format = .json
+                case let option where CorrectionOptionsParser.handles(option):
+                    try correction.parse(option, in: arguments, index: &index)
                 case "--model":
                     index += 1
                     guard index < arguments.count, !arguments[index].hasPrefix("-") else {
@@ -223,7 +266,12 @@ enum CLIArguments {
                 }
                 index += 1
             }
-            return .recordStart(model: model, saveHistory: saveHistory, format: format)
+            return .recordStart(
+                model: model,
+                saveHistory: saveHistory,
+                correction: correction.options,
+                format: format
+            )
         case "stop":
             return try parseRecordingEnd(Array(arguments.dropFirst()), cancel: false)
         case "cancel":
@@ -240,6 +288,7 @@ enum CLIArguments {
         var copy = false
         var saveHistory = true
         var format = CLIOutputFormat.text
+        var correction = CorrectionOptionsParser()
         var index = 0
 
         while index < arguments.count {
@@ -247,6 +296,8 @@ enum CLIArguments {
             case "--copy": copy = true
             case "--no-history": saveHistory = false
             case "--json": format = .json
+            case let option where CorrectionOptionsParser.handles(option):
+                try correction.parse(option, in: arguments, index: &index)
             case "--model":
                 index += 1
                 guard index < arguments.count, !arguments[index].hasPrefix("-") else {
@@ -268,6 +319,7 @@ enum CLIArguments {
             model: model,
             copy: copy,
             saveHistory: saveHistory,
+            correction: correction.options,
             format: format
         )
     }
@@ -296,5 +348,87 @@ enum CLIArguments {
         return cancel
             ? .recordCancel(session: session, format: format)
             : .recordStop(session: session, copy: copy, format: format)
+    }
+}
+
+private struct CorrectionOptionsParser {
+    private var enabled = false
+    private var model: String?
+    private var instructions: String?
+
+    var options: CLICorrectionOptions {
+        CLICorrectionOptions(enabled: enabled, model: model, instructions: instructions)
+    }
+
+    static func handles(_ argument: String) -> Bool {
+        argument == "--correct"
+            || argument == "--correction-model"
+            || argument == "--instructions"
+            || argument.hasPrefix("--correction-model=")
+            || argument.hasPrefix("--instructions=")
+    }
+
+    mutating func parse(
+        _ argument: String,
+        in arguments: [String],
+        index: inout Int
+    ) throws {
+        enabled = true
+        if argument.hasPrefix("--correction-model=") {
+            try setModel(String(argument.dropFirst("--correction-model=".count)))
+            return
+        }
+        if argument.hasPrefix("--instructions=") {
+            try setInstructions(String(argument.dropFirst("--instructions=".count)))
+            return
+        }
+        switch argument {
+        case "--correct":
+            return
+        case "--correction-model":
+            index += 1
+            guard index < arguments.count,
+                  !arguments[index].hasPrefix("-"),
+                  !arguments[index].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw CLIArgumentError.message("--correction-model requires a model key.")
+            }
+            try setModel(arguments[index])
+        case "--instructions":
+            index += 1
+            guard index < arguments.count,
+                  !arguments[index].hasPrefix("--"),
+                  !arguments[index].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw CLIArgumentError.message("--instructions requires non-empty text.")
+            }
+            try setInstructions(arguments[index])
+        default:
+            preconditionFailure("Unsupported correction option")
+        }
+    }
+
+    private mutating func setModel(_ value: String) throws {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CLIArgumentError.message("--correction-model requires a model key.")
+        }
+        guard model == nil else {
+            throw CLIArgumentError.message("--correction-model may only be supplied once.")
+        }
+        guard value.utf8.count <= TiroProtocolLimits.maximumModelKeyBytes else {
+            throw CLIArgumentError.message("The correction model key is too long.")
+        }
+        model = value
+    }
+
+    private mutating func setInstructions(_ value: String) throws {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CLIArgumentError.message("--instructions requires non-empty text.")
+        }
+        guard instructions == nil else {
+            throw CLIArgumentError.message("--instructions may only be supplied once.")
+        }
+        guard value.utf8.count <= TiroProtocolLimits.maximumInstructionsBytes else {
+            throw CLIArgumentError.message("The correction instructions are too long.")
+        }
+        instructions = value
     }
 }

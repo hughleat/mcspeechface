@@ -22,6 +22,12 @@ enum CLIOutput {
                 value = (result.models ?? []).map {
                     "\($0.key)\t\($0.installed ? "installed" : "not installed")\t\($0.name)"
                 }.joined(separator: "\n")
+            } else if result.kind == "correction_models" {
+                value = (result.correctionModels ?? []).map {
+                    let selection = $0.selected ? "selected" : ""
+                    let availability = $0.available ? "available" : "unavailable"
+                    return "\($0.key)\t\(availability)\t\(selection)\t\($0.name)"
+                }.joined(separator: "\n")
             } else if result.kind == "recording" {
                 value = result.session ?? ""
             } else if result.kind == "cancelled" {

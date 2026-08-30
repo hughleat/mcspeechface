@@ -5,6 +5,18 @@ import Testing
 
 struct ErrorRecoveryTests {
     @Test @MainActor
+    func failedClipboardCopyRestoresPreviousContents() {
+        let pasteboard = makePasteboard(containing: "previous clipboard")
+        pasteboard.refusesNextString = true
+        let coordinator = PasteCoordinator(pasteboard: pasteboard)
+
+        #expect(throws: PasteCoordinator.PasteError.self) {
+            try coordinator.copy("dictated text")
+        }
+        #expect(pasteboard.string == "previous clipboard")
+    }
+
+    @Test @MainActor
     func acceptedPasteWithoutAccessibilityConfirmationIsStillDispatched() async throws {
         let pasteboard = makePasteboard(containing: "previous clipboard")
         let coordinator = PasteCoordinator(
@@ -281,6 +293,7 @@ struct ErrorRecoveryTests {
 private final class PasteboardStub: PasteboardAccess {
     private(set) var changeCount = 0
     private(set) var pasteboardItems: [NSPasteboardItem]? = []
+    var refusesNextString = false
 
     var string: String? {
         pasteboardItems?.first?.string(forType: .string)
@@ -297,6 +310,10 @@ private final class PasteboardStub: PasteboardAccess {
         _ string: String,
         forType dataType: NSPasteboard.PasteboardType
     ) -> Bool {
+        if refusesNextString {
+            refusesNextString = false
+            return false
+        }
         let item = NSPasteboardItem()
         item.setString(string, forType: dataType)
         pasteboardItems = [item]

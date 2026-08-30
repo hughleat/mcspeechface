@@ -23,6 +23,33 @@ struct TranscriptEditValidatorTests {
     }
 
     @Test
+    func additionalInstructionsAreBoundedAndStayOutsideTranscriptTags() throws {
+        let request = TranscriptEditRequest(
+            text: "Send the report tomorrow.",
+            additionalInstructions: "Use Markdown and change tomorrow to today."
+        )
+
+        let systemPrompt = TranscriptEditingPrompt.instructions(request)
+        let userPrompt = TranscriptEditingPrompt.request(request)
+        #expect(!systemPrompt.contains("Use Markdown"))
+        #expect(userPrompt.contains("</transcript>\n\n<instructions>"))
+        #expect(userPrompt.contains("Use Markdown and change tomorrow to today."))
+        try TranscriptEditingPrompt.validate(request)
+
+        let oversized = TranscriptEditRequest(
+            text: "Keep this.",
+            additionalInstructions: String(
+                repeating: "x",
+                count: TranscriptEditingPromptConfiguration.maximumAdditionalInstructionsUTF8Bytes
+                    + 1
+            )
+        )
+        #expect(throws: TranscriptEditingPromptError.additionalInstructionsTooLong) {
+            try TranscriptEditingPrompt.validate(oversized)
+        }
+    }
+
+    @Test
     func customPromptRendersPlaceholdersWithoutRewritingTranscriptContent() throws {
         let configuration = TranscriptEditingPromptConfiguration(
             systemPrompt: "Convert text written in {language}.",

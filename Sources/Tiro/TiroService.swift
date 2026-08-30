@@ -269,7 +269,8 @@ final class TiroService {
             origin_bundle_id: entry.originBundleID,
             origin_app_name: entry.originAppName,
             source_filename: entry.sourceFilename,
-            segments: segments
+            segments: segments,
+            saved_to_history: saveToHistory && privacy.storeHistory
         )
     }
 

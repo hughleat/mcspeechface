@@ -22,7 +22,12 @@ struct CommandSocketTests {
         }
         defer { server.close() }
         let events = EventRecorder()
-        let request = TiroCommandRequest.status()
+        let request = TiroCommandRequest.transcribe(
+            path: "/tmp/audio.wav",
+            model: nil,
+            copy: false,
+            saveHistory: false
+        )
 
         let response = try TiroCommandSocketClient(
             socketURL: server.url,
@@ -33,7 +38,7 @@ struct CommandSocketTests {
 
         #expect(response.result?.text == "Hello")
         #expect(events.values.map(\.name) == ["transcribing"])
-        #expect(try server.receivedRequest()?.command == .status)
+        #expect(try server.receivedRequest()?.command == .transcribe)
     }
 
     @Test

@@ -3,6 +3,15 @@
 Notable changes to Tiro are recorded here. Tiro is currently in public beta,
 so releases may also refine existing behaviour and compatibility.
 
+## Unreleased
+
+### Added
+
+- Added opt-in transcript correction to the `tiro` command-line helper, with
+  per-command model selection and one-off instructions.
+- Added `tiro correction-models` for discovering available correction providers
+  and stable scripting keys.
+
 ## 0.1.0-beta.7 - 2026-08-01
 
 ### Fixed

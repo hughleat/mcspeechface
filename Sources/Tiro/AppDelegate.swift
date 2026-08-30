@@ -11,6 +11,14 @@ import UniformTypeIdentifiers
         let session: UUID
         let model: DictationModel
         let saveToHistory: Bool
+        let correction: CommandCorrectionRequest?
+    }
+
+    private struct CommandFailure: LocalizedError {
+        let code: String
+        let message: String
+
+        var errorDescription: String? { message }
     }
 
     private struct CorrectionOutcome {
@@ -67,7 +75,7 @@ import UniformTypeIdentifiers
     private var recordingModelUseReserved = false
     private var recordingModel: DictationModel?
     private var commandRecording: CommandRecording?
-    private var commandTranscriptionTask: Task<TranscriptionResponse, Error>?
+    private var commandTranscriptionTask: Task<TiroCommandResult, Error>?
     private var externalOperationID: UUID?
     private var permissionTimer: Timer?
     private var updateCheckTimer: Timer?
@@ -273,6 +281,7 @@ import UniformTypeIdentifiers
         do {
             if request.command != .status,
                request.command != .models,
+               request.command != .correctionModels,
                !UserDefaults.standard.bool(forKey: "setupCompleted") {
                 try await responder.sendFailure(
                     code: "setup_required",
@@ -300,6 +309,28 @@ import UniformTypeIdentifiers
                         )
                     }
                 ))
+            case .correctionModels:
+                let snapshot = await transcriptEditingService.modelSnapshot()
+                let selected = TranscriptEditingModel.selected
+                let models = TranscriptEditingModel.allCases
+                    .filter { $0 != .off }
+                    .map { model in
+                        let availability = snapshot.availability(for: model)
+                        return TiroCommandCorrectionModel(
+                            key: model.cliKey,
+                            name: model.title,
+                            available: availability == .available,
+                            selected: model == selected,
+                            local: model.localSpec != nil,
+                            installed: snapshot.installed(for: model),
+                            reason: availability.unavailableReason
+                        )
+                    }
+                try await responder.sendSuccess(TiroCommandResult(
+                    kind: "correction_models",
+                    selectedModel: selected.cliKey,
+                    correctionModels: models
+                ))
             case .transcribe:
                 try await handleTranscribeCommand(request, responder: responder)
             case .recordStart:
@@ -309,6 +340,8 @@ import UniformTypeIdentifiers
             case .recordCancel:
                 try await handleRecordCancelCommand(request, responder: responder)
             }
+        } catch let error as CommandFailure {
+            try? await responder.sendFailure(code: error.code, message: error.message)
         } catch {
             try? await responder.sendFailure(
                 code: "transcription_failed",
@@ -356,28 +389,30 @@ import UniformTypeIdentifiers
         } else {
             model = DictationModel.selected
         }
-
-        try await responder.sendEvent(name: "transcribing", detail: url.lastPathComponent)
-        let response = try await service.transcribe(
-            audioURL: url,
-            model: model,
-            sourceFilename: url.lastPathComponent,
-            archiveAudio: false,
-            identifySpeakers: arguments.diarize ?? false,
-            saveToHistory: arguments.saveHistory ?? true
-        )
-        if arguments.copy == true {
-            copyToClipboard(response.text)
+        let correction = try await resolveCommandCorrection(arguments.correction)
+        let result: TiroCommandResult
+        do {
+            try await responder.sendEvent(name: "transcribing", detail: url.lastPathComponent)
+            let response = try await service.transcribe(
+                audioURL: url,
+                model: model,
+                sourceFilename: url.lastPathComponent,
+                archiveAudio: false,
+                identifySpeakers: arguments.diarize ?? false,
+                saveToHistory: arguments.saveHistory ?? true
+            )
+            result = try await completeCommandTranscription(
+                response,
+                correction: correction,
+                copy: arguments.copy == true,
+                responder: responder
+            )
+        } catch {
+            await releaseCommandCorrection(correction)
+            throw error
         }
-        settingsWindow.refreshHistory()
-        try await responder.sendSuccess(TiroCommandResult(
-            kind: "transcript",
-            text: response.text,
-            model: response.model,
-            historyID: (arguments.saveHistory ?? true) ? response.id : nil,
-            transcriptionSeconds: response.transcription_seconds,
-            segments: commandSegments(response.segments)
-        ))
+        await releaseCommandCorrection(correction)
+        try await responder.sendSuccess(result)
     }
 
     private func handleRecordStartCommand(
@@ -401,24 +436,26 @@ import UniformTypeIdentifiers
         } else {
             model = DictationModel.selected
         }
-        let recording = CommandRecording(
-            session: UUID(),
-            model: model,
-            saveToHistory: arguments?.saveHistory ?? true
-        )
+        let session = UUID()
         try reserveRecordingModelUse()
-        commandRecording = recording
         destinationSession = nil
         originApplication = nil
         shouldAutoPaste = false
         state = .starting
         menuToggleItem.title = "Recording from Command Line"
         do {
+            let recording = CommandRecording(
+                session: session,
+                model: model,
+                saveToHistory: arguments?.saveHistory ?? true,
+                correction: try await resolveCommandCorrection(arguments?.correction)
+            )
+            commandRecording = recording
             try await withTaskCancellationHandler {
                 try await service.preload(model: model, usingRecordingReservation: true)
             } onCancel: { [weak self] in
                 Task { @MainActor in
-                    await self?.cancelCommandRecording(session: recording.session)
+                    await self?.cancelCommandRecording(session: session)
                 }
             }
             try Task.checkCancellation()
@@ -450,7 +487,11 @@ import UniformTypeIdentifiers
                 ))
             }
         } catch {
-            await cancelCommandRecording(session: recording.session)
+            if commandRecording?.session == session {
+                await cancelCommandRecording(session: session)
+            } else {
+                finishCancelledTranscription()
+            }
             throw error
         }
     }
@@ -480,42 +521,45 @@ import UniformTypeIdentifiers
         overlay.show(.transcribing)
         defer { try? FileManager.default.removeItem(at: audioURL) }
         let task = Task { @MainActor [service] in
-            try await service.transcribe(
+            let response = try await service.transcribe(
                 audioURL: audioURL,
                 model: recording.model,
                 archiveAudio: recording.saveToHistory,
                 saveToHistory: recording.saveToHistory,
                 usingRecordingReservation: true
             )
+            try self.requireActiveCommandRecording(recording.session)
+            return try await self.completeCommandTranscription(
+                response,
+                correction: recording.correction,
+                copy: request.arguments?.copy == true,
+                responder: responder,
+                recordingSession: recording.session
+            )
         }
         commandTranscriptionTask = task
         do {
             try await responder.sendEvent(name: "transcribing")
-            let response = try await task.value
+            let result = try await withTaskCancellationHandler {
+                try await task.value
+            } onCancel: {
+                task.cancel()
+            }
             guard commandRecording?.session == recording.session else {
                 throw CancellationError()
             }
-            if request.arguments?.copy == true {
-                copyToClipboard(response.text)
-            }
             commandRecording = nil
             commandTranscriptionTask = nil
+            await releaseCommandCorrection(recording.correction)
             finishCancelledTranscription()
-            settingsWindow.refreshHistory()
-            try await responder.sendSuccess(TiroCommandResult(
-                kind: "transcript",
-                text: response.text,
-                model: response.model,
-                historyID: recording.saveToHistory ? response.id : nil,
-                transcriptionSeconds: response.transcription_seconds,
-                segments: commandSegments(response.segments)
-            ))
+            try await responder.sendSuccess(result)
         } catch {
             task.cancel()
             _ = await task.result
             if commandRecording?.session == recording.session {
                 commandRecording = nil
                 commandTranscriptionTask = nil
+                await releaseCommandCorrection(recording.correction)
                 finishCancelledTranscription()
             }
             throw error
@@ -543,9 +587,104 @@ import UniformTypeIdentifiers
         ))
     }
 
+    private func resolveCommandCorrection(
+        _ requested: TiroCommandCorrection?
+    ) async throws -> CommandCorrectionRequest? {
+        guard let requested else { return nil }
+        let model: TranscriptEditingModel
+        if let key = requested.model {
+            guard let explicitModel = TranscriptEditingModel.model(cliKey: key) else {
+                throw CommandFailure(
+                    code: "correction_model_unknown",
+                    message: "No correction model has the key \(key)."
+                )
+            }
+            model = explicitModel
+        } else {
+            model = TranscriptEditingModel.selected
+        }
+        guard model != .off else {
+            throw CommandFailure(
+                code: "correction_disabled",
+                message: "Select a correction model in Settings or pass --correction-model."
+            )
+        }
+        let snapshot = await transcriptEditingService.executionSnapshot(for: model)
+        let availability = await transcriptEditingService.availability(for: snapshot)
+        guard availability == .available else {
+            throw CommandFailure(
+                code: "correction_model_unavailable",
+                message: availability.unavailableReason ?? "The correction model is unavailable."
+            )
+        }
+        return CommandCorrectionRequest(
+            snapshot: snapshot,
+            instructions: requested.instructions,
+            useToken: try await transcriptEditingService.reserveExecution(for: snapshot)
+        )
+    }
+
+    private func releaseCommandCorrection(_ correction: CommandCorrectionRequest?) async {
+        guard let token = correction?.useToken else { return }
+        await transcriptEditingService.releaseExecution(token)
+    }
+
+    private func completeCommandTranscription(
+        _ response: TranscriptionResponse,
+        correction: CommandCorrectionRequest?,
+        copy: Bool,
+        responder: TiroCommandResponder,
+        recordingSession: UUID? = nil
+    ) async throws -> TiroCommandResult {
+        defer { settingsWindow.refreshHistory() }
+        let completion = CommandTranscriptCompletion(
+            correct: { [transcriptEditingService] response, snapshot, instructions in
+                try await transcriptEditingService.proposeEdits(
+                    to: response,
+                    snapshot: snapshot,
+                    additionalInstructions: instructions
+                )
+            },
+            updateHistory: { [service] id, text in
+                try await service.correctHistoryEntry(id: id, correctedText: text)
+            },
+            copy: { [pasteCoordinator] text in
+                try pasteCoordinator.copy(text)
+            },
+            reportCorrecting: { [weak self] modelTitle in
+                guard let self else { throw CancellationError() }
+                state = .correcting
+                menuToggleItem.title = "Correcting…"
+                try await responder.sendEvent(name: "correcting", detail: modelTitle)
+            },
+            requireActive: { [weak self] in
+                guard let self else { throw CancellationError() }
+                try requireActiveCommandRecording(recordingSession)
+            }
+        )
+        do {
+            return try await completion.complete(
+                response,
+                correction: correction,
+                copyRequested: copy
+            )
+        } catch let error as CommandTranscriptCompletionError {
+            throw CommandFailure(
+                code: error.code,
+                message: error.localizedDescription
+            )
+        }
+    }
+
+    private func requireActiveCommandRecording(_ session: UUID?) throws {
+        guard let session else { return }
+        guard commandRecording?.session == session else { throw CancellationError() }
+    }
+
     private func cancelCommandRecording(session: UUID) async {
         guard commandRecording?.session == session else { return }
-        if state == .transcribing {
+        let correction = commandRecording?.correction
+        if state == .transcribing || state == .correcting {
             let task = commandTranscriptionTask
             task?.cancel()
             commandTranscriptionTask = nil
@@ -557,6 +696,7 @@ import UniformTypeIdentifiers
             }
             commandRecording = nil
         }
+        await releaseCommandCorrection(correction)
         finishCancelledTranscription()
     }
 
@@ -571,17 +711,6 @@ import UniformTypeIdentifiers
 
     private var commandState: String {
         state.commandName
-    }
-
-    private func commandSegments(_ segments: [TranscriptSegment]) -> [TiroCommandSegment] {
-        segments.map {
-            TiroCommandSegment(
-                text: $0.text,
-                startTime: $0.startSeconds,
-                endTime: $0.endSeconds,
-                speakerID: $0.speakerID
-            )
-        }
     }
 
     private func makeSettingsWindow() -> SettingsWindowController {
@@ -1413,7 +1542,8 @@ import UniformTypeIdentifiers
             origin_bundle_id: response.origin_bundle_id,
             origin_app_name: response.origin_app_name,
             source_filename: response.source_filename,
-            segments: response.segments
+            segments: response.segments,
+            saved_to_history: response.saved_to_history
         )
     }
 

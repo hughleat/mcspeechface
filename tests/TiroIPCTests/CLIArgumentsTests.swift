@@ -21,6 +21,7 @@ struct CLIArgumentsTests {
             copy: true,
             saveHistory: false,
             diarize: true,
+            correction: .disabled,
             format: .json
         ))
     }
@@ -36,6 +37,7 @@ struct CLIArgumentsTests {
             copy: false,
             saveHistory: true,
             diarize: true,
+            correction: .disabled,
             format: .json
         ))
     }
@@ -44,6 +46,10 @@ struct CLIArgumentsTests {
     func parsesStatusAndRejectsAmbiguousInput() throws {
         #expect(try CLIArguments.parse(["status", "--json"]) == .status(format: .json))
         #expect(try CLIArguments.parse(["models", "--json"]) == .models(format: .json))
+        #expect(
+            try CLIArguments.parse(["correction-models", "--json"])
+                == .correctionModels(format: .json)
+        )
         #expect(throws: CLIArgumentError.self) {
             try CLIArguments.parse(["transcribe", "one.wav", "two.wav"])
         }
@@ -61,6 +67,7 @@ struct CLIArgumentsTests {
             model: "coreml-compact",
             copy: true,
             saveHistory: false,
+            correction: .disabled,
             format: .json
         ))
         #expect(try CLIArguments.parse([
@@ -68,6 +75,7 @@ struct CLIArgumentsTests {
         ]) == .recordStart(
             model: "coreml-compact",
             saveHistory: false,
+            correction: .disabled,
             format: .text
         ))
         #expect(try CLIArguments.parse([
@@ -76,6 +84,86 @@ struct CLIArgumentsTests {
         #expect(try CLIArguments.parse([
             "record", "cancel", session
         ]) == .recordCancel(session: session, format: .text))
+    }
+
+    @Test
+    func parsesRequestScopedCorrectionOptions() throws {
+        let correction = CLICorrectionOptions(
+            enabled: true,
+            model: "qwen-3-0.6b",
+            instructions: "Use Markdown headings."
+        )
+        #expect(try CLIArguments.parse(
+            [
+                "transcribe", "meeting.wav", "--correction-model", "qwen-3-0.6b",
+                "--instructions", "Use Markdown headings.",
+            ],
+            currentDirectory: URL(fileURLWithPath: "/tmp", isDirectory: true)
+        ) == .transcribe(
+            path: "/tmp/meeting.wav",
+            model: nil,
+            copy: false,
+            saveHistory: true,
+            diarize: false,
+            correction: correction,
+            format: .text
+        ))
+        #expect(try CLIArguments.parse([
+            "record", "start", "--correct", "--instructions", "Use short paragraphs."
+        ]) == .recordStart(
+            model: nil,
+            saveHistory: true,
+            correction: CLICorrectionOptions(
+                enabled: true,
+                model: nil,
+                instructions: "Use short paragraphs."
+            ),
+            format: .text
+        ))
+        #expect(try CLIArguments.parse([
+            "record", "--instructions=-- use Markdown headings"
+        ]) == .recordForeground(
+            model: nil,
+            copy: false,
+            saveHistory: true,
+            correction: CLICorrectionOptions(
+                enabled: true,
+                model: nil,
+                instructions: "-- use Markdown headings"
+            ),
+            format: .text
+        ))
+    }
+
+    @Test
+    func rejectsInvalidCorrectionOptions() {
+        #expect(throws: CLIArgumentError.self) {
+            try CLIArguments.parse(["transcribe", "meeting.wav", "--correction-model"])
+        }
+        #expect(throws: CLIArgumentError.self) {
+            try CLIArguments.parse(["record", "--instructions", "   "])
+        }
+        #expect(throws: CLIArgumentError.self) {
+            try CLIArguments.parse(["record", "--instructions", "--json"])
+        }
+        #expect(throws: CLIArgumentError.self) {
+            try CLIArguments.parse(["record", "--correction-model", ""])
+        }
+        #expect(throws: CLIArgumentError.self) {
+            try CLIArguments.parse(["record", "--instructions="])
+        }
+        #expect(throws: CLIArgumentError.self) {
+            try CLIArguments.parse([
+                "transcribe", "meeting.wav", "--instructions", "one",
+                "--instructions", "two",
+            ])
+        }
+        #expect(throws: CLIArgumentError.self) {
+            try CLIArguments.parse([
+                "transcribe", "meeting.wav", "--instructions",
+                String(repeating: "x", count: TiroProtocolLimits.maximumInstructionsBytes + 1),
+            ])
+        }
     }
 
     @Test
@@ -155,6 +243,28 @@ struct CLIArgumentsTests {
         let segments = try #require(result["segments"] as? [[String: Any]])
         #expect(segments.first?["speaker_id"] as? String == "speaker-1")
         #expect(segments.first?["start"] as? Double == 0.25)
+
+        let correctionModels = TiroCommandMessage.success(
+            id: request.id,
+            result: TiroCommandResult(
+                kind: "correction_models",
+                correctionModels: [
+                    TiroCommandCorrectionModel(
+                        key: "codex",
+                        name: "Codex",
+                        available: true,
+                        selected: true,
+                        local: false
+                    ),
+                ]
+            )
+        )
+        #expect(
+            String(
+                decoding: try CLIOutput.success(correctionModels, format: .text),
+                as: UTF8.self
+            ) == "codex\tavailable\tselected\tCodex\n"
+        )
 
         let failure = try CLIOutput.failure(
             code: "busy",

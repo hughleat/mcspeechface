@@ -60,14 +60,16 @@ enum TiroCLI {
             let appURL = TiroAppLocator.appURL()
             write(Data((TiroAppLocator.version(appURL: appURL) + "\n").utf8), to: .standardOutput)
             return CLIExitCode.success.rawValue
-        case .recordForeground(let model, let copy, let saveHistory, let format):
+        case .recordForeground(let model, let copy, let saveHistory, let correction, let format):
             return runForegroundRecording(
                 model: model,
                 copy: copy,
                 saveHistory: saveHistory,
+                correction: correction,
                 format: format
             )
-        case .status, .models, .transcribe, .recordStart, .recordStop, .recordCancel:
+        case .status, .models, .correctionModels, .transcribe,
+             .recordStart, .recordStop, .recordCancel:
             break
         }
 
@@ -84,6 +86,7 @@ enum TiroCLI {
         model: String?,
         copy: Bool,
         saveHistory: Bool,
+        correction: CLICorrectionOptions,
         format: CLIOutputFormat
     ) -> Int32 {
         let input = ForegroundRecordingInput()
@@ -96,7 +99,8 @@ enum TiroCLI {
                     .recordStart(
                         model: model,
                         saveHistory: saveHistory,
-                        lease: true
+                        lease: true,
+                        correction: correction.request
                     ),
                     onEvent: { event in lease.receive(event) }
                 )
@@ -176,7 +180,17 @@ enum TiroCLI {
             return .status()
         case .models:
             return .models()
-        case .transcribe(let path, let model, let copy, let saveHistory, let diarize, _):
+        case .correctionModels:
+            return .correctionModels()
+        case .transcribe(
+            let path,
+            let model,
+            let copy,
+            let saveHistory,
+            let diarize,
+            let correction,
+            _
+        ):
             var isDirectory: ObjCBool = false
             guard FileManager.default.isReadableFile(atPath: path),
                   FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
@@ -188,10 +202,15 @@ enum TiroCLI {
                 model: model,
                 copy: copy,
                 saveHistory: saveHistory,
-                diarize: diarize
+                diarize: diarize,
+                correction: correction.request
             )
-        case .recordStart(let model, let saveHistory, _):
-            return .recordStart(model: model, saveHistory: saveHistory)
+        case .recordStart(let model, let saveHistory, let correction, _):
+            return .recordStart(
+                model: model,
+                saveHistory: saveHistory,
+                correction: correction.request
+            )
         case .recordStop(let session, let copy, _):
             return .recordStop(session: session, copy: copy)
         case .recordCancel(let session, _):
@@ -258,7 +277,8 @@ enum TiroCLI {
         switch serverCode {
         case "busy": .temporaryFailure
         case "permission_denied": .permission
-        case "setup_required", "model_missing": .configuration
+        case "setup_required", "model_missing", "correction_disabled",
+             "correction_model_unknown", "correction_model_unavailable": .configuration
         default: .software
         }
     }
@@ -330,6 +350,12 @@ enum TiroCLI {
         } catch {
             // There is nowhere reliable to report a failed standard stream.
         }
+    }
+}
+
+private extension CLICorrectionOptions {
+    var request: TiroCommandCorrection? {
+        enabled ? TiroCommandCorrection(model: model, instructions: instructions) : nil
     }
 }
 

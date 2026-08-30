@@ -3,15 +3,18 @@ import Foundation
 public struct TranscriptEditRequest: Equatable, Sendable {
     public let text: String
     public let language: String?
+    public let additionalInstructions: String?
     public let promptConfiguration: TranscriptEditingPromptConfiguration
 
     public init(
         text: String,
         language: String? = nil,
+        additionalInstructions: String? = nil,
         promptConfiguration: TranscriptEditingPromptConfiguration = .default
     ) {
         self.text = text
         self.language = language
+        self.additionalInstructions = additionalInstructions
         self.promptConfiguration = promptConfiguration
     }
 }
@@ -22,6 +25,7 @@ public struct TranscriptEditingPromptConfiguration: Codable, Equatable, Sendable
     public static let languageLinePlaceholder = "{languageLine}"
     public static let maximumSystemPromptLength = 8_000
     public static let maximumUserPromptTemplateLength = 8_000
+    public static let maximumAdditionalInstructionsUTF8Bytes = 8_000
     static let localModelMaximumInputUTF8Bytes = 3_350
     static let maximumCorrectionTranscriptUTF8Bytes = 3_500
     private static let minimumLocalModelTranscriptUTF8Bytes = 700
@@ -180,6 +184,7 @@ public enum TranscriptEditingPromptError: LocalizedError, Equatable {
     case userPromptTemplateTooLong
     case renderedPromptTooLong
     case insufficientLocalModelTranscriptCapacity
+    case additionalInstructionsTooLong
 
     public var errorDescription: String? {
         switch self {
@@ -198,6 +203,8 @@ public enum TranscriptEditingPromptError: LocalizedError, Equatable {
             "This transcript and prompt are too long for the selected correction model."
         case .insufficientLocalModelTranscriptCapacity:
             "Shorten the prompt so the local correction model has room for dictated text."
+        case .additionalInstructionsTooLong:
+            "Additional instructions must be \(TranscriptEditingPromptConfiguration.maximumAdditionalInstructionsUTF8Bytes) UTF-8 bytes or fewer."
         }
     }
 }
@@ -271,10 +278,22 @@ enum TranscriptEditingPrompt {
     }
 
     static func request(_ request: TranscriptEditRequest) -> String {
-        request.promptConfiguration.renderedUserPrompt(
+        let userPrompt = request.promptConfiguration.renderedUserPrompt(
             text: request.text,
             language: request.language
         )
+        guard let additionalInstructions = request.additionalInstructions?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !additionalInstructions.isEmpty else {
+            return userPrompt
+        }
+        return """
+        \(userPrompt)
+
+        <instructions>
+        \(additionalInstructions)
+        </instructions>
+        """
     }
 
     static func validate(
@@ -282,6 +301,11 @@ enum TranscriptEditingPrompt {
         maximumCombinedUTF8Bytes: Int? = nil
     ) throws {
         try request.promptConfiguration.validate()
+        if let additionalInstructions = request.additionalInstructions,
+           additionalInstructions.utf8.count
+                > TranscriptEditingPromptConfiguration.maximumAdditionalInstructionsUTF8Bytes {
+            throw TranscriptEditingPromptError.additionalInstructionsTooLong
+        }
         guard request.text.utf8.count
                 <= TranscriptEditingPromptConfiguration.maximumCorrectionTranscriptUTF8Bytes else {
             throw TranscriptEditingPromptError.renderedPromptTooLong

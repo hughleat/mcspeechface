@@ -366,6 +366,7 @@ actor NativeTiroStore {
 
     @discardableResult
     func correctHistoryEntry(id: String, correctedText: String) throws -> Bool {
+        try Task.checkCancellation()
         guard correctedText.count <= Limits.transcript else {
             throw NativeStoreError.invalidData("Corrected transcription text is too long.")
         }
@@ -373,6 +374,7 @@ actor NativeTiroStore {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return false }
         entries[index].correctedText = correctedText
         entries[index].segments = nil
+        try Task.checkCancellation()
         try saveHistory(entries)
         return true
     }

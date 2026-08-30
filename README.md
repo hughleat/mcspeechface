@@ -121,6 +121,7 @@ changes before you paste.
 - **Clipboard:** Successful auto-paste temporarily uses the clipboard, then restores its previous contents when Tiro can confirm the paste and the clipboard has not changed meanwhile. If auto-paste is off or fails, the transcript stays on the clipboard and may be available to other software or macOS Universal Clipboard.
 - **No tracking:** Tiro has no accounts, telemetry, advertising, or built-in crash reporting.
 - **Limited network use:** Tiro connects when you request a model download and, by default, checks GitHub Releases once a day for updates. Automatic checks can be turned off in **Settings > About**.
+- **Optional external correction:** Local correction models and Apple Intelligence keep transcript text on your Mac. If you explicitly choose Codex, Claude, or a custom command as the correction provider, that provider may send the transcript and correction prompts to its configured service. Tiro labels these providers as potentially off-device; their own terms and privacy policies apply.
 
 Parakeet and speaker-identification models are fetched from public Hugging Face
 repositories through FluidAudio; Whisper models come from Argmax's public

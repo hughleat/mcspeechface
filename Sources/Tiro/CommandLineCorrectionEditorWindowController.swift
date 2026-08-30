@@ -435,9 +435,12 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
             var announcement: String?
             do {
                 if states[model]?.isRunning == true {
-                    await service.stopPersistentProvider(model)
-                    self?.testedConfiguration = nil
-                    announcement = "\(self?.preset.title ?? "Provider") stopped."
+                    if await service.stopPersistentProvider(model) {
+                        self?.testedConfiguration = nil
+                        announcement = "\(self?.preset.title ?? "Provider") stopped."
+                    } else {
+                        announcement = "The provider is currently correcting a transcript."
+                    }
                 } else if let self {
                     if self.sensitiveWarning(for: configuration) != nil,
                        !sensitiveAccessConfirmed {

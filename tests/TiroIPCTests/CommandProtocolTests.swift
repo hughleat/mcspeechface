@@ -12,6 +12,10 @@ struct CommandProtocolTests {
             copy: true,
             saveHistory: false,
             diarize: true,
+            correction: TiroCommandCorrection(
+                model: "qwen-3-0.6b",
+                instructions: "Use short paragraphs."
+            ),
             id: id
         )
 
@@ -19,13 +23,41 @@ struct CommandProtocolTests {
             JSONSerialization.jsonObject(with: JSONEncoder().encode(request))
                 as? [String: Any]
         )
-        #expect(object["v"] as? Int == 2)
+        #expect(object["v"] as? Int == 3)
         #expect(object["id"] as? String == id.uuidString.lowercased())
         #expect(object["command"] as? String == "transcribe")
         let arguments = try #require(object["arguments"] as? [String: Any])
         #expect(arguments["path"] as? String == "/tmp/meeting.m4a")
         #expect(arguments["save_history"] as? Bool == false)
         #expect(arguments["diarize"] as? Bool == true)
+        let correction = try #require(arguments["correction"] as? [String: Any])
+        #expect(correction["model"] as? String == "qwen-3-0.6b")
+        #expect(correction["instructions"] as? String == "Use short paragraphs.")
+    }
+
+    @Test
+    func resultUsesStructuredCorrectionMetadata() throws {
+        let result = TiroCommandResult(
+            kind: "transcript",
+            text: "Send it today.",
+            originalText: "Um, send it today.",
+            correction: TiroCommandCorrectionResult(
+                model: "qwen-3-0.6b",
+                changed: true,
+                seconds: 0.75,
+                explanation: "Removed a filler.",
+                reviewRecommended: false
+            )
+        )
+        let object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(result))
+                as? [String: Any]
+        )
+        #expect(object["original_text"] as? String == "Um, send it today.")
+        let correction = try #require(object["correction"] as? [String: Any])
+        #expect(correction["model"] as? String == "qwen-3-0.6b")
+        #expect(correction["changed"] as? Bool == true)
+        #expect(correction["review_recommended"] as? Bool == false)
     }
 
     @Test
@@ -64,6 +96,80 @@ struct CommandProtocolTests {
     }
 
     @Test
+    func validationBoundsCorrectionRequests() throws {
+        #expect(try TiroCommandRequest.recordStart(
+            model: nil,
+            saveHistory: false,
+            correction: TiroCommandCorrection(model: "codex", instructions: "Be concise.")
+        ).validated().arguments?.correction?.model == "codex")
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandRequest(
+                command: .transcribe,
+                arguments: TiroCommandArguments(
+                    path: "/tmp/audio.wav",
+                    correction: TiroCommandCorrection(instructions: "   ")
+                )
+            ).validated()
+        }
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandRequest(
+                command: .recordStop,
+                arguments: TiroCommandArguments(
+                    session: UUID().uuidString,
+                    correction: TiroCommandCorrection()
+                )
+            ).validated()
+        }
+    }
+
+    @Test
+    func validationRejectsArgumentsOwnedByOtherCommands() {
+        let session = UUID().uuidString
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandRequest(
+                command: .transcribe,
+                arguments: TiroCommandArguments(path: "/tmp/audio.wav", session: session)
+            ).validated()
+        }
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandRequest(
+                command: .recordStop,
+                arguments: TiroCommandArguments(path: "/tmp/audio.wav", session: session)
+            ).validated()
+        }
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandRequest(
+                command: .recordCancel,
+                arguments: TiroCommandArguments(copy: true, session: session)
+            ).validated()
+        }
+    }
+
+    @Test
+    func protocolVersionTwoIsRejectedAfterCorrectionSupport() throws {
+        let request = TiroCommandRequest.status()
+        let oldResponse = TiroCommandMessage(
+            version: 2,
+            id: request.id,
+            type: .success,
+            result: TiroCommandResult(kind: "status", state: "idle")
+        )
+        #expect(throws: TiroProtocolError.self) {
+            try oldResponse.validated(for: request)
+        }
+        let oldRequest = try JSONDecoder().decode(
+            TiroCommandRequest.self,
+            from: Data(
+                #"{"v":2,"id":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee","command":"status"}"#
+                    .utf8
+            )
+        )
+        #expect(throws: TiroProtocolError.self) {
+            try oldRequest.validated()
+        }
+    }
+
+    @Test
     func validationRejectsWrongResponseAndProgress() throws {
         let request = TiroCommandRequest.status()
         #expect(throws: TiroProtocolError.self) {
@@ -78,6 +184,74 @@ struct CommandProtocolTests {
                 name: "working",
                 fraction: 1.1
             ).validated(for: request)
+        }
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandMessage.success(
+                id: request.id,
+                result: TiroCommandResult(kind: "models", models: [])
+            ).validated(for: request)
+        }
+        let transcribe = TiroCommandRequest.transcribe(
+            path: "/tmp/audio.wav",
+            model: nil,
+            copy: false,
+            saveHistory: false
+        )
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandMessage.success(
+                id: transcribe.id,
+                result: TiroCommandResult(kind: "transcript", model: "test")
+            ).validated(for: transcribe)
+        }
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandMessage.success(
+                id: transcribe.id,
+                result: TiroCommandResult(
+                    kind: "transcript",
+                    text: "Changed",
+                    originalText: "Original",
+                    model: "test",
+                    correction: TiroCommandCorrectionResult(
+                        model: "codex",
+                        changed: false,
+                        seconds: 0.1,
+                        explanation: "",
+                        reviewRecommended: false
+                    )
+                )
+            ).validated(for: transcribe)
+        }
+        let correctedTranscribe = TiroCommandRequest.transcribe(
+            path: "/tmp/audio.wav",
+            model: nil,
+            copy: false,
+            saveHistory: false,
+            correction: TiroCommandCorrection(model: "codex")
+        )
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandMessage.success(
+                id: correctedTranscribe.id,
+                result: TiroCommandResult(
+                    kind: "transcript",
+                    text: "Uncorrected",
+                    model: "test"
+                )
+            ).validated(for: correctedTranscribe)
+        }
+        let leasedRecording = TiroCommandRequest.recordStart(
+            model: nil,
+            saveHistory: false,
+            lease: true
+        )
+        #expect(throws: TiroProtocolError.self) {
+            try TiroCommandMessage.success(
+                id: leasedRecording.id,
+                result: TiroCommandResult(
+                    kind: "recording",
+                    state: "recording",
+                    session: UUID().uuidString
+                )
+            ).validated(for: leasedRecording)
         }
     }
 
