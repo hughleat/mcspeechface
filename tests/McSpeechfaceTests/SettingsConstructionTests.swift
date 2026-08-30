@@ -61,6 +61,11 @@ struct SettingsConstructionTests {
             in: contentView
         ).first { $0.accessibilityLabel() == "Correction timing" }
         #expect(timing?.itemTitles == CorrectionTimingPreference.allCases.map(\.title))
+        let commandLineHelp = allSubviews(
+            of: SettingsInfoButton.self,
+            in: contentView
+        ).first { $0.accessibilityLabel() == "About Command Line" }
+        #expect(commandLineHelp?.accessibilityHelp()?.contains("mcspeechface --help") == true)
 
         controller.window?.setContentSize(NSSize(width: 720, height: 520))
         contentView.layoutSubtreeIfNeeded()
@@ -160,7 +165,7 @@ struct SettingsConstructionTests {
                 continue
             }
             content.layoutSubtreeIfNeeded()
-            assertHelpFrames(in: content, expectedCount: 6)
+            assertHelpFrames(in: content, expectedCount: 7)
         }
     }
 

@@ -289,7 +289,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func makeGeneralView() -> NSView {
         let dictationLabel = sectionLabel("Dictation")
         let shortcutLabel = sectionLabel("Shortcut")
-        let commandLineLabel = sectionLabel("Command Line")
+        let commandLineLabel = SettingsInfoLabel(
+            "Command Line",
+            helpText: "The command-line tool is named mcspeechface. Installing it makes the command available at /usr/local/bin/mcspeechface. Run mcspeechface --help in Terminal to see its recording, transcription, correction, and status commands.",
+            font: .systemFont(ofSize: 13, weight: .medium)
+        )
         let correctionTiming = correctionTimingRow()
         let reviewPreference = reviewPreferenceRow()
         let soundFeedback = soundFeedbackRow()
