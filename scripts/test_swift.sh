@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
+source "$ROOT/scripts/swift_compatibility.zsh"
 DEVELOPER_DIR="$(xcode-select -p)"
 FRAMEWORKS="$DEVELOPER_DIR/Library/Developer/Frameworks"
 RUNTIME="$DEVELOPER_DIR/Library/Developer/usr/lib"
@@ -14,6 +15,7 @@ CLANG_MODULE_CACHE_PATH="$MODULE_CACHE" \
 SWIFTPM_MODULECACHE_OVERRIDE="$MODULE_CACHE" \
 SWIFTPM_PACKAGECACHE_PATH="$ROOT/.build/SwiftPMCache" \
 swift test --disable-sandbox \
+    "${MCSPEECHFACE_SWIFT_COMPATIBILITY_ARGS[@]}" \
     -Xswiftc -module-cache-path \
     -Xswiftc "$MODULE_CACHE" \
     -Xswiftc -I \

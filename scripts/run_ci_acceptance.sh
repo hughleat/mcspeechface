@@ -2,7 +2,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LOG="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/tiro-acceptance.log"
+LOG="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mcspeechface-acceptance.log"
 
 if "$ROOT/scripts/test_all.sh" 2>&1 | tee "$LOG"; then
     exit 0

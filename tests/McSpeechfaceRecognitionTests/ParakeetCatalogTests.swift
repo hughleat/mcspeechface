@@ -1,0 +1,254 @@
+import Foundation
+import FluidAudio
+import Testing
+@testable import McSpeechfaceRecognition
+
+@Suite(.serialized)
+struct ParakeetCatalogTests {
+    @Test
+    func catalogHasStableIdentityAndSeparateDirectories() {
+        #expect(ParakeetModel.allCases == [.compact, .v2, .v3, .unified])
+        #expect(ParakeetModel.compact.recognitionModel == .parakeetCompactCoreML)
+        #expect(ParakeetModel.v2.recognitionModel == .parakeetV2CoreML)
+        #expect(ParakeetModel.v3.recognitionModel == .parakeetV3CoreML)
+        #expect(ParakeetModel.unified.recognitionModel == .parakeetUnifiedCoreML)
+
+        let directoryNames = Set(ParakeetModel.allCases.map(\.directoryName))
+        #expect(directoryNames.count == ParakeetModel.allCases.count)
+        #expect(
+            ParakeetModel.compact.directoryName
+                == CoreMLParakeetEngine.canonicalDirectoryName
+        )
+    }
+
+    @Test(arguments: ParakeetModel.allCases)
+    func engineUsesSelectedModelDirectoryAndTranscriptIdentity(
+        model: ParakeetModel
+    ) async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let engine = CoreMLParakeetEngine(
+            model: model,
+            modelsRootDirectory: root,
+            runtime: CatalogRuntimeStub()
+        )
+
+        try await engine.preload()
+        let transcript = try await engine.transcribe(
+            URL(fileURLWithPath: "/tmp/catalog.wav")
+        )
+
+        #expect(engine.model == model)
+        #expect(
+            engine.modelDirectory.path
+                == root.appendingPathComponent(model.directoryName).path
+        )
+        #expect(transcript.model == model.recognitionModel)
+    }
+
+    @Test
+    func modelLifecyclesRemainIndependent() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let compact = CoreMLParakeetEngine(
+            model: .compact,
+            modelsRootDirectory: root,
+            runtime: CatalogRuntimeStub()
+        )
+        let multilingual = CoreMLParakeetEngine(
+            model: .v3,
+            modelsRootDirectory: root,
+            runtime: CatalogRuntimeStub()
+        )
+
+        async let compactLoad: Void = compact.preload()
+        async let multilingualLoad: Void = multilingual.preload()
+        _ = try await (compactLoad, multilingualLoad)
+        try await compact.unload()
+
+        #expect(!(await compact.status()).loaded)
+        #expect((await multilingual.status()).loaded)
+        #expect(compact.modelDirectory != multilingual.modelDirectory)
+    }
+
+    @Test(arguments: ParakeetModel.allCases)
+    func eachModelSupportsTheCompleteLifecycle(
+        model: ParakeetModel
+    ) async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runtime = CatalogLifecycleRuntime()
+        let engine = CoreMLParakeetEngine(
+            model: model,
+            modelsRootDirectory: root,
+            runtime: runtime
+        )
+
+        #expect(!(await engine.status()).installed)
+        try await engine.download()
+        #expect((await engine.status()).installed)
+
+        try await engine.preload()
+        #expect((await engine.status()).loaded)
+        let transcript = try await engine.transcribe(
+            URL(fileURLWithPath: "/tmp/catalog.wav")
+        )
+        #expect(transcript.model == model.recognitionModel)
+
+        try await engine.delete()
+        let deletedStatus = await engine.status()
+        #expect(!deletedStatus.installed)
+        #expect(!deletedStatus.loaded)
+    }
+
+    @Test
+    func unifiedRuntimeRequiresEveryOfflineArtifact() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let required = ModelNames.ParakeetUnified.requiredModels(variant: "offline")
+        for name in required {
+            let item = root.appendingPathComponent(name)
+            if item.pathExtension == "mlmodelc" {
+                try FileManager.default.createDirectory(at: item, withIntermediateDirectories: true)
+                try Data().write(to: item.appendingPathComponent("coremldata.bin"))
+            } else {
+                try Data().write(to: item)
+            }
+        }
+
+        let runtime = UnifiedFluidAudioRuntime()
+        #expect(await runtime.isInstalled(at: root))
+
+        try FileManager.default.removeItem(
+            at: root.appendingPathComponent(try #require(required.first))
+        )
+        #expect(!(await runtime.isInstalled(at: root)))
+    }
+
+    @Test
+    func fluidAudioGlobalBackendAccessIsSerializedAndRestored() async throws {
+        let originalMode = await FluidAudioRuntime.backendOfflineMode()
+        let probe = ConcurrencyProbe()
+
+        async let first: Void = FluidAudioRuntime.withNetworkAccess {
+            await probe.enter()
+            try await Task.sleep(for: .milliseconds(20))
+            await probe.leave()
+        }
+        async let second: Void = FluidAudioRuntime.withNetworkAccess {
+            await probe.enter()
+            try await Task.sleep(for: .milliseconds(20))
+            await probe.leave()
+        }
+        _ = try await (first, second)
+
+        #expect(await probe.maximumConcurrentOperations == 1)
+        #expect(await FluidAudioRuntime.backendOfflineMode() == originalMode)
+    }
+
+    @Test
+    func fluidAudioGlobalBackendAccessIsRestoredAfterFailure() async {
+        let originalMode = await FluidAudioRuntime.backendOfflineMode()
+
+        do {
+            if originalMode {
+                try await FluidAudioRuntime.withNetworkAccess {
+                    #expect(!ModelHub.offlineMode)
+                    throw TestError.expected
+                }
+            } else {
+                try await FluidAudioRuntime.withOfflineAccess {
+                    #expect(ModelHub.offlineMode)
+                    throw TestError.expected
+                }
+            }
+            Issue.record("Expected the operation to fail")
+        } catch TestError.expected {
+            // Expected.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        #expect(await FluidAudioRuntime.backendOfflineMode() == originalMode)
+    }
+}
+
+private actor CatalogRuntimeStub: ParakeetCoreMLRuntime {
+    func isInstalled(at directory: URL) -> Bool {
+        true
+    }
+
+    func download(
+        to directory: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) {}
+
+    func makeSession(
+        from directory: URL
+    ) -> any ParakeetCoreMLSession {
+        CatalogSessionStub()
+    }
+}
+
+private actor CatalogSessionStub: ParakeetCoreMLSession {
+    func transcribe(_ audioURL: URL) -> RuntimeTranscript {
+        RuntimeTranscript(
+            text: "Catalog transcript",
+            audioSeconds: 1,
+            transcriptionSeconds: 0.1,
+            timesFasterThanRealtime: 10
+        )
+    }
+}
+
+private actor CatalogLifecycleRuntime: ParakeetCoreMLRuntime {
+    func isInstalled(at directory: URL) -> Bool {
+        FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("model").path
+        )
+    }
+
+    func download(
+        to directory: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) throws {
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        try Data([1]).write(to: directory.appendingPathComponent("model"))
+        progress(1)
+    }
+
+    func makeSession(
+        from directory: URL
+    ) -> any ParakeetCoreMLSession {
+        CatalogSessionStub()
+    }
+}
+
+private actor ConcurrencyProbe {
+    private var concurrentOperations = 0
+    private(set) var maximumConcurrentOperations = 0
+
+    func enter() {
+        concurrentOperations += 1
+        maximumConcurrentOperations = max(
+            maximumConcurrentOperations,
+            concurrentOperations
+        )
+    }
+
+    func leave() {
+        concurrentOperations -= 1
+    }
+}
+
+private enum TestError: Error {
+    case expected
+}

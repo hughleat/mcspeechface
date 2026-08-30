@@ -3,15 +3,15 @@ set -euo pipefail
 
 ROOT="${0:A:h:h}"
 dmg_args=()
-if [[ -n "${TIRO_RELEASE_VERSION:-}" || -n "${TIRO_RELEASE_BUILD_NUMBER:-}" || -n "${TIRO_RELEASE_TAG:-}" ]]; then
-    [[ -n "${TIRO_RELEASE_VERSION:-}" && -n "${TIRO_RELEASE_BUILD_NUMBER:-}" && -n "${TIRO_RELEASE_TAG:-}" ]] || {
-        print -u2 "TIRO_RELEASE_VERSION, TIRO_RELEASE_BUILD_NUMBER, and TIRO_RELEASE_TAG must be set together"
+if [[ -n "${MCSPEECHFACE_RELEASE_VERSION:-}" || -n "${MCSPEECHFACE_RELEASE_BUILD_NUMBER:-}" || -n "${MCSPEECHFACE_RELEASE_TAG:-}" ]]; then
+    [[ -n "${MCSPEECHFACE_RELEASE_VERSION:-}" && -n "${MCSPEECHFACE_RELEASE_BUILD_NUMBER:-}" && -n "${MCSPEECHFACE_RELEASE_TAG:-}" ]] || {
+        print -u2 "MCSPEECHFACE_RELEASE_VERSION, MCSPEECHFACE_RELEASE_BUILD_NUMBER, and MCSPEECHFACE_RELEASE_TAG must be set together"
         exit 1
     }
     dmg_args=(
-        --version "$TIRO_RELEASE_VERSION"
-        --build-number "$TIRO_RELEASE_BUILD_NUMBER"
-        --release-tag "$TIRO_RELEASE_TAG"
+        --version "$MCSPEECHFACE_RELEASE_VERSION"
+        --build-number "$MCSPEECHFACE_RELEASE_BUILD_NUMBER"
+        --release-tag "$MCSPEECHFACE_RELEASE_TAG"
     )
 fi
 

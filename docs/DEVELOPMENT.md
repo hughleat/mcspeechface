@@ -2,28 +2,53 @@
 
 McSpeechface is a native Swift package with no Python runtime or MLX dependency.
 
-## Build and Test
+## Prerequisites
+
+- An Apple Silicon Mac running macOS 14 or later.
+- Xcode 16 or compatible Command Line Tools with Swift 6.
+- CMake and ripgrep. The complete CI-equivalent check also uses actionlint.
+- At least 8 GB of free disk space for Swift dependencies, the optional local
+  correction runtime, and temporary release artifacts.
+
+Homebrew can install the external build tools with
+`brew install cmake ripgrep actionlint`.
+
+## Build
+
+For a quick compile and unit-test pass:
+
+```sh
+./scripts/test_swift.sh
+```
+
+Create a locally signed app with:
+
+```sh
+./scripts/setup_local_signing.sh
+./scripts/build_native_app.sh development
+open "dist/McSpeechface.app"
+```
+
+The native app is built at `dist/McSpeechface.app`. The signing setup is needed
+only once and keeps macOS permissions stable across local rebuilds.
+
+The reviewed Finder layout used by community DMGs can be regenerated with
+`./scripts/create_dmg_template.sh` after changing its background or contents.
+The script downloads two pinned, build-only Python packages into a temporary
+directory; neither Python nor those packages are included in McSpeechface. A
+regenerated image receives fresh filesystem metadata, so visually review it and
+update the checksum pinned in `build_native_app.sh` before committing it.
+
+## Complete Check
 
 ```sh
 ./scripts/test_all.sh
-open "dist/Tiro.app"
 ```
 
 The complete check runs Swift tests, focused native assertions, a production
 Core ML transcription, and mounted DMG verification. It can download model
 assets and create a multi-gigabyte `.build` directory, so allow adequate free
-disk space.
-
-Local builds use the existing `Tiro Local Development` signing identity when available:
-
-```sh
-./scripts/setup_local_signing.sh
-./scripts/build_native_app.sh development
-```
-
-The transitional McSpeechface release keeps the physical build path
-`dist/Tiro.app` so it replaces existing beta installations cleanly. macOS and
-the app itself display the new product name.
+disk space. CI runs the same acceptance path on macOS 14.
 
 ## Package
 

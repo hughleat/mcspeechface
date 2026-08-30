@@ -7,11 +7,11 @@
     <key>CFBundleDisplayName</key>
     <string>McSpeechface</string>
     <key>CFBundleExecutable</key>
-    <string>Tiro</string>
+    <string>McSpeechface</string>
     <key>CFBundleIconFile</key>
-    <string>Tiro.icns</string>
+    <string>McSpeechface.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>local.tiro.dictation</string>
+    <string>com.hughleat.mcspeechface</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -41,10 +41,10 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>local.tiro.dictation.settings</string>
+            <string>com.hughleat.mcspeechface.settings</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>tiro</string>
+                <string>mcspeechface</string>
             </array>
         </dict>
     </array>
@@ -56,7 +56,7 @@
     </array>
     <key>LSUIElement</key>
     <true/>
-    <key>TiroSponsorshipEnabled</key>
+    <key>McSpeechfaceSponsorshipEnabled</key>
     <false/>
     <key>NSMicrophoneUsageDescription</key>
     <string>McSpeechface records your voice for local transcription.</string>

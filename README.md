@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="native/Assets/TiroIcon.png" width="128" alt="McSpeechface app icon">
+  <img src="native/Assets/McSpeechfaceIcon.png" width="128" alt="McSpeechface app icon">
 </p>
 
 <h1 align="center">McSpeechface</h1>
@@ -7,10 +7,10 @@
 <p align="center"><strong>Private, fast speech-to-text for Apple Silicon Macs.</strong></p>
 
 <p align="center">
-  <strong><a href="https://github.com/hughleat/tiro/releases">Download the latest Public Beta (.dmg)</a></strong>
+  <strong><a href="https://github.com/hughleat/mcspeechface/releases">Download the latest Public Beta (.dmg)</a></strong>
   · <a href="#install">Install</a>
   · <a href="#your-first-dictation">First dictation</a>
-  · <a href="https://github.com/hughleat/tiro/issues/new/choose">Feedback</a>
+  · <a href="https://github.com/hughleat/mcspeechface/issues/new/choose">Feedback</a>
   · <a href="LICENSE">MIT License</a>
 </p>
 
@@ -22,7 +22,7 @@ it. If pasting fails, the transcript remains on the clipboard. McSpeechface is f
 open source. Its mascot is Speechy McSpeechface.
 
 <p align="center">
-  <img src="docs/images/tiro-dictation-compact.png" width="820" alt="Dictation recording into a TextEdit document">
+  <img src="docs/images/mcspeechface-dictation-compact.png" width="820" alt="Dictation recording into a TextEdit document">
   <br><sub>McSpeechface records first, then transcribes and attempts to paste after you stop. It does not type live.</sub>
 </p>
 
@@ -32,7 +32,7 @@ open source. Its mascot is Speechy McSpeechface.
 for its global shortcut and paste workflow. The table below explains exactly
 how McSpeechface uses this broad permission.
 
-1. [Download the latest beta](https://github.com/hughleat/tiro/releases), open its DMG, and drag McSpeechface to Applications.
+1. [Download the latest beta](https://github.com/hughleat/mcspeechface/releases), open its DMG, and drag McSpeechface to Applications.
 2. Open **McSpeechface**. When macOS shows its unidentified-developer warning, open **System Settings > Privacy & Security**, choose **Open Anyway**, then confirm **Open**.
 3. In setup, allow the required permissions and select **Fast English — Parakeet Compact**. Choose **Download**, wait for it to finish, try a dictation in the setup field, then select **Start Using McSpeechface**.
 
@@ -41,8 +41,25 @@ bundled: Parakeet Compact is a separate 228 MB download, and McSpeechface downlo
 only models you explicitly choose. Once a model is installed, dictation works
 without an internet connection.
 
+### Updating from an earlier beta
+
+Quit the older app before installing McSpeechface. On its first launch,
+McSpeechface moves existing downloaded models, history, vocabulary, snippets,
+and settings into its new application identity. The models are moved in place,
+not copied, so the upgrade does not require several gigabytes of extra disk
+space. macOS will ask you to approve Microphone, Accessibility, and, if you use
+Apple Speech, Speech Recognition again because the application identity has
+changed. Reinstall the command-line tool from
+**Settings > General** if you previously used it; McSpeechface removes the
+owned earlier command link during installation. After confirming your models
+and settings are present, enable **Launch McSpeechface at login** again if you
+used it before; remove any earlier entry still shown in **System Settings >
+General > Login Items**. Then remove the older app from Applications. If migration
+cannot finish safely, McSpeechface leaves unresolved earlier items untouched,
+shows a warning without starting normally, and retries on its next launch.
+
 <p align="center">
-  <img src="docs/images/tiro-setup.png" width="602" alt="Private, local first-run setup with Parakeet Compact selected">
+  <img src="docs/images/mcspeechface-setup.png" width="602" alt="Private, local first-run setup with Parakeet Compact selected">
 </p>
 
 ### Permissions
@@ -70,15 +87,15 @@ McSpeechface is an independent project maintained by
 [Hugh Leather](https://github.com/hughleat). It is currently a public beta:
 dictation is working, but bugs and application compatibility problems are still
 possible. Keep the original audio for an important imported recording and
-[report anything surprising](https://github.com/hughleat/tiro/issues/new/choose).
-Only the [latest published beta](https://github.com/hughleat/tiro/releases)
+[report anything surprising](https://github.com/hughleat/mcspeechface/issues/new/choose).
+Only the [latest published beta](https://github.com/hughleat/mcspeechface/releases)
 receives security fixes.
 
 <details>
 <summary>Verify the downloaded DMG (optional)</summary>
 
 Download the `.sha256` file beside the DMG on the
-[release page](https://github.com/hughleat/tiro/releases), then run the command
+[release page](https://github.com/hughleat/mcspeechface/releases), then run the command
 below with the downloaded DMG's actual filename:
 
 ```sh
@@ -132,9 +149,9 @@ transcripts are not uploaded as part of model downloads. After downloading, McSp
 that the expected model components are present before activating the model; it
 does not publish independent checksums for upstream model files.
 
-For compatibility, downloaded models live in `~/Library/Application Support/Tiro/Models/coreml/`.
+Downloaded models live in `~/Library/Application Support/McSpeechface/Models/coreml/`.
 History, optional recordings, vocabulary, snippets, and privacy settings live
-in `~/Library/Application Support/Tiro/data/`. McSpeechface's diagnostics report
+in `~/Library/Application Support/McSpeechface/data/`. McSpeechface's diagnostics report
 excludes transcripts, audio, clipboard contents, vocabulary, file paths, and
 application names.
 
@@ -162,7 +179,7 @@ Whisper Large V3 Turbo. Install, compare, and remove models in **Settings >
 Models**.
 
 <p align="center">
-  <img src="docs/images/tiro-models.png" width="720" alt="McSpeechface's local transcription model library">
+  <img src="docs/images/mcspeechface-models.png" width="720" alt="McSpeechface's local transcription model library">
   <br><sub>The library shows each model's download size and installation state; the selected model can be changed at any time.</sub>
 </p>
 
@@ -175,7 +192,7 @@ a timestamp-capable speech model and the separately installed **Speaker
 Identification** model.
 
 <p align="center">
-  <img src="docs/images/tiro-file-transcription.png" width="560" alt="McSpeechface transcribing an audio file locally on a Mac">
+  <img src="docs/images/mcspeechface-file-transcription.png" width="560" alt="McSpeechface transcribing an audio file locally on a Mac">
   <br><sub>Transcribe existing audio and optionally identify speakers.</sub>
 </p>
 
@@ -184,7 +201,7 @@ supports reusable snippets, spoken formatting, learned suggestions, and
 different vocabulary for individual applications.
 
 <p align="center">
-  <img src="docs/images/tiro-vocabulary.png" width="720" alt="McSpeechface's structured vocabulary replacement editor">
+  <img src="docs/images/mcspeechface-vocabulary.png" width="720" alt="McSpeechface's structured vocabulary replacement editor">
   <br><sub>Teach McSpeechface names, product terms, and other custom spellings.</sub>
 </p>
 
@@ -193,7 +210,7 @@ copy, correct, or delete previous results. Enable **Keep recordings** as well
 for replay and model comparison.
 
 <p align="center">
-  <img src="docs/images/tiro-history.png" width="620" alt="McSpeechface's searchable local transcription history">
+  <img src="docs/images/mcspeechface-history.png" width="620" alt="McSpeechface's searchable local transcription history">
   <br><sub>Your optional transcription history stays on your Mac.</sub>
 </p>
 
@@ -201,13 +218,13 @@ for replay and model comparison.
 
 1. If installed, remove the command-line link with **Settings > General > Command Line > Uninstall**.
 2. Turn off **Launch McSpeechface at login** in **Settings > General**.
-3. Choose **Quit McSpeechface** from its waveform menu, then move McSpeechface from Applications to the Trash. Its bundle remains `Tiro.app` for compatibility with earlier betas.
-4. To remove downloaded models and personal data, open Finder's **Go > Go to Folder...** and delete `~/Library/Application Support/Tiro`.
+3. Choose **Quit McSpeechface** from its waveform menu, then move McSpeechface from Applications to the Trash.
+4. To remove downloaded models and personal data, open Finder's **Go > Go to Folder...** and delete `~/Library/Application Support/McSpeechface`.
 5. Turn off McSpeechface's Microphone, Accessibility, and Speech Recognition access in **System Settings > Privacy & Security**.
 
 For a completely clean removal, you can also delete
-`~/Library/Preferences/local.tiro.dictation.plist` and
-`~/Library/Caches/Tiro`.
+`~/Library/Preferences/com.hughleat.mcspeechface.plist` and
+`~/Library/Caches/McSpeechface`.
 
 ## More
 
@@ -216,7 +233,7 @@ For a completely clean removal, you can also delete
 - [See ideas under consideration](docs/ROADMAP.md)
 - [Build McSpeechface from source](docs/DEVELOPMENT.md)
 - [Read the beta testing guide](docs/BETA_TESTING.md)
-- [Report a bug or suggest an improvement](https://github.com/hughleat/tiro/issues/new/choose)
+- [Report a bug or suggest an improvement](https://github.com/hughleat/mcspeechface/issues/new/choose)
 - [Report a security problem privately](SECURITY.md)
 
 ## License

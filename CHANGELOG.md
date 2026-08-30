@@ -7,7 +7,9 @@ so releases may also refine existing behaviour and compatibility.
 
 ### Changed
 
-- Renamed the app from Tiro to McSpeechface and named its mascot Speechy McSpeechface.
+- Completed the product-wide McSpeechface identity, including the app bundle,
+  command-line tool, data paths, release artifacts, and repository. Existing
+  beta data and downloaded models migrate in place on first launch.
 - Reworked transcript correction into Off, On request, and Automatic modes with
   a dark, editable review panel and explicit transcript/repair states.
 - Kept Codex and Claude correction processes warm between requests, with
@@ -20,9 +22,9 @@ so releases may also refine existing behaviour and compatibility.
 - Added an **Add more** review action that extends the transcript, original
   recording, playback, and accepted history without implicitly enabling repair.
 - Added Parakeet Unified English and a broader local Whisper catalog.
-- Added opt-in transcript correction to the `tiro` command-line helper, with
+- Added opt-in transcript correction to the `mcspeechface` command-line helper, with
   per-command model selection and one-off instructions.
-- Added `tiro correction-models` for discovering available correction providers
+- Added `mcspeechface correction-models` for discovering available correction providers
   and stable scripting keys.
 
 ### Fixed
@@ -48,13 +50,13 @@ so releases may also refine existing behaviour and compatibility.
 ### Fixed
 
 - Prevented unavailable or temporarily busy model rows from briefly appearing
-  selected before Tiro restored the active model.
+  selected before McSpeechface restored the active model.
 
 ## 0.1.0-beta.6 - 2026-08-01
 
 ### Added
 
-- Parakeet Unified English 0.6B as an optional local Core ML model. Tiro uses
+- Parakeet Unified English 0.6B as an optional local Core ML model. McSpeechface uses
   its offline INT8 encoder for batch transcription with built-in punctuation
   and capitalization.
 

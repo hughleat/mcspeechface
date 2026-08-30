@@ -2,22 +2,23 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
+source "$ROOT/scripts/swift_compatibility.zsh"
 MODE="development"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/native/Info.plist")"
 BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT/native/Info.plist")"
 RELEASE_TAG=""
 OUTPUT_DIR="$ROOT/dist"
 ARCHIVE_DIR="$ROOT/dist/releases"
-SIGNING_IDENTITY="${TIRO_SIGNING_IDENTITY:-}"
-LOCAL_SIGNING_IDENTITY="${TIRO_LOCAL_SIGNING_IDENTITY:-Tiro Local Development}"
-LOCAL_SIGNING_KEYCHAIN="${TIRO_LOCAL_SIGNING_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
-NOTARY_PROFILE="${TIRO_NOTARY_PROFILE:-}"
-ENTITLEMENTS="$ROOT/native/Tiro.entitlements"
+SIGNING_IDENTITY="${MCSPEECHFACE_SIGNING_IDENTITY:-}"
+LOCAL_SIGNING_IDENTITY="${MCSPEECHFACE_LOCAL_SIGNING_IDENTITY:-McSpeechface Local Development}"
+LOCAL_SIGNING_KEYCHAIN="${MCSPEECHFACE_LOCAL_SIGNING_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
+NOTARY_PROFILE="${MCSPEECHFACE_NOTARY_PROFILE:-}"
+ENTITLEMENTS="$ROOT/native/McSpeechface.entitlements"
 SKIP_NOTARIZATION=0
 SPONSORSHIP_ENABLED=0
 DEPLOYMENT_TARGET="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$ROOT/native/Info.plist")"
 TARGET_ARCHITECTURE="arm64"
-DMG_TEMPLATE_SHA256="d4dde813f3fe08e56783a99a75ae4e729f2dc401f4eeb812bd658fcb0b90f277"
+DMG_TEMPLATE_SHA256="747f59ae83a5bafc487f3a5c22591c8a9b73cec946ff115da72c99442f7ba568"
 LLAMA_RUNTIME_RELEASE="b10687"
 LLAMA_RUNTIME_COMMIT="c841aee"
 LLAMA_RUNTIME_SHA256="03798972d2a6fe4a77288e897517f3a770d0057b9bc58e46cbe3eebc2b166b0f"
@@ -54,11 +55,11 @@ Options:
   --enable-sponsorship       Include support links and periodic reminders
   -h, --help                 Show this help
 
-TIRO_LOCAL_SIGNING_IDENTITY selects the certificate used for local builds. Run
+MCSPEECHFACE_LOCAL_SIGNING_IDENTITY selects the certificate used for local builds. Run
 scripts/setup_local_signing.sh once to create the default identity. If it is not
 available, local builds fall back to ad-hoc signing.
 
-TIRO_SIGNING_IDENTITY and TIRO_NOTARY_PROFILE provide credential-free defaults for
+MCSPEECHFACE_SIGNING_IDENTITY and MCSPEECHFACE_NOTARY_PROFILE provide credential-free defaults for
 distribution. Store notarization credentials with notarytool rather than placing
 secrets in this script or the repository.
 USAGE
@@ -133,11 +134,11 @@ if [[ "$MODE" == "development" || "$MODE" == "release" ]]; then
         || fail "could not read the local signing keychain: $LOCAL_SIGNING_KEYCHAIN"
 fi
 
-APP="$OUTPUT_DIR/Tiro.app"
+APP="$OUTPUT_DIR/McSpeechface.app"
 
 if [[ "$MODE" == "distribution" ]]; then
     [[ -n "$SIGNING_IDENTITY" ]] \
-        || fail "distribution mode requires --signing-identity or TIRO_SIGNING_IDENTITY"
+        || fail "distribution mode requires --signing-identity or MCSPEECHFACE_SIGNING_IDENTITY"
     identities="$(security find-identity -v -p codesigning)"
     print -r -- "$identities" | grep -F -- "$SIGNING_IDENTITY" | grep -F 'Developer ID Application:' >/dev/null \
         || fail "Developer ID Application identity not found in the keychain: $SIGNING_IDENTITY"
@@ -158,7 +159,7 @@ sign_locally() {
     if [[ -n "$identity_matches" ]]; then
         identity_count="$(print -r -- "$identity_matches" | wc -l | tr -d ' ')"
         [[ "$identity_count" == "1" ]] \
-            || fail "multiple local Tiro signing identities are installed"
+            || fail "multiple local McSpeechface signing identities are installed"
         fingerprint="$(print -r -- "$identity_matches" | awk '{print $2}')"
         sign_nested_code \
             --force \
@@ -189,7 +190,7 @@ sign_nested_code() {
 
     # Sign every nested Mach-O before any enclosing code bundle, then sign the app.
     while IFS= read -r -d '' candidate; do
-        [[ "$candidate" == "$APP/Contents/MacOS/Tiro" ]] && continue
+        [[ "$candidate" == "$APP/Contents/MacOS/McSpeechface" ]] && continue
         if file -b "$candidate" | grep -q 'Mach-O'; then
             codesign "${sign_args[@]}" "$candidate"
         fi
@@ -252,15 +253,15 @@ prepare_llama_runtime() {
         fi
     fi
 
-    if [[ -x "$runtime/tiro-llama-server" ]]; then
-        version="$("$runtime/tiro-llama-server" --version 2>&1 || true)"
+    if [[ -x "$runtime/mcspeechface-llama-server" ]]; then
+        version="$("$runtime/mcspeechface-llama-server" --version 2>&1 || true)"
         if [[ "$version" != *"build ${LLAMA_RUNTIME_RELEASE#b}"* \
             || "$version" != *"commit $LLAMA_RUNTIME_COMMIT"* ]]; then
             rm -rf "$runtime"
         fi
     fi
 
-    if [[ ! -x "$runtime/tiro-llama-server" ]]; then
+    if [[ ! -x "$runtime/mcspeechface-llama-server" ]]; then
         command -v cmake >/dev/null || fail "cmake is required to build the local editing runtime"
         rm -rf "$build" "$runtime" "$staging"
         cmake -S "$source" -B "$build" \
@@ -286,9 +287,9 @@ prepare_llama_runtime() {
             -DLLAMA_OPENSSL=OFF >&2
         cmake --build "$build" --config Release --target llama-server -j 4 >&2
         mkdir -p "$staging"
-        cp "$build/bin/llama-server" "$staging/tiro-llama-server"
+        cp "$build/bin/llama-server" "$staging/mcspeechface-llama-server"
         cp "$source/LICENSE" "$staging/LICENSE"
-        chmod 755 "$staging/tiro-llama-server"
+        chmod 755 "$staging/mcspeechface-llama-server"
         mv "$staging" "$runtime"
         rm -rf "$build"
     fi
@@ -316,9 +317,9 @@ detach_dmg() {
 create_dmg() {
     local image="$1"
 
-    DMG_STAGING="$ROOT/.build/Tiro-dmg-work.dmg"
+    DMG_STAGING="$ROOT/.build/McSpeechface-dmg-work.dmg"
     DMG_MOUNT_POINT="$ROOT/.build/dmg-mount"
-    DMG_LAYOUT_EXPECTED="$ROOT/.build/Tiro-dmg-layout.expected"
+    DMG_LAYOUT_EXPECTED="$ROOT/.build/McSpeechface-dmg-layout.expected"
     DMG_PARTIAL="${image:r}.partial.dmg"
     if mount | grep -F " on $DMG_MOUNT_POINT (" >/dev/null; then
         detach_dmg "$DMG_MOUNT_POINT" \
@@ -328,23 +329,29 @@ create_dmg() {
     rm -f "$image" "$image.sha256" "$DMG_PARTIAL" "$DMG_LAYOUT_EXPECTED"
     mkdir -p "$DMG_MOUNT_POINT"
 
-    local template="$ROOT/native/Assets/TiroDMGTemplate.dmg"
+    local template="$ROOT/native/Assets/McSpeechfaceDMGTemplate.dmg"
     local template_sha256="$(shasum -a 256 "$template" | awk '{ print $1 }')"
     [[ "$template_sha256" == "$DMG_TEMPLATE_SHA256" ]] \
         || fail "DMG template checksum does not match its reviewed layout"
-    hdiutil convert -quiet "$ROOT/native/Assets/TiroDMGTemplate.dmg" \
+    hdiutil convert -quiet "$ROOT/native/Assets/McSpeechfaceDMGTemplate.dmg" \
         -format UDRW -o "$DMG_STAGING"
     hdiutil resize -quiet -size 128m "$DMG_STAGING"
     hdiutil attach -quiet -nobrowse -mountpoint "$DMG_MOUNT_POINT" \
         "$DMG_STAGING"
+    [[ "$(diskutil info -plist "$DMG_MOUNT_POINT" | plutil -extract VolumeName raw -)" == "McSpeechface" ]] \
+        || fail "DMG template volume must be named McSpeechface"
     cp "$DMG_MOUNT_POINT/.DS_Store" "$DMG_LAYOUT_EXPECTED"
     strings "$DMG_LAYOUT_EXPECTED" | grep -Fx '{{200, 120}, {660, 420}}' >/dev/null \
         || fail "DMG template has unexpected Finder window bounds"
     cmp -s "$DMG_MOUNT_POINT/.background.png" \
-        "$ROOT/native/Assets/TiroDMGBackground.png" \
+        "$ROOT/native/Assets/McSpeechfaceDMGBackground.png" \
         || fail "DMG template background does not match its source asset"
-    rm -rf "$DMG_MOUNT_POINT/Tiro.app"
-    ditto "$APP" "$DMG_MOUNT_POINT/Tiro.app"
+    [[ ! -e "$DMG_MOUNT_POINT/Tiro.app" ]] \
+        || fail "DMG template contains the obsolete app bundle"
+    strings "$DMG_LAYOUT_EXPECTED" | grep -F 'Tiro' >/dev/null \
+        && fail "DMG template Finder layout contains the obsolete product name"
+    rm -rf "$DMG_MOUNT_POINT/McSpeechface.app"
+    ditto "$APP" "$DMG_MOUNT_POINT/McSpeechface.app"
     detach_dmg "$DMG_MOUNT_POINT"
     rmdir "$DMG_MOUNT_POINT"
     DMG_MOUNT_POINT=""
@@ -355,8 +362,10 @@ create_dmg() {
     hdiutil attach -quiet -readonly -nobrowse \
         -mountpoint "$DMG_MOUNT_POINT" "$DMG_PARTIAL"
 
-    [[ -d "$DMG_MOUNT_POINT/Tiro.app" ]] \
-        || fail "DMG does not contain Tiro.app"
+    [[ -d "$DMG_MOUNT_POINT/McSpeechface.app" ]] \
+        || fail "DMG does not contain McSpeechface.app"
+    [[ ! -e "$DMG_MOUNT_POINT/Tiro.app" ]] \
+        || fail "DMG contains the obsolete app bundle"
     [[ -L "$DMG_MOUNT_POINT/Applications" \
         && "$(readlink "$DMG_MOUNT_POINT/Applications")" == "/Applications" ]] \
         || fail "DMG does not contain the Applications shortcut"
@@ -365,7 +374,7 @@ create_dmg() {
     cmp -s "$DMG_MOUNT_POINT/.DS_Store" "$DMG_LAYOUT_EXPECTED" \
         || fail "DMG does not contain the expected Finder layout"
     "$ROOT/scripts/smoke_release.sh" \
-        --app "$DMG_MOUNT_POINT/Tiro.app" \
+        --app "$DMG_MOUNT_POINT/McSpeechface.app" \
         --ad-hoc-only \
         --expected-entitlements "$ENTITLEMENTS" \
         --expected-version "$VERSION" \
@@ -402,9 +411,9 @@ acquire_build_lock() {
             rm -f "$BUILD_LOCK/pid"
             rmdir "$BUILD_LOCK" 2>/dev/null || true
             mkdir "$BUILD_LOCK" 2>/dev/null \
-                || fail "another Tiro build is using $BUILD_LOCK"
+                || fail "another McSpeechface build is using $BUILD_LOCK"
         else
-            fail "another Tiro build is running${owner:+ (PID $owner)}"
+            fail "another McSpeechface build is running${owner:+ (PID $owner)}"
         fi
     fi
     print "$$" > "$BUILD_LOCK/pid"
@@ -455,32 +464,33 @@ export SWIFTPM_PACKAGECACHE_PATH="$ROOT/.build/SwiftPMCache"
 swift_args=(
     --disable-sandbox
     -c release
+    "${MCSPEECHFACE_SWIFT_COMPATIBILITY_ARGS[@]}"
     -Xswiftc -module-cache-path \
     -Xswiftc "$ROOT/.build/ModuleCache"
 )
 if (( SPONSORSHIP_ENABLED )); then
-    swift_args+=(-Xswiftc -D -Xswiftc TIRO_SPONSORSHIP_ENABLED)
+    swift_args+=(-Xswiftc -D -Xswiftc MCSPEECHFACE_SPONSORSHIP_ENABLED)
 fi
 swift build "${swift_args[@]}"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
-cp "$ROOT/.build/release/Tiro" "$APP/Contents/MacOS/Tiro"
-cp "$ROOT/.build/release/TiroCommand" "$APP/Contents/Helpers/tiro"
-chmod 755 "$APP/Contents/Helpers/tiro"
+cp "$ROOT/.build/release/McSpeechface" "$APP/Contents/MacOS/McSpeechface"
+cp "$ROOT/.build/release/McSpeechfaceCommand" "$APP/Contents/Helpers/mcspeechface"
+chmod 755 "$APP/Contents/Helpers/mcspeechface"
 xcrun clang -Os -arch arm64 -mmacosx-version-min="$DEPLOYMENT_TARGET" \
     "$ROOT/native/process_launcher.c" \
-    -o "$APP/Contents/Helpers/tiro-process-launcher"
-chmod 755 "$APP/Contents/Helpers/tiro-process-launcher"
+    -o "$APP/Contents/Helpers/mcspeechface-process-launcher"
+chmod 755 "$APP/Contents/Helpers/mcspeechface-process-launcher"
 llama_runtime="$(prepare_llama_runtime)"
 llama_helper="$APP/Contents/Helpers/llama"
 mkdir -p "$llama_helper"
-cp "$llama_runtime/tiro-llama-server" "$llama_helper/tiro-llama-server"
-chmod 755 "$llama_helper/tiro-llama-server"
+cp "$llama_runtime/mcspeechface-llama-server" "$llama_helper/mcspeechface-llama-server"
+chmod 755 "$llama_helper/mcspeechface-llama-server"
 cp "$ROOT/native/Info.plist" "$APP/Contents/Info.plist"
-cp "$ROOT/native/Assets/Tiro.icns" "$APP/Contents/Resources/Tiro.icns"
+cp "$ROOT/native/Assets/McSpeechface.icns" "$APP/Contents/Resources/McSpeechface.icns"
 mkdir -p "$APP/Contents/Resources/Licenses"
-cp "$ROOT/LICENSE" "$APP/Contents/Resources/Licenses/Tiro-MIT.txt"
+cp "$ROOT/LICENSE" "$APP/Contents/Resources/Licenses/McSpeechface-MIT.txt"
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$APP/Contents/Resources/Licenses/THIRD_PARTY_NOTICES.md"
 cp "$ROOT/.build/checkouts/FluidAudio/LICENSE" \
     "$APP/Contents/Resources/Licenses/FluidAudio-Apache-2.0.txt"
@@ -493,14 +503,14 @@ cp "$llama_runtime/LICENSE" \
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 if [[ -n "$RELEASE_TAG" ]]; then
-    /usr/libexec/PlistBuddy -c "Add :TiroReleaseTag string $RELEASE_TAG" "$APP/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Add :McSpeechfaceReleaseTag string $RELEASE_TAG" "$APP/Contents/Info.plist"
 fi
 if (( SPONSORSHIP_ENABLED )); then
     sponsorship_value=true
 else
     sponsorship_value=false
 fi
-/usr/libexec/PlistBuddy -c "Set :TiroSponsorshipEnabled $sponsorship_value" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :McSpeechfaceSponsorshipEnabled $sponsorship_value" "$APP/Contents/Info.plist"
 
 if [[ "$MODE" == "development" || "$MODE" == "release" ]]; then
     sign_locally
@@ -534,7 +544,7 @@ archive="$ARCHIVE_DIR/McSpeechface-$VERSION-$BUILD_NUMBER-macOS-arm64$suffix.zip
 rm -f "$archive" "$archive.sha256" "$archive.partial" "$archive.sha256.partial"
 
 if (( ! SKIP_NOTARIZATION )); then
-    SUBMISSION_ARCHIVE="$ROOT/.build/Tiro-notarization-submission.zip"
+    SUBMISSION_ARCHIVE="$ROOT/.build/McSpeechface-notarization-submission.zip"
     create_archive "$SUBMISSION_ARCHIVE"
     xcrun notarytool submit "$SUBMISSION_ARCHIVE" \
         --keychain-profile "$NOTARY_PROFILE" --wait

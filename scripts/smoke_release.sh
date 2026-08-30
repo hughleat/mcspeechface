@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-APP="$ROOT/dist/Tiro.app"
+APP="$ROOT/dist/McSpeechface.app"
 SIGNING_LEVEL="any"
 EXPECTED_VERSION=""
 EXPECTED_BUILD=""
 EXPECTED_RELEASE_TAG=""
 EXPECTED_SPONSORSHIP=""
-EXPECTED_ENTITLEMENTS="$ROOT/native/Tiro.entitlements"
+EXPECTED_ENTITLEMENTS="$ROOT/native/McSpeechface.entitlements"
 TEMP_ROOT=""
 
 cleanup() {
@@ -21,7 +21,7 @@ usage() {
 usage: smoke_release.sh [options]
 
 Options:
-  --app PATH                 App bundle to test (default: dist/Tiro.app)
+  --app PATH                 App bundle to test (default: dist/McSpeechface.app)
   --ad-hoc-only              Require ad-hoc signatures with no signing authority
   --developer-id             Require Developer ID and hardened runtime
   --notarized                Also require a staple and Gatekeeper acceptance
@@ -84,11 +84,11 @@ done
 [[ -d "$APP" ]] || fail "app bundle not found: $APP"
 [[ -f "$EXPECTED_ENTITLEMENTS" ]] \
     || fail "expected entitlements not found: $EXPECTED_ENTITLEMENTS"
-TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tiro-release-smoke.XXXXXX")"
+TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mcspeechface-release-smoke.XXXXXX")"
 INFO="$APP/Contents/Info.plist"
 [[ -f "$INFO" ]] || fail "Info.plist not found in app bundle"
-[[ "${APP:t}" == "Tiro.app" ]] \
-    || fail "release app bundle must remain Tiro.app for upgrade compatibility"
+[[ "${APP:t}" == "McSpeechface.app" ]] \
+    || fail "release app bundle must be McSpeechface.app"
 bundle_display_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$INFO")"
 bundle_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$INFO")"
 bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO")"
@@ -97,18 +97,18 @@ bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$IN
     || fail "bundle display name must be McSpeechface"
 [[ "$bundle_name" == "McSpeechface" ]] \
     || fail "bundle name must be McSpeechface"
-[[ "$bundle_identifier" == "local.tiro.dictation" ]] \
-    || fail "bundle identifier changed and would strand existing user settings"
-[[ "$bundle_executable" == "Tiro" ]] \
-    || fail "bundle executable must remain Tiro for upgrade compatibility"
-[[ -f "$APP/Contents/MacOS/Tiro" && -x "$APP/Contents/MacOS/Tiro" ]] \
-    || fail "Tiro compatibility executable is missing or not executable"
+[[ "$bundle_identifier" == "com.hughleat.mcspeechface" ]] \
+    || fail "bundle identifier must be com.hughleat.mcspeechface"
+[[ "$bundle_executable" == "McSpeechface" ]] \
+    || fail "bundle executable must be McSpeechface"
+[[ -f "$APP/Contents/MacOS/McSpeechface" && -x "$APP/Contents/MacOS/McSpeechface" ]] \
+    || fail "McSpeechface executable is missing or not executable"
 icon_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$INFO" 2>/dev/null || true)"
-[[ "$icon_name" == "Tiro.icns" ]] || fail "bundle icon metadata is missing"
+[[ "$icon_name" == "McSpeechface.icns" ]] || fail "bundle icon metadata is missing"
 [[ -s "$APP/Contents/Resources/$icon_name" ]] || fail "bundle icon is missing"
 icon_width="$(sips -g pixelWidth "$APP/Contents/Resources/$icon_name" | awk '/pixelWidth:/ { print $2 }')"
 [[ "$icon_width" == "1024" ]] || fail "bundle icon is missing its 1024-pixel representation"
-iconutil -c iconset -o "$TEMP_ROOT/Tiro.iconset" \
+iconutil -c iconset -o "$TEMP_ROOT/McSpeechface.iconset" \
     "$APP/Contents/Resources/$icon_name"
 for representation in \
     icon_16x16@2x.png \
@@ -117,19 +117,19 @@ for representation in \
     icon_128x128@2x.png \
     icon_256x256@2x.png \
     icon_512x512@2x.png; do
-    [[ -s "$TEMP_ROOT/Tiro.iconset/$representation" ]] \
+    [[ -s "$TEMP_ROOT/McSpeechface.iconset/$representation" ]] \
         || fail "bundle icon is missing representation: $representation"
 done
-CLI="$APP/Contents/Helpers/tiro"
+CLI="$APP/Contents/Helpers/mcspeechface"
 [[ -f "$CLI" && -x "$CLI" ]] || fail "McSpeechface command-line helper is missing or not executable"
-cmp -s "$APP/Contents/MacOS/Tiro" "$CLI" \
+cmp -s "$APP/Contents/MacOS/McSpeechface" "$CLI" \
     && fail "command-line helper was replaced by the GUI executable"
-PROCESS_LAUNCHER="$APP/Contents/Helpers/tiro-process-launcher"
+PROCESS_LAUNCHER="$APP/Contents/Helpers/mcspeechface-process-launcher"
 [[ -f "$PROCESS_LAUNCHER" && -x "$PROCESS_LAUNCHER" ]] \
     || fail "correction process launcher is missing or not executable"
 "$PROCESS_LAUNCHER" /usr/bin/true \
     || fail "correction process launcher could not start a command"
-LLAMA_SERVER="$APP/Contents/Helpers/llama/tiro-llama-server"
+LLAMA_SERVER="$APP/Contents/Helpers/llama/mcspeechface-llama-server"
 [[ -f "$LLAMA_SERVER" && -x "$LLAMA_SERVER" ]] \
     || fail "local transcript editing runtime is missing or not executable"
 runtime_dependencies="$(otool -L "$LLAMA_SERVER" | tail -n +2 | awk '{ print $1 }' \
@@ -158,9 +158,9 @@ plutil -lint "$INFO" >/dev/null
 
 actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO")"
 actual_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO")"
-actual_release_tag="$(/usr/libexec/PlistBuddy -c 'Print :TiroReleaseTag' "$INFO" 2>/dev/null || true)"
-sponsorship_enabled="$(/usr/libexec/PlistBuddy -c 'Print :TiroSponsorshipEnabled' "$INFO")"
-reported_features="$("$APP/Contents/MacOS/Tiro" --print-build-features)"
+actual_release_tag="$(/usr/libexec/PlistBuddy -c 'Print :McSpeechfaceReleaseTag' "$INFO" 2>/dev/null || true)"
+sponsorship_enabled="$(/usr/libexec/PlistBuddy -c 'Print :McSpeechfaceSponsorshipEnabled' "$INFO")"
+reported_features="$("$APP/Contents/MacOS/McSpeechface" --print-build-features)"
 case "$reported_features" in
     "sponsorship=true") executable_sponsorship=true ;;
     "sponsorship=false") executable_sponsorship=false ;;
@@ -183,11 +183,11 @@ expected_cli_version="McSpeechface $actual_version"
 [[ "$("$CLI" --version)" == "$expected_cli_version" ]] \
     || fail "command-line helper version does not match the app"
 if [[ "$EXPECTED_SPONSORSHIP" == "false" ]]; then
-    if strings "$APP/Contents/MacOS/Tiro" | rg -F 'github.com/sponsors' >/dev/null; then
+    if strings "$APP/Contents/MacOS/McSpeechface" | rg -F 'github.com/sponsors' >/dev/null; then
         fail "sponsorship-disabled executable contains a Sponsors URL"
     fi
 elif [[ "$EXPECTED_SPONSORSHIP" == "true" ]]; then
-    strings "$APP/Contents/MacOS/Tiro" | rg -F 'github.com/sponsors' >/dev/null \
+    strings "$APP/Contents/MacOS/McSpeechface" | rg -F 'github.com/sponsors' >/dev/null \
         || fail "sponsorship-enabled executable is missing its Sponsors URL"
 fi
 

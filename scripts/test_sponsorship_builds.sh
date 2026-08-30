@@ -8,7 +8,7 @@ OUTPUT="$ROOT/.build/sponsorship-enabled"
     --output-dir "$OUTPUT" \
     --enable-sponsorship
 "$ROOT/scripts/smoke_release.sh" \
-    --app "$OUTPUT/Tiro.app" \
+    --app "$OUTPUT/McSpeechface.app" \
     --expected-sponsorship true
 
 print "Sponsorship-enabled McSpeechface app assertions passed"

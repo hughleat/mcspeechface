@@ -3,14 +3,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "Tiro",
+    name: "McSpeechface",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "Tiro", targets: ["Tiro"]),
-        .executable(name: "TiroCommand", targets: ["TiroCLI"]),
-        .library(name: "TiroEditing", targets: ["TiroEditing"]),
-        .library(name: "TiroIPC", targets: ["TiroIPC"]),
-        .library(name: "TiroRecognition", targets: ["TiroRecognition"]),
+        .executable(name: "McSpeechface", targets: ["McSpeechface"]),
+        .executable(name: "McSpeechfaceCommand", targets: ["McSpeechfaceCLI"]),
+        .library(name: "McSpeechfaceEditing", targets: ["McSpeechfaceEditing"]),
+        .library(name: "McSpeechfaceIPC", targets: ["McSpeechfaceIPC"]),
+        .library(name: "McSpeechfaceRecognition", targets: ["McSpeechfaceRecognition"]),
     ],
     dependencies: [
         .package(
@@ -24,35 +24,35 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "TiroEditing",
-            path: "Sources/TiroEditing"
+            name: "McSpeechfaceEditing",
+            path: "Sources/McSpeechfaceEditing"
         ),
         .target(
-            name: "TiroRecognition",
+            name: "McSpeechfaceRecognition",
             dependencies: [
                 .product(name: "FluidAudio", package: "FluidAudio"),
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
             ],
-            path: "Sources/TiroRecognition"
+            path: "Sources/McSpeechfaceRecognition"
         ),
         .executableTarget(
-            name: "Tiro",
-            dependencies: ["TiroEditing", "TiroIPC", "TiroRecognition"],
-            path: "Sources/Tiro"
+            name: "McSpeechface",
+            dependencies: ["McSpeechfaceEditing", "McSpeechfaceIPC", "McSpeechfaceRecognition"],
+            path: "Sources/McSpeechface"
         ),
         .target(
-            name: "TiroIPC",
-            path: "Sources/TiroIPC"
+            name: "McSpeechfaceIPC",
+            path: "Sources/McSpeechfaceIPC"
         ),
         .executableTarget(
-            name: "TiroCLI",
-            dependencies: ["TiroIPC"],
-            path: "Sources/TiroCLI"
+            name: "McSpeechfaceCLI",
+            dependencies: ["McSpeechfaceIPC"],
+            path: "Sources/McSpeechfaceCLI"
         ),
         .testTarget(
-            name: "TiroTests",
-            dependencies: ["Tiro", "TiroEditing", "TiroRecognition"],
-            path: "tests/TiroTests",
+            name: "McSpeechfaceTests",
+            dependencies: ["McSpeechface", "McSpeechfaceEditing", "McSpeechfaceRecognition"],
+            path: "tests/McSpeechfaceTests",
             exclude: [
                 "ModifierEventStateTests.swift",
                 "SnippetEditStateTests.swift",
@@ -69,8 +69,9 @@ let package = Package(
                 "ModelComparisonViewTests.swift",
                 "ModelDownloadStateTests.swift",
                 "ModelManagementViewTests.swift",
+                "LegacyInstallationMigratorTests.swift",
                 "NativeTextFinalizerTests.swift",
-                "NativeTiroStoreTests.swift",
+                "NativeMcSpeechfaceStoreTests.swift",
                 "SetupReadinessTests.swift",
                 "SettingsConstructionTests.swift",
                 "SettingsDeepLinkTests.swift",
@@ -82,22 +83,22 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "TiroEditingTests",
-            dependencies: ["TiroEditing"],
-            path: "tests/TiroEditingTests"
+            name: "McSpeechfaceEditingTests",
+            dependencies: ["McSpeechfaceEditing"],
+            path: "tests/McSpeechfaceEditingTests"
         ),
         .testTarget(
-            name: "TiroRecognitionTests",
+            name: "McSpeechfaceRecognitionTests",
             dependencies: [
-                "TiroRecognition",
+                "McSpeechfaceRecognition",
                 .product(name: "FluidAudio", package: "FluidAudio"),
             ],
-            path: "tests/TiroRecognitionTests"
+            path: "tests/McSpeechfaceRecognitionTests"
         ),
         .testTarget(
-            name: "TiroIPCTests",
-            dependencies: ["TiroIPC", "TiroCLI"],
-            path: "tests/TiroIPCTests"
+            name: "McSpeechfaceIPCTests",
+            dependencies: ["McSpeechfaceIPC", "McSpeechfaceCLI"],
+            path: "tests/McSpeechfaceIPCTests"
         )
     ],
     swiftLanguageModes: [.v5]

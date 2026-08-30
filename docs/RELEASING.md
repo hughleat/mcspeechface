@@ -2,7 +2,7 @@
 
 McSpeechface has four native build modes:
 
-- `development`: local app, using the existing `Tiro Local Development` identity when available.
+- `development`: local app, using the existing `McSpeechface Local Development` identity when available.
 - `release`: optimized local app with the same signing policy.
 - `dmg`: ad-hoc-signed community DMG and SHA-256 checksum.
 - `distribution`: Developer ID signing, notarization, stapling, ZIP, and checksum.
@@ -63,7 +63,7 @@ can be rerun safely after an interrupted asset upload.
 Store notarization credentials in the Keychain:
 
 ```sh
-xcrun notarytool store-credentials tiro-notary
+xcrun notarytool store-credentials mcspeechface-notary
 ```
 
 Build with:
@@ -73,10 +73,10 @@ Build with:
   --version 1.2.0 \
   --build-number 42 \
   --signing-identity "Developer ID Application: Your Name (TEAMID)" \
-  --notary-profile tiro-notary
+  --notary-profile mcspeechface-notary
 ```
 
-`TIRO_SIGNING_IDENTITY` and `TIRO_NOTARY_PROFILE` may provide the corresponding
+`MCSPEECHFACE_SIGNING_IDENTITY` and `MCSPEECHFACE_NOTARY_PROFILE` may provide the corresponding
 names. Do not store credentials in the repository.
 
 For a signing rehearsal, use `--skip-notarization`. Its archive contains
@@ -87,7 +87,7 @@ For a signing rehearsal, use `--skip-notarization`. Its archive contains
 ```sh
 ./scripts/test_all.sh
 ./scripts/smoke_release.sh \
-  --app dist/Tiro.app \
+  --app dist/McSpeechface.app \
   --expected-version 1.2.0 \
   --expected-build 42
 ```
@@ -102,8 +102,9 @@ Before publishing, test the DMG on an Apple Silicon Mac running macOS 14:
 
 The complete hands-on checklist is in [`BETA_TESTING.md`](BETA_TESTING.md).
 
-For the transitional rename release, McSpeechface retains the physical bundle
-path `Tiro.app`, executable name `Tiro`, and bundle identifier
-`local.tiro.dictation`. These compatibility details let the new build replace
-an existing beta installation while preserving its app identity, settings,
-data, and permission history.
+Release artifacts use the app path `McSpeechface.app`, executable name
+`McSpeechface`, and bundle identifier `com.hughleat.mcspeechface`. The first
+launch migration moves data and preferences from earlier betas without copying
+downloaded models. Because the bundle identifier changed, testers must approve
+Microphone, Accessibility, and, when using Apple Speech, Speech Recognition
+again after upgrading.

@@ -41,9 +41,9 @@ jobs:
 
       - name: Run complete acceptance suite
         env:
-          TIRO_RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
-          TIRO_RELEASE_BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
-          TIRO_RELEASE_TAG: ${{ github.ref_name }}
+          MCSPEECHFACE_RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+          MCSPEECHFACE_RELEASE_BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
+          MCSPEECHFACE_RELEASE_TAG: ${{ github.ref_name }}
         run: ./scripts/run_ci_acceptance.sh
 
       - name: Publish McSpeechface GitHub release

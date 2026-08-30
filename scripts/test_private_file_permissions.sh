@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tiro-permissions-test.XXXXXX")"
+source "$ROOT/scripts/swift_compatibility.zsh"
+TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mcspeechface-permissions-test.XXXXXX")"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
 
 HARNESS="$TEMP_ROOT/main.swift"
@@ -29,8 +30,9 @@ apply_harness() {
 
 apply_harness
 swiftc \
+    "${MCSPEECHFACE_SWIFTC_COMPATIBILITY_ARGS[@]}" \
     -module-cache-path "$TEMP_ROOT/module-cache" \
-    "$ROOT/Sources/Tiro/PrivateFilePermissions.swift" \
+    "$ROOT/Sources/McSpeechface/PrivateFilePermissions.swift" \
     "$HARNESS" \
     -o "$TEMP_ROOT/permissions-harness"
 

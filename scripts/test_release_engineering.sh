@@ -7,11 +7,14 @@ RELEASE_WORKFLOW="$ROOT/.github/workflows/release.yml"
 
 zsh -n \
     "$ROOT/scripts/build_native_app.sh" \
+    "$ROOT/scripts/create_dmg_template.sh" \
     "$ROOT/scripts/setup_local_signing.sh" \
     "$ROOT/scripts/test_coreml_production.sh" \
     "$ROOT/scripts/test_sponsorship_builds.sh" \
     "$ROOT/scripts/smoke_release.sh"
 bash -n "$ROOT/scripts/release_metadata.sh" "$ROOT/scripts/run_ci_acceptance.sh"
+PYTHONPYCACHEPREFIX="$ROOT/.build/python-cache" \
+    python3 -m py_compile "$ROOT/scripts/create_dmg_layout.py"
 rg -q -F 'native release unexpectedly contains Python source' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'native release unexpectedly contains MLX' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'release unexpectedly contains model weights' "$ROOT/scripts/smoke_release.sh"
@@ -22,24 +25,24 @@ rg -q -F 'lipo -archs' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'expected-entitlements.plist' "$ROOT/scripts/smoke_release.sh"
 rg -q -F -- '--expected-entitlements "$ENTITLEMENTS"' "$ROOT/scripts/build_native_app.sh"
 rg -q -F -- '--expected-sponsorship "$sponsorship_value"' "$ROOT/scripts/build_native_app.sh"
-rg -q -F 'TIRO_SPONSORSHIP_ENABLED' "$ROOT/scripts/build_native_app.sh"
-rg -q -F 'APP="$OUTPUT_DIR/Tiro.app"' "$ROOT/scripts/build_native_app.sh"
-rg -q -F 'cp "$ROOT/.build/release/Tiro" "$APP/Contents/MacOS/Tiro"' \
+rg -q -F 'MCSPEECHFACE_SPONSORSHIP_ENABLED' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'APP="$OUTPUT_DIR/McSpeechface.app"' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'cp "$ROOT/.build/release/McSpeechface" "$APP/Contents/MacOS/McSpeechface"' \
     "$ROOT/scripts/build_native_app.sh"
-rg -q -F '.executable(name: "TiroCommand", targets: ["TiroCLI"])' "$ROOT/Package.swift"
-rg -q -F '.build/release/TiroCommand" "$APP/Contents/Helpers/tiro"' \
+rg -q -F '.executable(name: "McSpeechfaceCommand", targets: ["McSpeechfaceCLI"])' "$ROOT/Package.swift"
+rg -q -F '.build/release/McSpeechfaceCommand" "$APP/Contents/Helpers/mcspeechface"' \
     "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'command-line helper was replaced by the GUI executable' \
     "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'local transcript editing runtime could not start' \
     "$ROOT/scripts/smoke_release.sh"
-rg -q -F 'Contents/Helpers/llama/tiro-llama-server' "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'Contents/Helpers/llama/mcspeechface-llama-server' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'local transcript editing runtime has non-system dependencies' \
     "$ROOT/scripts/smoke_release.sh"
 rg -q -F -- '--print-build-features' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'executable and bundle sponsorship states do not match' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'sponsorship-disabled executable contains a Sponsors URL' "$ROOT/scripts/smoke_release.sh"
-rg -q -F 'Tiro-notarization-submission.zip' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'McSpeechface-notarization-submission.zip' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'archive="$ARCHIVE_DIR/McSpeechface-$VERSION-$BUILD_NUMBER-macOS-arm64.dmg"' \
     "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'archive="$ARCHIVE_DIR/McSpeechface-$VERSION-$BUILD_NUMBER-macOS-arm64$suffix.zip"' \
@@ -51,9 +54,15 @@ smoke_line="$(rg -n -F 'smoke_release.sh" --app "$APP" --notarized' "$ROOT/scrip
 [[ "$archive_cleanup_line" -lt "$notarization_line" ]]
 [[ "$archive_cleanup_line" -lt "$smoke_line" ]]
 rg -q -F 'mv -f "$partial" "$archive"' "$ROOT/scripts/build_native_app.sh"
-rg -q -F 'TiroDMGTemplate.dmg' "$ROOT/scripts/build_native_app.sh"
-rg -q -F 'd4dde813f3fe08e56783a99a75ae4e729f2dc401f4eeb812bd658fcb0b90f277' \
+rg -q -F 'McSpeechfaceDMGTemplate.dmg' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'DMG template volume must be named McSpeechface' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'DMG template contains the obsolete app bundle' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'DMG contains the obsolete app bundle' "$ROOT/scripts/build_native_app.sh"
+rg -q -F '747f59ae83a5bafc487f3a5c22591c8a9b73cec946ff115da72c99442f7ba568' \
     "$ROOT/scripts/build_native_app.sh"
+rg -q -F "'ds-store==1.3.1'" "$ROOT/scripts/create_dmg_template.sh"
+rg -q -F "'mac-alias==2.2.2'" "$ROOT/scripts/create_dmg_template.sh"
+rg -q -F 'McSpeechface.app' "$ROOT/scripts/create_dmg_layout.py"
 rg -q -F 'hdiutil convert -quiet' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'hdiutil resize -quiet -size 128m' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'hdiutil detach -quiet -force' "$ROOT/scripts/build_native_app.sh"
@@ -80,34 +89,34 @@ rg -q -F 'CMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET"' \
 rg -q -F 'BUILD_SHARED_LIBS=OFF' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'LLAMA_OPENSSL=OFF' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'llama.cpp-MIT.txt' "$ROOT/scripts/build_native_app.sh"
-rg -q -F -- '--app "$DMG_MOUNT_POINT/Tiro.app"' "$ROOT/scripts/build_native_app.sh"
+rg -q -F -- '--app "$DMG_MOUNT_POINT/McSpeechface.app"' "$ROOT/scripts/build_native_app.sh"
 rg -q -F -- '--ad-hoc-only' "$ROOT/scripts/build_native_app.sh"
 rg -q -F "'^Signature=adhoc$'" "$ROOT/scripts/smoke_release.sh"
 if rg -q -F -- '--update' "$ROOT/scripts/build_native_app.sh"; then
     print -u2 "release build still rewrites its deployment target"
     exit 1
 fi
-plutil -lint "$ROOT/native/Info.plist" "$ROOT/native/Tiro.entitlements" >/dev/null
+plutil -lint "$ROOT/native/Info.plist" "$ROOT/native/McSpeechface.entitlements" >/dev/null
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$ROOT/native/Info.plist")" == "McSpeechface" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$ROOT/native/Info.plist")" == "McSpeechface" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ROOT/native/Info.plist")" == "local.tiro.dictation" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$ROOT/native/Info.plist")" == "Tiro" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$ROOT/native/Info.plist")" == "tiro" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$ROOT/native/Tiro.entitlements")" == "true" ]]
-rg -q -F '.appendingPathComponent("Tiro", isDirectory: true)' \
-    "$ROOT/Sources/Tiro/AppPaths.swift"
-rg -q -F 'URL(fileURLWithPath: "/usr/local/bin/tiro")' \
-    "$ROOT/Sources/Tiro/CommandLineToolInstaller.swift"
-rg -q -F 'private static let privateDirectoryName = "Tiro"' \
-    "$ROOT/Sources/TiroIPC/CommandSocketPath.swift"
-rg -q -F 'environment["TIRO_COMMAND_SOCKET"]' \
-    "$ROOT/Sources/TiroIPC/CommandSocketPath.swift"
-rg -q -F 'release app bundle must remain Tiro.app for upgrade compatibility' \
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ROOT/native/Info.plist")" == "com.hughleat.mcspeechface" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$ROOT/native/Info.plist")" == "McSpeechface" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$ROOT/native/Info.plist")" == "mcspeechface" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$ROOT/native/McSpeechface.entitlements")" == "true" ]]
+rg -q -F '.appendingPathComponent("McSpeechface", isDirectory: true)' \
+    "$ROOT/Sources/McSpeechface/AppPaths.swift"
+rg -q -F 'URL(fileURLWithPath: "/usr/local/bin/mcspeechface")' \
+    "$ROOT/Sources/McSpeechface/CommandLineToolInstaller.swift"
+rg -q -F 'private static let privateDirectoryName = "McSpeechface"' \
+    "$ROOT/Sources/McSpeechfaceIPC/CommandSocketPath.swift"
+rg -q -F 'environment["MCSPEECHFACE_COMMAND_SOCKET"]' \
+    "$ROOT/Sources/McSpeechfaceIPC/CommandSocketPath.swift"
+rg -q -F 'release app bundle must be McSpeechface.app' \
     "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'bundle display name must be McSpeechface' "$ROOT/scripts/smoke_release.sh"
-rg -q -F 'bundle identifier changed and would strand existing user settings' \
+rg -q -F 'bundle identifier must be com.hughleat.mcspeechface' \
     "$ROOT/scripts/smoke_release.sh"
-rg -q -F 'bundle executable must remain Tiro for upgrade compatibility' \
+rg -q -F 'bundle executable must be McSpeechface' \
     "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'expected_cli_version="McSpeechface $actual_version"' \
     "$ROOT/scripts/smoke_release.sh"
@@ -156,10 +165,10 @@ rg -q -F 'published_dmg="dist/releases/McSpeechface-$ASSET_VERSION-$BUILD_NUMBER
     "$RELEASE_WORKFLOW"
 rg -q -F 'awk -v version="$ASSET_VERSION"' "$RELEASE_WORKFLOW"
 rg -q -F -- '--notes-file "$notes"' "$RELEASE_WORKFLOW"
-rg -q -F 'TIRO_RELEASE_BUILD_NUMBER' "$ROOT/scripts/test_all.sh"
-rg -q -F 'TIRO_RELEASE_TAG' "$ROOT/scripts/test_all.sh"
-rg -q -F 'TIRO_RELEASE_TAG: ${{ github.ref_name }}' "$RELEASE_WORKFLOW"
-rg -q -F 'TiroReleaseTag' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'MCSPEECHFACE_RELEASE_BUILD_NUMBER' "$ROOT/scripts/test_all.sh"
+rg -q -F 'MCSPEECHFACE_RELEASE_TAG' "$ROOT/scripts/test_all.sh"
+rg -q -F 'MCSPEECHFACE_RELEASE_TAG: ${{ github.ref_name }}' "$RELEASE_WORKFLOW"
+rg -q -F 'McSpeechfaceReleaseTag' "$ROOT/scripts/build_native_app.sh"
 
 product_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/native/Info.plist")"
 product_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT/native/Info.plist")"
@@ -202,15 +211,15 @@ print -r -- "$help" | rg -q -- '--release-tag'
 print -r -- "$help" | rg -q -- '--enable-sponsorship'
 print -r -- "$help" | rg -q 'setup_local_signing.sh'
 
-rg -q -F 'Tiro Local Development' "$ROOT/scripts/setup_local_signing.sh"
+rg -q -F 'McSpeechface Local Development' "$ROOT/scripts/setup_local_signing.sh"
 rg -q -F 'extendedKeyUsage = codeSigning' "$ROOT/scripts/setup_local_signing.sh"
 rg -q -F 'security add-trusted-cert -r trustRoot -p codeSign' "$ROOT/scripts/setup_local_signing.sh"
 rg -q -F 'security delete-identity -Z "$fingerprint" -t "$KEYCHAIN"' "$ROOT/scripts/setup_local_signing.sh"
 rg -q -F 'codesign --verify --strict "$work/signing-test"' "$ROOT/scripts/setup_local_signing.sh"
-rg -q -F 'TIRO_LOCAL_SIGNING_IDENTITY' "$ROOT/scripts/build_native_app.sh"
-rg -q -F 'TIRO_LOCAL_SIGNING_KEYCHAIN' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'MCSPEECHFACE_LOCAL_SIGNING_IDENTITY' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'MCSPEECHFACE_LOCAL_SIGNING_KEYCHAIN' "$ROOT/scripts/build_native_app.sh"
 
-missing_keychain_output="$(TIRO_LOCAL_SIGNING_KEYCHAIN="$ROOT/does-not-exist.keychain" \
+missing_keychain_output="$(MCSPEECHFACE_LOCAL_SIGNING_KEYCHAIN="$ROOT/does-not-exist.keychain" \
     "$ROOT/scripts/build_native_app.sh" development 2>&1 || true)"
 if [[ "$missing_keychain_output" != *"local signing keychain not found"* ]]; then
     print -u2 "development build accepted a missing local signing keychain"
@@ -257,13 +266,13 @@ fi
 cleanup_lock_test
 trap - EXIT INT TERM
 
-LOGIN_MANAGER="$ROOT/Sources/Tiro/LoginItemManager.swift"
+LOGIN_MANAGER="$ROOT/Sources/McSpeechface/LoginItemManager.swift"
 rg -q -F 'SMAppService.mainApp.register()' "$LOGIN_MANAGER"
 rg -q -F 'SMAppService.mainApp.unregister()' "$LOGIN_MANAGER"
 rg -q 'legacyCleanupFailed' "$LOGIN_MANAGER"
-rg -q -F 'propertyList["Label"] as? String == "local.tiro.dictation"' "$LOGIN_MANAGER"
+rg -q -F 'propertyList["Label"] as? String == LegacyInstallationMigrator.previousBundleIdentifier' "$LOGIN_MANAGER"
 rg -q -F 'arguments[0] == "/usr/bin/open"' "$LOGIN_MANAGER"
-rg -q -F 'lastPathComponent == "Tiro.app"' "$LOGIN_MANAGER"
+rg -q -F '== LegacyInstallationMigrator.previousApplicationName' "$LOGIN_MANAGER"
 
 register_line="$(rg -n -F 'try enableMainAppService()' "$LOGIN_MANAGER" | head -1 | cut -d: -f1)"
 cleanup_line="$(rg -n -F 'try removeLegacyLaunchAgent()' "$LOGIN_MANAGER" | head -1 | cut -d: -f1)"

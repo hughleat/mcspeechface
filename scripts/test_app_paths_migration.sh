@@ -2,17 +2,18 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tiro-migration-test.XXXXXX")"
+source "$ROOT/scripts/swift_compatibility.zsh"
+TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mcspeechface-migration-test.XXXXXX")"
 TEMP_ROOT="${TEMP_ROOT:A}"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
 
 CHECKOUT="$TEMP_ROOT/checkout"
 SUPPORT="$TEMP_ROOT/support"
 mkdir -p \
-    "$CHECKOUT/Sources/Tiro" \
+    "$CHECKOUT/Sources/McSpeechface" \
     "$CHECKOUT/data/audio/nested" \
     "$SUPPORT/data/audio/nested"
-touch "$CHECKOUT/Package.swift" "$CHECKOUT/Sources/Tiro/AppDelegate.swift"
+touch "$CHECKOUT/Package.swift" "$CHECKOUT/Sources/McSpeechface/AppDelegate.swift"
 print -n 'source-new' > "$CHECKOUT/data/audio/nested/new.wav"
 print -n 'source-value' > "$CHECKOUT/data/audio/nested/existing.wav"
 print -n 'destination-value' > "$SUPPORT/data/audio/nested/existing.wav"
@@ -31,10 +32,15 @@ do {
 SWIFT
 
 export CLANG_MODULE_CACHE_PATH="$TEMP_ROOT/module-cache"
-swiftc "$ROOT/Sources/Tiro/AppPaths.swift" "$HARNESS" -o "$TEMP_ROOT/migration-harness"
+swiftc \
+    "${MCSPEECHFACE_SWIFTC_COMPATIBILITY_ARGS[@]}" \
+    "$ROOT/Sources/McSpeechface/LegacyInstallationMigrator.swift" \
+    "$ROOT/Sources/McSpeechface/AppPaths.swift" \
+    "$HARNESS" \
+    -o "$TEMP_ROOT/migration-harness"
 env \
-    TIRO_PROJECT_ROOT="$CHECKOUT" \
-    TIRO_DATA_DIR="$SUPPORT" \
+    MCSPEECHFACE_PROJECT_ROOT="$CHECKOUT" \
+    MCSPEECHFACE_DATA_DIR="$SUPPORT" \
     "$TEMP_ROOT/migration-harness" > "$TEMP_ROOT/output"
 
 [[ "$(cat "$SUPPORT/data/audio/nested/new.wav")" == 'source-new' ]]
@@ -49,7 +55,7 @@ print -n 'remembered-root' > "$CHECKOUT/data/audio/remembered.wav"
 (
     cd "$TEMP_ROOT"
     env \
-        TIRO_DATA_DIR="$SUPPORT" \
+        MCSPEECHFACE_DATA_DIR="$SUPPORT" \
         "$TEMP_ROOT/migration-harness" >/dev/null
 )
 [[ "$(cat "$SUPPORT/data/audio/remembered.wav")" == 'remembered-root' ]]
@@ -58,13 +64,13 @@ print -n 'remembered-root' > "$CHECKOUT/data/audio/remembered.wav"
 # A file/directory conflict is unresolved: preserve both sides and leave migration retryable.
 FAIL_CHECKOUT="$TEMP_ROOT/failing-checkout"
 FAIL_SUPPORT="$TEMP_ROOT/failing-support"
-mkdir -p "$FAIL_CHECKOUT/Sources/Tiro" "$FAIL_CHECKOUT/data/audio" "$FAIL_SUPPORT/data"
-touch "$FAIL_CHECKOUT/Package.swift" "$FAIL_CHECKOUT/Sources/Tiro/AppDelegate.swift"
+mkdir -p "$FAIL_CHECKOUT/Sources/McSpeechface" "$FAIL_CHECKOUT/data/audio" "$FAIL_SUPPORT/data"
+touch "$FAIL_CHECKOUT/Package.swift" "$FAIL_CHECKOUT/Sources/McSpeechface/AppDelegate.swift"
 print -n 'recording' > "$FAIL_CHECKOUT/data/audio/kept.wav"
 print -n 'blocking-file' > "$FAIL_SUPPORT/data/audio"
 if env \
-    TIRO_PROJECT_ROOT="$FAIL_CHECKOUT" \
-    TIRO_DATA_DIR="$FAIL_SUPPORT" \
+    MCSPEECHFACE_PROJECT_ROOT="$FAIL_CHECKOUT" \
+    MCSPEECHFACE_DATA_DIR="$FAIL_SUPPORT" \
     "$TEMP_ROOT/migration-harness" >/dev/null 2>&1; then
     print -u2 "expected conflicting migration to fail"
     exit 1

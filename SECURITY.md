@@ -1,7 +1,7 @@
 # Security
 
 Please report suspected security vulnerabilities privately through
-[GitHub's security advisory form](https://github.com/hughleat/tiro/security/advisories/new).
+[GitHub's security advisory form](https://github.com/hughleat/mcspeechface/security/advisories/new).
 Do not include vulnerabilities, private recordings, transcripts, or personal
 data in a public issue.
 

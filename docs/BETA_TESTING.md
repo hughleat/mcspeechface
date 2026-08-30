@@ -17,16 +17,32 @@ check.
 7. Enable launch at login, log out and back in, then confirm McSpeechface starts once.
 8. Use About > Check for Updates and Copy Diagnostics.
 
-## Upgrade
+## One-time identity upgrade
 
 1. Note the current Microphone, Accessibility, and Speech Recognition states.
-2. Quit McSpeechface and replace it in Applications with the next DMG build.
-3. Approve the new ad-hoc build in Privacy & Security and launch it.
-4. Confirm settings, vocabulary, history, and downloaded models remain available.
-5. Recheck permissions, the shortcut, recording, transcription, and automatic paste.
-6. Confirm About reports the installed release tag and no update when it is current.
+2. Quit the earlier app, install McSpeechface alongside it, approve the new
+   ad-hoc build in Privacy & Security, and launch McSpeechface.
+3. Approve Microphone, Accessibility, and, when using Apple Speech, Speech
+   Recognition for McSpeechface.
+4. For the product-identity migration, confirm the old data directory is moved
+   rather than copied and free disk space does not fall by the size of installed models.
+5. Confirm settings, vocabulary, history, and downloaded models remain available.
+6. If launch at login was enabled, enable it again for McSpeechface, remove any
+   earlier entry still shown in System Settings, then confirm McSpeechface starts
+   only once after logging out and back in.
+7. Reinstall the command-line tool and confirm its earlier owned link is removed.
+8. Recheck the shortcut, recording, transcription, and automatic paste.
+9. Confirm About reports the installed release tag and no update when it is current.
+10. After confirming migration, remove the earlier app from Applications.
+
+## Later McSpeechface upgrades
+
+1. Quit McSpeechface and replace it in Applications with the next DMG build.
+2. Approve the new ad-hoc build in Privacy & Security and launch it.
+3. Confirm settings, models, history, the shortcut, and automatic paste still work.
+4. Confirm About reports the installed release tag and no update when it is current.
 
 Ad-hoc community builds are not a stable Apple code identity. macOS can require
-first-launch approval or permission renewal after an update even though McSpeechface
-keeps the same bundle identifier. A future Developer ID build would remove this
-limitation.
+first-launch approval or permission renewal after an update. The product-identity
+migration always requires permission renewal because its bundle identifier changes.
+A future Developer ID build would make subsequent updates more predictable.

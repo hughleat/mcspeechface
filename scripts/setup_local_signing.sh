@@ -2,15 +2,15 @@
 set -euo pipefail
 umask 077
 
-IDENTITY="${TIRO_LOCAL_SIGNING_IDENTITY:-Tiro Local Development}"
-KEYCHAIN="${TIRO_LOCAL_SIGNING_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
+IDENTITY="${MCSPEECHFACE_LOCAL_SIGNING_IDENTITY:-McSpeechface Local Development}"
+KEYCHAIN="${MCSPEECHFACE_LOCAL_SIGNING_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
 
 [[ -f "$KEYCHAIN" ]] || {
     print -u2 "error: login keychain not found: $KEYCHAIN"
     exit 1
 }
 
-work="$(mktemp -d "${TMPDIR%/}/tiro-signing.XXXXXX")"
+work="$(mktemp -d "${TMPDIR%/}/mcspeechface-signing.XXXXXX")"
 cleanup() {
     rm -rf "$work"
 }
@@ -25,14 +25,14 @@ identity_matches="$(print -r -- "$identities" | grep -F -- "\"$IDENTITY\"" || tr
 if [[ -n "$identity_matches" ]]; then
     identity_count="$(print -r -- "$identity_matches" | wc -l | tr -d ' ')"
     [[ "$identity_count" == "1" ]] || {
-        print -u2 "error: multiple Tiro signing identities are installed; remove the duplicates in Keychain Access"
+        print -u2 "error: multiple McSpeechface signing identities are installed; remove the duplicates in Keychain Access"
         exit 1
     }
     fingerprint="$(print -r -- "$identity_matches" | awk '{print $2}')"
     cp /usr/bin/true "$work/signing-test"
     if ! codesign --force --keychain "$KEYCHAIN" --sign "$fingerprint" "$work/signing-test" >/dev/null 2>&1 \
         || ! codesign --verify --strict "$work/signing-test"; then
-        print -u2 "error: the Tiro identity is installed but unavailable; unlock the login keychain"
+        print -u2 "error: the McSpeechface identity is installed but unavailable; unlock the login keychain"
         exit 1
     fi
     print "Local signing identity already exists and works: $IDENTITY"
@@ -60,7 +60,7 @@ prompt = no
 
 [subject]
 CN = $IDENTITY
-O = Tiro
+O = McSpeechface
 
 [extensions]
 basicConstraints = critical,CA:true
@@ -101,7 +101,7 @@ fi
 
 if ! security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$work/certificate.pem"; then
     rollback
-    print -u2 "error: macOS did not authorize code-signing trust for the Tiro certificate"
+    print -u2 "error: macOS did not authorize code-signing trust for the McSpeechface certificate"
     exit 1
 fi
 
