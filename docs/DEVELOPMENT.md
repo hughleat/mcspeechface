@@ -64,4 +64,6 @@ publishing process.
 
 Pushing a beta tag such as `vX.Y.Z-beta.N` runs the complete acceptance suite
 and publishes the verified community DMG and SHA-256 checksum as a GitHub
-prerelease. Stable `vX.Y.Z` tags publish a normal release.
+Latest release labelled as a public beta. This keeps the installer visible on
+the repository page. Stable `vX.Y.Z` tags publish a normal release without the
+beta label.

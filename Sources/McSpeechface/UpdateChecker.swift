@@ -91,8 +91,8 @@ enum UpdateChecker {
         let current = currentTag.flatMap(ReleaseVersion.init)
         let published = releases.compactMap { release -> (GitHubRelease, ReleaseVersion)? in
             guard !release.draft,
-                  current == nil || current?.beta != nil || !release.prerelease,
-                  let version = ReleaseVersion(release.tagName) else { return nil }
+                  let version = ReleaseVersion(release.tagName),
+                  current == nil || current?.beta != nil || version.beta == nil else { return nil }
             return (release, version)
         }
         guard let (release, latest) = published.max(by: { $0.1 < $1.1 }) else {

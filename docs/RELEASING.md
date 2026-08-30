@@ -55,7 +55,10 @@ local stable builds use `native/Info.plist` unless `--build-number` is supplied.
 Add a matching `## VERSION - YYYY-MM-DD` section to `CHANGELOG.md`; the workflow
 publishes that section as the release notes. The complete tag appears in the
 downloaded filename. The workflow reruns the complete acceptance suite before
-publishing the DMG and checksum. Beta tags create prereleases, and publication
+publishing the DMG and checksum. Beta tags publish normal GitHub Releases marked
+Latest and labelled as public betas, which keeps the installer visible on the
+repository page. The application uses the `-beta.N` tag, rather than GitHub's
+prerelease flag, to keep beta and stable update channels separate. Publication
 can be rerun safely after an interrupted asset upload.
 
 ## Notarized Distribution

@@ -25,14 +25,11 @@ fi
 
 if [[ -n "$BETA_NUMBER" ]]; then
     RELEASE_NAME="McSpeechface $VERSION beta $BETA_NUMBER"
-    PRERELEASE="true"
 else
     RELEASE_NAME="McSpeechface $VERSION"
-    PRERELEASE="false"
 fi
 
 printf 'version=%s\n' "$VERSION"
 printf 'build_number=%s\n' "$BUILD_NUMBER"
 printf 'asset_version=%s\n' "${TAG#v}"
 printf 'release_name=%s\n' "$RELEASE_NAME"
-printf 'prerelease=%s\n' "$PRERELEASE"

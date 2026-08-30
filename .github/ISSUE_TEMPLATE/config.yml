@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Download McSpeechface
-    url: https://github.com/hughleat/mcspeechface/releases
+    url: https://github.com/hughleat/mcspeechface/releases/latest
     about: Get the latest public beta DMG and its checksum.
   - name: Report a security vulnerability
     url: https://github.com/hughleat/mcspeechface/security/advisories/new

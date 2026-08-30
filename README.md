@@ -7,7 +7,7 @@
 <p align="center"><strong>Private, fast speech-to-text for Apple Silicon Macs.</strong></p>
 
 <p align="center">
-  <strong><a href="https://github.com/hughleat/mcspeechface/releases">Download the latest Public Beta (.dmg)</a></strong>
+  <strong><a href="https://github.com/hughleat/mcspeechface/releases/latest">Download the latest Public Beta (.dmg)</a></strong>
   · <a href="#install">Install</a>
   · <a href="#your-first-dictation">First dictation</a>
   · <a href="https://github.com/hughleat/mcspeechface/issues/new/choose">Feedback</a>
@@ -32,7 +32,7 @@ open source. Its mascot is Speechy McSpeechface.
 for its global shortcut and paste workflow. The table below explains exactly
 how McSpeechface uses this broad permission.
 
-1. [Download the latest beta](https://github.com/hughleat/mcspeechface/releases), open its DMG, and drag McSpeechface to Applications.
+1. [Download the latest beta](https://github.com/hughleat/mcspeechface/releases/latest), open its DMG, and drag McSpeechface to Applications.
 2. Open **McSpeechface**. When macOS shows its unidentified-developer warning, open **System Settings > Privacy & Security**, choose **Open Anyway**, then confirm **Open**.
 3. In setup, allow the required permissions and select **Fast English — Parakeet Compact**. Choose **Download**, wait for it to finish, try a dictation in the setup field, then select **Start Using McSpeechface**.
 
@@ -90,14 +90,14 @@ McSpeechface is an independent project maintained by
 dictation is working, but bugs and application compatibility problems are still
 possible. Keep the original audio for an important imported recording and
 [report anything surprising](https://github.com/hughleat/mcspeechface/issues/new/choose).
-Only the [latest published beta](https://github.com/hughleat/mcspeechface/releases)
+Only the [latest published beta](https://github.com/hughleat/mcspeechface/releases/latest)
 receives security fixes.
 
 <details>
 <summary>Verify the downloaded DMG (optional)</summary>
 
 Download the `.sha256` file beside the DMG on the
-[release page](https://github.com/hughleat/mcspeechface/releases), then run the command
+[latest release page](https://github.com/hughleat/mcspeechface/releases/latest), then run the command
 below with the downloaded DMG's actual filename:
 
 ```sh

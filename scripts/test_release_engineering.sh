@@ -164,7 +164,8 @@ rg -q -F '::error title=Acceptance suite failed::' \
     "$ROOT/scripts/run_ci_acceptance.sh"
 rg -q -F 'gh release create "${create_args[@]}"' "$RELEASE_WORKFLOW"
 rg -q -F -- '--verify-tag' "$RELEASE_WORKFLOW"
-rg -q -F -- '--prerelease' "$RELEASE_WORKFLOW"
+rg -q -F -- '--prerelease=false' "$RELEASE_WORKFLOW"
+rg -q -F -- '--latest' "$RELEASE_WORKFLOW"
 rg -q -F 'CFBundleShortVersionString' "$ROOT/scripts/release_metadata.sh"
 rg -q -F 'release_metadata.sh "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER"' "$RELEASE_WORKFLOW"
 rg -q -F 'gh release upload "$GITHUB_REF_NAME"' "$RELEASE_WORKFLOW"
@@ -188,11 +189,9 @@ print -r -- "$beta_metadata" | rg -q "^version=$product_version$"
 print -r -- "$beta_metadata" | rg -q '^build_number=1$'
 print -r -- "$beta_metadata" | rg -q "^asset_version=$product_version-beta.1$"
 print -r -- "$beta_metadata" | rg -q "^release_name=McSpeechface $product_version beta 1$"
-print -r -- "$beta_metadata" | rg -q '^prerelease=true$'
 stable_metadata="$("$ROOT/scripts/release_metadata.sh" "v$product_version")"
 print -r -- "$stable_metadata" | rg -q "^build_number=$product_build$"
 print -r -- "$stable_metadata" | rg -q "^release_name=McSpeechface $product_version$"
-print -r -- "$stable_metadata" | rg -q '^prerelease=false$'
 if "$ROOT/scripts/release_metadata.sh" "$product_version" >/dev/null 2>&1; then
     print -u2 "release metadata accepted a tag without the v prefix"
     exit 1

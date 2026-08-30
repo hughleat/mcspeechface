@@ -50,7 +50,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_NAME: ${{ steps.metadata.outputs.release_name }}
-          PRERELEASE: ${{ steps.metadata.outputs.prerelease }}
           ASSET_VERSION: ${{ steps.metadata.outputs.asset_version }}
           VERSION: ${{ steps.metadata.outputs.version }}
           BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
@@ -84,17 +83,16 @@ jobs:
               --verify-tag \
               --title "$RELEASE_NAME" \
               --notes-file "$notes" \
-              --prerelease="$PRERELEASE"
+              --prerelease=false \
+              --latest
           else
             create_args=(
               "$GITHUB_REF_NAME"
               --verify-tag
               --notes-file "$notes"
               --title "$RELEASE_NAME"
+              --latest
             )
-            if [[ "$PRERELEASE" == "true" ]]; then
-              create_args+=(--prerelease)
-            fi
             gh release create "${create_args[@]}"
           fi
           gh release upload "$GITHUB_REF_NAME" \

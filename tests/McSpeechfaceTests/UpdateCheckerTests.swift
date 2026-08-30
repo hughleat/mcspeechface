@@ -57,10 +57,11 @@ struct UpdateCheckerTests {
     }
 
     @Test
-    func stableBuildIgnoresPrereleases() throws {
+    func stableBuildIgnoresBetaTagsRegardlessOfGitHubLabel() throws {
         let data = Data("""
         [
-          {"tag_name":"v0.2.0-beta.1","html_url":"https://example.com/beta","draft":false,"prerelease":true},
+          {"tag_name":"v0.3.0-beta.1","html_url":"https://example.com/public-beta","draft":false,"prerelease":false},
+          {"tag_name":"v0.2.0-beta.1","html_url":"https://example.com/prerelease-beta","draft":false,"prerelease":true},
           {"tag_name":"v0.1.1","html_url":"https://example.com/stable","draft":false,"prerelease":false}
         ]
         """.utf8)
