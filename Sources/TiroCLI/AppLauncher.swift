@@ -37,13 +37,13 @@ enum TiroAppLocator {
         guard let appURL,
               let info = infoDictionary(appURL: appURL),
               let version = info["CFBundleShortVersionString"] as? String else {
-            return "Tiro development"
+            return "McSpeechface development"
         }
         let build = info["CFBundleVersion"] as? String
         if let build, build != version {
-            return "Tiro \(version) (\(build))"
+            return "McSpeechface \(version) (\(build))"
         }
-        return "Tiro \(version)"
+        return "McSpeechface \(version)"
     }
 
     private static func isTiroApp(_ url: URL, fileManager: FileManager) -> Bool {

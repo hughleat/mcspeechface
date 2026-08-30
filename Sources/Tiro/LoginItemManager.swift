@@ -107,30 +107,30 @@ private enum LoginItemError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .approvalRequired:
-            return "Tiro needs approval to launch at login."
+            return "McSpeechface needs approval to launch at login."
         case .serviceUnavailable:
-            return "Tiro could not find its login item service."
+            return "McSpeechface could not find its login item service."
         case .registrationDidNotComplete:
-            return "Tiro's login item registration did not complete."
+            return "McSpeechface's login item registration did not complete."
         case .registrationFailed(let error):
-            return "Tiro could not register as a login item: \(error.localizedDescription)"
+            return "McSpeechface could not register as a login item: \(error.localizedDescription)"
         case .unregistrationFailed(let error):
-            return "Tiro could not remove its login item: \(error.localizedDescription)"
+            return "McSpeechface could not remove its login item: \(error.localizedDescription)"
         case .legacyCleanupFailed(let file, let error):
-            return "Tiro could not remove the legacy login item at \(file.path): \(error.localizedDescription)"
+            return "McSpeechface could not remove the legacy login item at \(file.path): \(error.localizedDescription)"
         case .unrecognizedLegacyFile(let file):
-            return "The file at \(file.path) is not a Tiro login item, so Tiro left it untouched."
+            return "The file at \(file.path) is not a McSpeechface login item, so McSpeechface left it untouched."
         }
     }
 
     var recoverySuggestion: String? {
         switch self {
         case .approvalRequired:
-            return "Open System Settings > General > Login Items, then allow Tiro under Open at Login."
+            return "Open System Settings > General > Login Items, then allow McSpeechface under Open at Login."
         case .serviceUnavailable, .registrationDidNotComplete:
-            return "Move Tiro to Applications, reopen it, and try again."
+            return "Move McSpeechface to Applications, reopen it, and try again."
         case .registrationFailed, .unregistrationFailed:
-            return "Open System Settings > General > Login Items, check Tiro's current state, and try again."
+            return "Open System Settings > General > Login Items, check McSpeechface's current state, and try again."
         case .legacyCleanupFailed(let file, _):
             return "Remove \(file.path) and try again."
         case .unrecognizedLegacyFile:

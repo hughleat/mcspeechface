@@ -512,13 +512,14 @@ if [[ "$MODE" == "dmg" ]]; then
     sign_nested_code --force --sign -
 
     mkdir -p "$ARCHIVE_DIR"
-    archive="$ARCHIVE_DIR/Tiro-$VERSION-$BUILD_NUMBER-macOS-arm64.dmg"
+    archive="$ARCHIVE_DIR/McSpeechface-$VERSION-$BUILD_NUMBER-macOS-arm64.dmg"
     PENDING_ARTIFACT="$archive"
     rm -f "$archive" "$archive.sha256" "$archive.sha256.partial"
     create_dmg "$archive"
     write_checksum "$archive"
     PENDING_ARTIFACT=""
 
+    print "McSpeechface build complete"
     print "App: $APP"
     print "DMG: $archive"
     print "Checksum: $archive.sha256"
@@ -529,7 +530,7 @@ sign_for_distribution
 mkdir -p "$ARCHIVE_DIR"
 suffix=""
 (( SKIP_NOTARIZATION )) && suffix="-unnotarized"
-archive="$ARCHIVE_DIR/Tiro-$VERSION-$BUILD_NUMBER-macOS-arm64$suffix.zip"
+archive="$ARCHIVE_DIR/McSpeechface-$VERSION-$BUILD_NUMBER-macOS-arm64$suffix.zip"
 rm -f "$archive" "$archive.sha256" "$archive.partial" "$archive.sha256.partial"
 
 if (( ! SKIP_NOTARIZATION )); then
@@ -556,6 +557,7 @@ fi
 create_archive "$archive"
 write_checksum "$archive"
 
+print "McSpeechface build complete"
 print "App: $APP"
 print "Archive: $archive"
 print "Checksum: $archive.sha256"

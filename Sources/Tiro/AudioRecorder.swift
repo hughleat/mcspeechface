@@ -92,14 +92,14 @@ final class AudioRecorder {
                 includingPropertiesForKeys: nil
             )
         } catch {
-            NSLog("Could not inspect stale Tiro recordings: %@", error.localizedDescription)
+            NSLog("Could not inspect stale McSpeechface recordings: %@", error.localizedDescription)
             return
         }
         for file in files {
             do {
                 try FileManager.default.removeItem(at: file)
             } catch {
-                NSLog("Could not remove stale Tiro recording: %@", error.localizedDescription)
+                NSLog("Could not remove stale McSpeechface recording: %@", error.localizedDescription)
             }
         }
     }

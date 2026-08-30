@@ -27,7 +27,7 @@ enum UpdateCheckerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "GitHub returned an unexpected response."
-        case .noRelease: return "No published Tiro release was found."
+        case .noRelease: return "No published McSpeechface release was found."
         }
     }
 }
@@ -79,7 +79,7 @@ enum UpdateChecker {
     ) async throws -> UpdateCheckResult {
         var request = URLRequest(url: BuildFeatures.releasesAPIURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("Tiro update checker", forHTTPHeaderField: "User-Agent")
+        request.setValue("McSpeechface update checker", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse,
               response.statusCode == 200 else { throw UpdateCheckerError.invalidResponse }

@@ -66,8 +66,8 @@ final class SnippetEditorView: NSStackView, NSTableViewDataSource, NSTableViewDe
 
         let label = NSTextField(labelWithString: "Snippets")
         label.font = .systemFont(ofSize: 13, weight: .medium)
-        table.addTableColumn(column(identifier: "trigger", title: "When Tiro hears"))
-        table.addTableColumn(column(identifier: "content", title: "Tiro inserts"))
+        table.addTableColumn(column(identifier: "trigger", title: "When McSpeechface hears"))
+        table.addTableColumn(column(identifier: "content", title: "McSpeechface inserts"))
         table.dataSource = self
         table.delegate = self
         table.usesAlternatingRowBackgroundColors = true

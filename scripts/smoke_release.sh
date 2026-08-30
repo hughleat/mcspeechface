@@ -87,6 +87,22 @@ done
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/tiro-release-smoke.XXXXXX")"
 INFO="$APP/Contents/Info.plist"
 [[ -f "$INFO" ]] || fail "Info.plist not found in app bundle"
+[[ "${APP:t}" == "Tiro.app" ]] \
+    || fail "release app bundle must remain Tiro.app for upgrade compatibility"
+bundle_display_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$INFO")"
+bundle_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$INFO")"
+bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO")"
+bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$INFO")"
+[[ "$bundle_display_name" == "McSpeechface" ]] \
+    || fail "bundle display name must be McSpeechface"
+[[ "$bundle_name" == "McSpeechface" ]] \
+    || fail "bundle name must be McSpeechface"
+[[ "$bundle_identifier" == "local.tiro.dictation" ]] \
+    || fail "bundle identifier changed and would strand existing user settings"
+[[ "$bundle_executable" == "Tiro" ]] \
+    || fail "bundle executable must remain Tiro for upgrade compatibility"
+[[ -f "$APP/Contents/MacOS/Tiro" && -x "$APP/Contents/MacOS/Tiro" ]] \
+    || fail "Tiro compatibility executable is missing or not executable"
 icon_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$INFO" 2>/dev/null || true)"
 [[ "$icon_name" == "Tiro.icns" ]] || fail "bundle icon metadata is missing"
 [[ -s "$APP/Contents/Resources/$icon_name" ]] || fail "bundle icon is missing"
@@ -105,7 +121,7 @@ for representation in \
         || fail "bundle icon is missing representation: $representation"
 done
 CLI="$APP/Contents/Helpers/tiro"
-[[ -f "$CLI" && -x "$CLI" ]] || fail "Tiro command-line helper is missing or not executable"
+[[ -f "$CLI" && -x "$CLI" ]] || fail "McSpeechface command-line helper is missing or not executable"
 cmp -s "$APP/Contents/MacOS/Tiro" "$CLI" \
     && fail "command-line helper was replaced by the GUI executable"
 PROCESS_LAUNCHER="$APP/Contents/Helpers/tiro-process-launcher"
@@ -161,7 +177,7 @@ esac
     || fail "expected sponsorship $EXPECTED_SPONSORSHIP, found $sponsorship_enabled"
 [[ "$executable_sponsorship" == "$sponsorship_enabled" ]] \
     || fail "executable and bundle sponsorship states do not match"
-expected_cli_version="Tiro $actual_version"
+expected_cli_version="McSpeechface $actual_version"
 [[ "$actual_build" == "$actual_version" ]] \
     || expected_cli_version="$expected_cli_version ($actual_build)"
 [[ "$("$CLI" --version)" == "$expected_cli_version" ]] \
@@ -230,4 +246,4 @@ plutil -convert binary1 -o "$TEMP_ROOT/actual-entitlements.plist" \
 cmp -s "$TEMP_ROOT/expected-entitlements.plist" "$TEMP_ROOT/actual-entitlements.plist" \
     || fail "signed app entitlements differ from the release policy"
 
-print "Release smoke check passed: Tiro $actual_version ($actual_build), $SIGNING_LEVEL"
+print "McSpeechface release smoke check passed: $actual_version ($actual_build), $SIGNING_LEVEL"

@@ -6,8 +6,8 @@ enum BuildFeatures {
     static let newIssueURL = URL(string: "https://github.com/hughleat/tiro/issues/new/choose")!
 #if TIRO_SPONSORSHIP_ENABLED
     static let sponsorshipEnabled = true
-    static let sponsorshipMenuTitle: String? = "Support Tiro..."
-    static let sponsorshipButtonTitle: String? = "Support Tiro"
+    static let sponsorshipMenuTitle: String? = "Support McSpeechface..."
+    static let sponsorshipButtonTitle: String? = "Support McSpeechface"
     static let sponsorsURL = URL(string: "https://github.com/sponsors/hughleat")!
 #else
     static let sponsorshipEnabled = false

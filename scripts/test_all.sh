@@ -28,4 +28,4 @@ cd "$ROOT"
 "$ROOT/scripts/build_native_app.sh" development
 "$ROOT/scripts/build_native_app.sh" dmg "${dmg_args[@]}"
 
-print "All Tiro checks passed"
+print "All McSpeechface checks passed"

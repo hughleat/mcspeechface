@@ -1,8 +1,8 @@
-# Releasing Tiro for macOS
+# Releasing McSpeechface for macOS
 
-Tiro has four native build modes:
+McSpeechface has four native build modes:
 
-- `development`: local app, using the local Tiro identity when available.
+- `development`: local app, using the existing `Tiro Local Development` identity when available.
 - `release`: optimized local app with the same signing policy.
 - `dmg`: ad-hoc-signed community DMG and SHA-256 checksum.
 - `distribution`: Developer ID signing, notarization, stapling, ZIP, and checksum.
@@ -26,8 +26,8 @@ this option off while sponsorship is unavailable.
 Outputs:
 
 ```text
-dist/releases/Tiro-1.2.0-42-macOS-arm64.dmg
-dist/releases/Tiro-1.2.0-42-macOS-arm64.dmg.sha256
+dist/releases/McSpeechface-1.2.0-42-macOS-arm64.dmg
+dist/releases/McSpeechface-1.2.0-42-macOS-arm64.dmg.sha256
 ```
 
 The build mounts the image and verifies the app, Applications shortcut,
@@ -49,9 +49,12 @@ git push origin v1.2.0-beta.1
 
 Release tags must use `vMAJOR.MINOR.PATCH` or
 `vMAJOR.MINOR.PATCH-beta.NUMBER`. The numeric version must match
-`CFBundleShortVersionString` in `native/Info.plist`. The workflow uses its
-unique GitHub run number as `CFBundleVersion`, and the complete tag appears in
-the downloaded filename. It reruns the complete acceptance suite before
+`CFBundleShortVersionString` in `native/Info.plist`. Beta builds use the beta
+number as `CFBundleVersion`. Stable GitHub builds use the workflow run number;
+local stable builds use `native/Info.plist` unless `--build-number` is supplied.
+Add a matching `## VERSION - YYYY-MM-DD` section to `CHANGELOG.md`; the workflow
+publishes that section as the release notes. The complete tag appears in the
+downloaded filename. The workflow reruns the complete acceptance suite before
 publishing the DMG and checksum. Beta tags create prereleases, and publication
 can be rerun safely after an interrupted asset upload.
 
@@ -99,5 +102,8 @@ Before publishing, test the DMG on an Apple Silicon Mac running macOS 14:
 
 The complete hands-on checklist is in [`BETA_TESTING.md`](BETA_TESTING.md).
 
-The bundle identifier remains `local.tiro.dictation`; changing it resets the
-app identity and permission history.
+For the transitional rename release, McSpeechface retains the physical bundle
+path `Tiro.app`, executable name `Tiro`, and bundle identifier
+`local.tiro.dictation`. These compatibility details let the new build replace
+an existing beta installation while preserving its app identity, settings,
+data, and permission history.

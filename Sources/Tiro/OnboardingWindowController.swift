@@ -19,7 +19,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     private let downloadProgress = NSProgressIndicator()
     private let practiceField = NSTextField()
     private let messageLabel = NSTextField(wrappingLabelWithString: "")
-    private let finishButton = NSButton(title: "Start Using Tiro", target: nil, action: nil)
+    private let finishButton = NSButton(title: "Start Using McSpeechface", target: nil, action: nil)
     private var selectedModelKey: String
     private var readiness = SetupReadiness(
         microphoneAllowed: false,
@@ -55,7 +55,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Set Up Tiro"
+        window.title = "Set Up McSpeechface"
         window.minSize = NSSize(width: 600, height: 540)
         window.center()
         window.isReleasedWhenClosed = false
@@ -104,10 +104,10 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     private func buildContent() {
         guard let contentView = window?.contentView else { return }
 
-        let title = NSTextField(labelWithString: "Make Tiro ready for dictation")
+        let title = NSTextField(labelWithString: "Make McSpeechface ready for dictation")
         title.font = .systemFont(ofSize: 24, weight: .semibold)
         let privacy = NSTextField(wrappingLabelWithString:
-            "Your recordings and transcripts are processed locally on this Mac. Tiro does not send your speech to a transcription service."
+            "Your recordings and transcripts are processed locally on this Mac. McSpeechface does not send your speech to a transcription service."
         )
         privacy.textColor = .secondaryLabelColor
 
@@ -160,7 +160,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         practiceField.heightAnchor.constraint(equalToConstant: 34).isActive = true
         let practiceHint = NSTextField(wrappingLabelWithString:
             "Tap \(shortcutName) to start and stop. Hold it for push-to-talk. "
-                + "Escape cancels. Tiro stays in the menu bar."
+                + "Escape cancels. McSpeechface stays in the menu bar."
         )
         practiceHint.textColor = .secondaryLabelColor
         practiceHint.font = .systemFont(ofSize: 12)
@@ -378,7 +378,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         practiceField.isEnabled = readiness.canFinish
         if readiness.canFinish, !wasReady {
             AccessibilityAnnouncements.post(
-                "Tiro is ready. Try a dictation or start using Tiro.",
+                "McSpeechface is ready. Try a dictation or start using McSpeechface.",
                 from: practiceField
             )
         }
@@ -402,7 +402,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         case "coreml-parakeet-v3": "Multilingual — Parakeet 0.6B v3 (520 MB)"
         case DictationModel.coreMLParakeetUnifiedKey:
             "New English — Parakeet Unified (615 MB)"
-        case DictationModel.appleSpeechKey: "Apple Speech — no Tiro download"
+        case DictationModel.appleSpeechKey: "Apple Speech — no McSpeechface download"
         default: model.name
         }
     }

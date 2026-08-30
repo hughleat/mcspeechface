@@ -25,7 +25,7 @@ public enum CoreMLParakeetError: LocalizedError {
         case .downloadCleanupFailed(let reason):
             return "The incomplete model could not be removed: \(reason)"
         case .modelStorageInUse:
-            return "Another Tiro process is currently using the model library."
+            return "Another McSpeechface process is currently using the model library."
         case .unsafeModelDirectory(let directory):
             return "Refusing to delete a model outside its configured root: \(directory.path)."
         case .activityInProgress(let activity):

@@ -178,7 +178,7 @@ private enum FileTranscriptionError: LocalizedError {
         case .unsupportedFile:
             "Choose an audio file in a format supported by macOS."
         case .busy:
-            "Tiro is already recording or transcribing. Try this file again when it has finished."
+            "McSpeechface is already recording or transcribing. Try this file again when it has finished."
         }
     }
 }

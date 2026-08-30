@@ -1,16 +1,47 @@
 # Changelog
 
-Notable changes to Tiro are recorded here. Tiro is currently in public beta,
+Notable changes to McSpeechface are recorded here. McSpeechface is currently in public beta,
 so releases may also refine existing behaviour and compatibility.
 
-## Unreleased
+## 0.1.0-beta.9 - 2026-08-30
+
+### Changed
+
+- Renamed the app from Tiro to McSpeechface and named its mascot Speechy McSpeechface.
+- Reworked transcript correction into Off, On request, and Automatic modes with
+  a dark, editable review panel and explicit transcript/repair states.
+- Kept Codex and Claude correction processes warm between requests, with
+  configurable models, access, reasoning, and idle timeouts.
 
 ### Added
 
+- Added first-class local, Apple Intelligence, Codex, Claude, and custom
+  command correction providers with editable system and user prompt templates.
+- Added an **Add more** review action that extends the transcript, original
+  recording, playback, and accepted history without implicitly enabling repair.
+- Added Parakeet Unified English and a broader local Whisper catalog.
 - Added opt-in transcript correction to the `tiro` command-line helper, with
   per-command model selection and one-off instructions.
 - Added `tiro correction-models` for discovering available correction providers
   and stable scripting keys.
+
+### Fixed
+
+- Allowed a new recording to begin as soon as the previous paste is dispatched.
+- Hardened correction cancellation, process cleanup, and stale-task handling.
+- Fixed raw transcript contrast, review layout, action visibility, and model
+  selection stability.
+
+## 0.1.0-beta.8 - 2026-08-11
+
+### Added
+
+- Added spoken transcript correction with a local Qwen editing model.
+- Added automatic update checks through GitHub Releases.
+
+### Fixed
+
+- Preserved macOS 14 compatibility while using newer release tooling.
 
 ## 0.1.0-beta.7 - 2026-08-01
 

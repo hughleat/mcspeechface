@@ -20,7 +20,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let correctionTimingDetailLabel = NSTextField(wrappingLabelWithString: "")
     private let reviewPreferenceButton = NSPopUpButton()
     private let soundFeedbackButton = NSButton(checkboxWithTitle: "Recording feedback", target: nil, action: nil)
-    private let launchAtLoginButton = NSButton(checkboxWithTitle: "Launch Tiro at login", target: nil, action: nil)
+    private let launchAtLoginButton = NSButton(checkboxWithTitle: "Launch McSpeechface at login", target: nil, action: nil)
     private let shortcutRecorder = ShortcutRecorderView()
     private let dictationPreferencesView = DictationPreferencesView()
     private let transcriptEditingView: TranscriptEditingSettingsView
@@ -72,7 +72,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Tiro Settings"
+        window.title = "McSpeechface Settings"
         window.center()
         window.minSize = NSSize(width: 720, height: 520)
         window.setFrameAutosaveName("TiroSettingsWindow")
@@ -153,7 +153,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
         automaticUpdateChecksButton.state = automaticUpdates ? .on : .off
         updateStatusLabel.stringValue = automaticUpdates
-            ? "Tiro checks GitHub Releases once a day."
+            ? "McSpeechface checks GitHub Releases once a day."
             : "Updates are checked only when you ask."
         refreshLaunchAtLogin()
         vocabularyEditor.load()
@@ -314,7 +314,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.widthAnchor.constraint(equalToConstant: 96).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 96).isActive = true
-        let name = NSTextField(labelWithString: "Tiro")
+        let name = NSTextField(labelWithString: "McSpeechface")
         name.font = .systemFont(ofSize: 20, weight: .semibold)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
@@ -504,7 +504,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
         showUpdateStatus(
             enabled
-                ? "Tiro checks GitHub Releases once a day."
+                ? "McSpeechface checks GitHub Releases once a day."
                 : "Updates are checked only when you ask."
         )
         onAutomaticUpdateChecksChanged?(enabled)
@@ -518,7 +518,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             showUpdateStatus("\(available.tagName) is available.")
         case .current(let current):
             release = current
-            showUpdateStatus("Tiro is up to date (\(current.tagName)).")
+            showUpdateStatus("McSpeechface is up to date (\(current.tagName)).")
         case .untaggedBuild(let latest):
             release = latest
             showUpdateStatus(

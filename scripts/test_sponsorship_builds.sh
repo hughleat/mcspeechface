@@ -11,4 +11,4 @@ OUTPUT="$ROOT/.build/sponsorship-enabled"
     --app "$OUTPUT/Tiro.app" \
     --expected-sponsorship true
 
-print "Sponsorship-enabled app assertions passed"
+print "Sponsorship-enabled McSpeechface app assertions passed"

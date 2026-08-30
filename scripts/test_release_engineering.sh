@@ -23,6 +23,9 @@ rg -q -F 'expected-entitlements.plist' "$ROOT/scripts/smoke_release.sh"
 rg -q -F -- '--expected-entitlements "$ENTITLEMENTS"' "$ROOT/scripts/build_native_app.sh"
 rg -q -F -- '--expected-sponsorship "$sponsorship_value"' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'TIRO_SPONSORSHIP_ENABLED' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'APP="$OUTPUT_DIR/Tiro.app"' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'cp "$ROOT/.build/release/Tiro" "$APP/Contents/MacOS/Tiro"' \
+    "$ROOT/scripts/build_native_app.sh"
 rg -q -F '.executable(name: "TiroCommand", targets: ["TiroCLI"])' "$ROOT/Package.swift"
 rg -q -F '.build/release/TiroCommand" "$APP/Contents/Helpers/tiro"' \
     "$ROOT/scripts/build_native_app.sh"
@@ -37,6 +40,11 @@ rg -q -F -- '--print-build-features' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'executable and bundle sponsorship states do not match' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'sponsorship-disabled executable contains a Sponsors URL' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'Tiro-notarization-submission.zip' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'archive="$ARCHIVE_DIR/McSpeechface-$VERSION-$BUILD_NUMBER-macOS-arm64.dmg"' \
+    "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'archive="$ARCHIVE_DIR/McSpeechface-$VERSION-$BUILD_NUMBER-macOS-arm64$suffix.zip"' \
+    "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'print "McSpeechface build complete"' "$ROOT/scripts/build_native_app.sh"
 archive_cleanup_line="$(rg -n -F 'rm -f "$archive" "$archive.sha256" "$archive.partial"' "$ROOT/scripts/build_native_app.sh" | tail -1 | cut -d: -f1)"
 notarization_line="$(rg -n -F 'xcrun notarytool submit' "$ROOT/scripts/build_native_app.sh" | head -1 | cut -d: -f1)"
 smoke_line="$(rg -n -F 'smoke_release.sh" --app "$APP" --notarized' "$ROOT/scripts/build_native_app.sh" | head -1 | cut -d: -f1)"
@@ -80,8 +88,34 @@ if rg -q -F -- '--update' "$ROOT/scripts/build_native_app.sh"; then
     exit 1
 fi
 plutil -lint "$ROOT/native/Info.plist" "$ROOT/native/Tiro.entitlements" >/dev/null
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$ROOT/native/Info.plist")" == "McSpeechface" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$ROOT/native/Info.plist")" == "McSpeechface" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ROOT/native/Info.plist")" == "local.tiro.dictation" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$ROOT/native/Info.plist")" == "Tiro" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$ROOT/native/Info.plist")" == "tiro" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$ROOT/native/Tiro.entitlements")" == "true" ]]
+rg -q -F '.appendingPathComponent("Tiro", isDirectory: true)' \
+    "$ROOT/Sources/Tiro/AppPaths.swift"
+rg -q -F 'URL(fileURLWithPath: "/usr/local/bin/tiro")' \
+    "$ROOT/Sources/Tiro/CommandLineToolInstaller.swift"
+rg -q -F 'private static let privateDirectoryName = "Tiro"' \
+    "$ROOT/Sources/TiroIPC/CommandSocketPath.swift"
+rg -q -F 'environment["TIRO_COMMAND_SOCKET"]' \
+    "$ROOT/Sources/TiroIPC/CommandSocketPath.swift"
+rg -q -F 'release app bundle must remain Tiro.app for upgrade compatibility' \
+    "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'bundle display name must be McSpeechface' "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'bundle identifier changed and would strand existing user settings' \
+    "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'bundle executable must remain Tiro for upgrade compatibility' \
+    "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'expected_cli_version="McSpeechface $actual_version"' \
+    "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'McSpeechface release smoke check passed' "$ROOT/scripts/smoke_release.sh"
 rg -q -F 'runs-on: macos-14' "$MACOS_14_WORKFLOW"
+rg -q -F 'name: McSpeechface macOS 14 acceptance' "$MACOS_14_WORKFLOW"
+rg -q -F 'name: McSpeechface on Apple Silicon macOS 14' "$MACOS_14_WORKFLOW"
+rg -q -F 'name: McSpeechface-macOS-arm64' "$MACOS_14_WORKFLOW"
 rg -q -F 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' "$MACOS_14_WORKFLOW"
 rg -q -F 'persist-credentials: false' "$MACOS_14_WORKFLOW"
 rg -q -F 'DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer' "$MACOS_14_WORKFLOW"
@@ -95,6 +129,8 @@ fi
 
 rg -q -F 'permissions:' "$RELEASE_WORKFLOW"
 rg -q -F 'contents: write' "$RELEASE_WORKFLOW"
+rg -q -F 'name: McSpeechface release' "$RELEASE_WORKFLOW"
+rg -q -F 'name: Build and publish McSpeechface community DMG' "$RELEASE_WORKFLOW"
 rg -q -F 'runs-on: macos-26' "$RELEASE_WORKFLOW"
 rg -q -F 'DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer' "$RELEASE_WORKFLOW"
 rg -q -F "printf 'import FoundationModels\\n' | swiftc -typecheck -" "$RELEASE_WORKFLOW"
@@ -114,6 +150,12 @@ rg -q -F 'release_metadata.sh "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER"' "$RELEASE
 rg -q -F 'gh release upload "$GITHUB_REF_NAME"' "$RELEASE_WORKFLOW"
 rg -q -F -- '--clobber' "$RELEASE_WORKFLOW"
 rg -q -F 'gh release edit "$GITHUB_REF_NAME"' "$RELEASE_WORKFLOW"
+rg -q -F 'dmg="dist/releases/McSpeechface-$VERSION-$BUILD_NUMBER-macOS-arm64.dmg"' \
+    "$RELEASE_WORKFLOW"
+rg -q -F 'published_dmg="dist/releases/McSpeechface-$ASSET_VERSION-$BUILD_NUMBER-macOS-arm64.dmg"' \
+    "$RELEASE_WORKFLOW"
+rg -q -F 'awk -v version="$ASSET_VERSION"' "$RELEASE_WORKFLOW"
+rg -q -F -- '--notes-file "$notes"' "$RELEASE_WORKFLOW"
 rg -q -F 'TIRO_RELEASE_BUILD_NUMBER' "$ROOT/scripts/test_all.sh"
 rg -q -F 'TIRO_RELEASE_TAG' "$ROOT/scripts/test_all.sh"
 rg -q -F 'TIRO_RELEASE_TAG: ${{ github.ref_name }}' "$RELEASE_WORKFLOW"
@@ -125,11 +167,11 @@ beta_metadata="$("$ROOT/scripts/release_metadata.sh" "v$product_version-beta.1" 
 print -r -- "$beta_metadata" | rg -q "^version=$product_version$"
 print -r -- "$beta_metadata" | rg -q '^build_number=1$'
 print -r -- "$beta_metadata" | rg -q "^asset_version=$product_version-beta.1$"
-print -r -- "$beta_metadata" | rg -q "^release_name=Tiro $product_version beta 1$"
+print -r -- "$beta_metadata" | rg -q "^release_name=McSpeechface $product_version beta 1$"
 print -r -- "$beta_metadata" | rg -q '^prerelease=true$'
 stable_metadata="$("$ROOT/scripts/release_metadata.sh" "v$product_version")"
 print -r -- "$stable_metadata" | rg -q "^build_number=$product_build$"
-print -r -- "$stable_metadata" | rg -q "^release_name=Tiro $product_version$"
+print -r -- "$stable_metadata" | rg -q "^release_name=McSpeechface $product_version$"
 print -r -- "$stable_metadata" | rg -q '^prerelease=false$'
 if "$ROOT/scripts/release_metadata.sh" "$product_version" >/dev/null 2>&1; then
     print -u2 "release metadata accepted a tag without the v prefix"
@@ -227,4 +269,4 @@ register_line="$(rg -n -F 'try enableMainAppService()' "$LOGIN_MANAGER" | head -
 cleanup_line="$(rg -n -F 'try removeLegacyLaunchAgent()' "$LOGIN_MANAGER" | head -1 | cut -d: -f1)"
 [[ "$register_line" -lt "$cleanup_line" ]]
 
-print "Release engineering assertions passed"
+print "McSpeechface release engineering assertions passed"

@@ -1,16 +1,16 @@
 name: Bug report
-description: Tell us about a reproducible problem in Tiro
+description: Tell us about a reproducible problem in McSpeechface
 title: "[Bug]: "
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve Tiro. Please do not attach private recordings or transcripts. About > Copy Diagnostics produces a report that excludes them. Report security vulnerabilities privately through the repository's Security page rather than in a public issue.
+        Thanks for helping improve McSpeechface. Please do not attach private recordings or transcripts. About > Copy Diagnostics produces a report that excludes them. Report security vulnerabilities privately through the repository's Security page rather than in a public issue.
   - type: textarea
     id: problem
     attributes:
       label: What happened?
-      description: Describe what you expected and what Tiro did instead.
+      description: Describe what you expected and what McSpeechface did instead.
     validations:
       required: true
   - type: textarea
@@ -26,8 +26,8 @@ body:
   - type: textarea
     id: diagnostics
     attributes:
-      label: Tiro diagnostics
-      description: Paste the output from Tiro Settings > About > Copy Diagnostics.
+      label: McSpeechface diagnostics
+      description: Paste the output from McSpeechface Settings > About > Copy Diagnostics.
       render: text
   - type: dropdown
     id: area

@@ -5,7 +5,7 @@ Please report suspected security vulnerabilities privately through
 Do not include vulnerabilities, private recordings, transcripts, or personal
 data in a public issue.
 
-Include the Tiro version, macOS version, affected feature, reproduction steps,
+Include the McSpeechface version, macOS version, affected feature, reproduction steps,
 and potential impact when known. We will acknowledge the report and coordinate
 any fix and disclosure through the private advisory.
 

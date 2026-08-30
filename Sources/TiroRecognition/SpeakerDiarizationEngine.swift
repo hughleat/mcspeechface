@@ -57,7 +57,7 @@ public enum SpeakerDiarizationError: LocalizedError, Equatable {
         case .insufficientDiskSpace(let required, let available):
             "Speaker diarisation needs \(required) bytes of free space, but only \(available) bytes are available."
         case .modelStorageInUse:
-            "Another Tiro process is currently using the model library."
+            "Another McSpeechface process is currently using the model library."
         case .unsafeModelDirectory(let directory):
             "Refusing to modify a model outside its configured root: \(directory.path)."
         case .activityInProgress(let activity):

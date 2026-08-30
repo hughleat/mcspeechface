@@ -23,15 +23,15 @@ enum CLIExecutionError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .appNotFound:
-            "Tiro.app could not be found. Install Tiro in Applications."
+            "McSpeechface could not be found. Install McSpeechface in Applications."
         case .appLaunchFailed:
-            "Tiro could not be launched."
+            "McSpeechface could not be launched."
         case .inputFileUnavailable(let path):
             "The input file is not readable: \(path)"
         case .standardInputFailed(let code):
             "Could not read terminal input (error \(code))."
         case .malformedResult:
-            "Tiro returned an unsupported command result."
+            "McSpeechface returned an unsupported command result."
         }
     }
 }

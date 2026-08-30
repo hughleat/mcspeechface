@@ -41,10 +41,10 @@ final class PasteCoordinator {
         var errorDescription: String? {
             switch self {
             case .unavailableDestination: "The original paste destination is no longer available."
-            case .secureDestination: "Tiro will not paste into a secure text field."
+            case .secureDestination: "McSpeechface will not paste into a secure text field."
             case .couldNotRestoreDestination: "The original paste destination could not be restored."
             case .couldNotSnapshotPasteboard: "The current clipboard contents could not be preserved."
-            case .clipboardChanged: "The clipboard changed before Tiro could paste."
+            case .clipboardChanged: "The clipboard changed before McSpeechface could paste."
             case .couldNotWritePasteboard: "The transcription could not be written to the clipboard."
             case .couldNotCreateKeyboardEvent: "The paste keyboard event could not be created."
             case .keyboardEventRejected: "macOS rejected the paste keyboard event."

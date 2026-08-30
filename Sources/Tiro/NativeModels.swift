@@ -10,7 +10,7 @@ enum NativeStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidData(let message): message
-        case .unsafePath(let url): "Tiro refused to use the unsafe path \(url.path)."
+        case .unsafePath(let url): "McSpeechface refused to use the unsafe path \(url.path)."
         case .missingHistoryEntry: "The transcription no longer exists."
         case .missingSuggestion: "The vocabulary suggestion no longer exists."
         }

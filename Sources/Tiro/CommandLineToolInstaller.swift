@@ -14,7 +14,7 @@ enum CommandLineToolState: Equatable {
         case .installed: "The tiro command is installed and follows app updates."
         case .needsRepair: "The installed tiro command points to an older app location."
         case .conflict:
-            "Another file already exists at /usr/local/bin/tiro. Tiro will not change it."
+            "Another file already exists at /usr/local/bin/tiro. McSpeechface will not change it."
         case .unavailable: "The command-line helper is missing from this build."
         }
     }
@@ -77,7 +77,7 @@ struct CommandLineToolInstaller {
         }
         guard state == .installed else {
             throw CommandLineToolError.installFailed(
-                "The file at \(linkURL.path) changed before Tiro could update it."
+                "The file at \(linkURL.path) changed before McSpeechface could update it."
             )
         }
     }
@@ -93,7 +93,7 @@ struct CommandLineToolInstaller {
         }
         guard case .absent = linkOwnership else {
             throw CommandLineToolError.installFailed(
-                "The file at \(linkURL.path) changed before Tiro could remove it."
+                "The file at \(linkURL.path) changed before McSpeechface could remove it."
             )
         }
     }
@@ -197,9 +197,9 @@ enum CommandLineToolError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .helperMissing: "This Tiro build does not contain the command-line helper."
+        case .helperMissing: "This McSpeechface build does not contain the command-line helper."
         case .pathConflict:
-            "Tiro will not change /usr/local/bin/tiro because it does not belong to Tiro."
+            "McSpeechface will not change /usr/local/bin/tiro because it does not belong to McSpeechface."
         case .installFailed(let detail): "The tiro command could not be installed. \(detail)"
         }
     }

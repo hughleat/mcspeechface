@@ -10,7 +10,7 @@ enum DiagnosticsReport {
         let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
         let release = bundle.object(forInfoDictionaryKey: "TiroReleaseTag") as? String ?? "untagged"
         return """
-        Tiro Diagnostics
+        McSpeechface Diagnostics
         Version: \(version) (\(build))
         Release: \(release)
         macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)

@@ -55,7 +55,7 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
             }
         } catch {
             setEditorEnabled(false)
-            NSLog("Could not load Tiro vocabulary: %@", error.localizedDescription)
+            NSLog("Could not load McSpeechface vocabulary: %@", error.localizedDescription)
             return
         }
 
@@ -73,7 +73,7 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
                 rebuildProfilePicker(selectingBundleID: bundleToKeepSelected)
             } catch {
                 guard !Task.isCancelled, generation == loadGeneration else { return }
-                NSLog("Could not load Tiro vocabulary profiles: %@", error.localizedDescription)
+                NSLog("Could not load McSpeechface vocabulary profiles: %@", error.localizedDescription)
             }
         }
     }
@@ -92,8 +92,8 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
         profilePicker.toolTip = "Choose vocabulary scope"
         profilePicker.setAccessibilityLabel("Vocabulary scope")
 
-        let spokenColumn = column(identifier: "spoken", title: "When Tiro hears")
-        let writtenColumn = column(identifier: "written", title: "Tiro writes")
+        let spokenColumn = column(identifier: "spoken", title: "When McSpeechface hears")
+        let writtenColumn = column(identifier: "written", title: "McSpeechface writes")
         table.addTableColumn(spokenColumn)
         table.addTableColumn(writtenColumn)
         table.dataSource = self
@@ -289,7 +289,7 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
         hasUnsavedChanges = true
         table.backgroundColor = NSColor.systemRed.withAlphaComponent(0.12)
         window?.presentError(error)
-        NSLog("Could not save Tiro vocabulary: %@", error.localizedDescription)
+        NSLog("Could not save McSpeechface vocabulary: %@", error.localizedDescription)
     }
 
     private func performPendingRefreshIfNeeded() {

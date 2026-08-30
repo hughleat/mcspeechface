@@ -122,7 +122,7 @@ struct DictationShortcut: Codable, Equatable {
             case .modifiersRequired:
                 "Ordinary keys need at least one modifier."
             case let .reservedKey(name):
-                "\(name) is reserved by macOS or Tiro."
+                "\(name) is reserved by macOS or McSpeechface."
             case let .unsupportedKey(name):
                 "\(name) cannot be used as the dictation shortcut."
             }

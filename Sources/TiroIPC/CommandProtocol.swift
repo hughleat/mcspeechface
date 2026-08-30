@@ -667,19 +667,19 @@ public enum TiroProtocolError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .unsupportedVersion(let version):
-            "Tiro command protocol version \(version) is not supported."
+            "McSpeechface command protocol version \(version) is not supported."
         case .invalidRequest(let message), .unexpectedResponse(let message):
             message
         case .requestTooLarge:
-            "The Tiro command request is too large."
+            "The McSpeechface command request is too large."
         case .messageTooLarge:
-            "A response from Tiro exceeded the message limit."
+            "A response from McSpeechface exceeded the message limit."
         case .responseTooLarge:
-            "The complete response from Tiro exceeded the size limit."
+            "The complete response from McSpeechface exceeded the size limit."
         case .tooManyMessages:
-            "Tiro sent too many response messages."
+            "McSpeechface sent too many response messages."
         case .incompleteResponse:
-            "Tiro closed the connection without a final response."
+            "McSpeechface closed the connection without a final response. If the app was just updated, quit and reopen it so the app and command-line helper match."
         }
     }
 }

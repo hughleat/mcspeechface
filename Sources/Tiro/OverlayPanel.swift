@@ -19,7 +19,7 @@ enum OverlayState: Equatable {
     var label: String {
         switch self {
         case .recording: return "Recording"
-        case .startingUp: return "Tiro is starting"
+        case .startingUp: return "McSpeechface is starting"
         case .transcribing: return "Transcribing"
         case .correcting: return "Correcting"
         case .correctionStarting(let provider): return "Starting \(provider)"
@@ -48,10 +48,10 @@ enum OverlayState: Equatable {
 
     var announcement: String {
         switch self {
-        case .recording: return "Tiro is recording."
-        case .startingUp: return "Tiro is starting. Try dictating again shortly."
-        case .transcribing: return "Tiro is transcribing."
-        case .correcting: return "Tiro is correcting the transcript."
+        case .recording: return "McSpeechface is recording."
+        case .startingUp: return "McSpeechface is starting. Try dictating again shortly."
+        case .transcribing: return "McSpeechface is transcribing."
+        case .correcting: return "McSpeechface is correcting the transcript."
         case .correctionStarting(let provider): return "Starting \(provider)."
         case .correctionWorking(let provider): return "\(provider) is correcting the transcript."
         case .correctionReceiving(let provider): return "Receiving the correction from \(provider)."
@@ -157,7 +157,7 @@ final class OverlayStatusView: NSView {
         self.levelProvider = levelProvider
         recordingStartedAt = ProcessInfo.processInfo.systemUptime
         displayedLevel = 0
-        setAccessibilityLabel("Tiro recording status")
+        setAccessibilityLabel("McSpeechface recording status")
         setAccessibilityChildren([elapsedAccessibilityElement, levelAccessibilityElement])
 
         let timer = Timer(timeInterval: 1 / 30, repeats: true) { [weak self] _ in
@@ -173,7 +173,7 @@ final class OverlayStatusView: NSView {
         feedbackTimer = nil
         levelProvider = nil
         displayedLevel = 0
-        setAccessibilityLabel("Tiro status: \(state.label)")
+        setAccessibilityLabel("McSpeechface status: \(state.label)")
         setAccessibilityChildren([])
     }
 

@@ -1,14 +1,14 @@
-# Tiro Command Line
+# McSpeechface Command Line
 
-Tiro includes a small command-line helper for scripts and terminal workflows.
-The Tiro app remains responsible for recording, model loading, transcription,
+McSpeechface includes a small command-line helper for scripts and terminal workflows.
+The McSpeechface app remains responsible for recording, model loading, transcription,
 history, and the clipboard, so the helper does not load a second copy of a
 model.
 
 ## Install
 
-Choose **Settings** from Tiro's waveform menu-bar icon, open **General**, find
-**Command Line**, and select **Install...**. Tiro links the bundled helper at
+Choose **Settings** from McSpeechface's waveform menu-bar icon, open **General**, find
+**Command Line**, and select **Install...**. McSpeechface links the bundled helper at
 `/usr/local/bin/tiro`.
 
 The command remains `tiro` for compatibility with existing scripts.
@@ -36,7 +36,7 @@ Models** and a speech model that supplies timestamps. Apple Speech cannot be
 used for speaker identification.
 
 Interactive `tiro record` records until Control-D, then transcribes. Control-C
-cancels and discards the recording. Tiro also cancels if the terminal process
+cancels and discards the recording. McSpeechface also cancels if the terminal process
 exits unexpectedly.
 
 Correction is opt-in for command-line requests. `--correct` uses the correction
@@ -61,3 +61,7 @@ changes the text because their offsets no longer align. Diagnostics use
 standard error output.
 
 Run `tiro help` for the complete syntax summary.
+
+After replacing McSpeechface with a newer build, quit and reopen the app before
+using its bundled helper. The app and helper intentionally reject mismatched
+command-protocol versions instead of silently ignoring newer options.

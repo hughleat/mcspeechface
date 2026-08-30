@@ -193,7 +193,7 @@ public final class TiroCommandSocketClient: @unchecked Sendable {
                     message = try decoder.decode(TiroCommandMessage.self, from: line)
                 } catch {
                     throw TiroProtocolError.unexpectedResponse(
-                        "Tiro sent malformed command data."
+                        "McSpeechface sent malformed command data."
                     )
                 }
                 _ = try message.validated(for: request)
@@ -246,21 +246,21 @@ public enum TiroSocketError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidSocketPath:
-            "The Tiro command socket path is invalid."
+            "The McSpeechface command socket path is invalid."
         case .unsafeSocketDirectory:
-            "The Tiro command socket must be inside a dedicated Tiro directory."
+            "The McSpeechface command socket must be inside its dedicated app directory."
         case .invalidTimeout:
-            "The Tiro command timeout is invalid."
+            "The McSpeechface command timeout is invalid."
         case .connectionFailed(let path, let code):
-            "Could not connect to Tiro at \(path): \(Self.description(for: code))."
+            "Could not connect to McSpeechface at \(path): \(Self.description(for: code))."
         case .peerUIDMismatch:
-            "The Tiro command socket belongs to another user."
+            "The McSpeechface command socket belongs to another user."
         case .systemCall(let operation, let code):
             "\(operation) failed: \(Self.description(for: code))."
         case .connectionClosed:
-            "The Tiro command connection closed unexpectedly."
+            "The McSpeechface command connection closed unexpectedly."
         case .timedOut:
-            "Tiro did not respond before the command timed out."
+            "McSpeechface did not respond before the command timed out."
         }
     }
 

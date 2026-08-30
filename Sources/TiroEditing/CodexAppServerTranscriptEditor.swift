@@ -277,7 +277,7 @@ private actor CodexAppServerClient {
                 params: [
                     "clientInfo": [
                         "name": "tiro",
-                        "title": "Tiro",
+                        "title": "McSpeechface",
                         "version": "1",
                     ],
                     "capabilities": ["experimentalApi": false],
@@ -467,7 +467,7 @@ private actor CodexAppServerClient {
             "id": id,
             "error": [
                 "code": -32_600,
-                "message": "Tiro correction sessions do not accept interactive requests.",
+                "message": "McSpeechface correction sessions do not accept interactive requests.",
             ],
         ])
     }

@@ -178,7 +178,7 @@ public enum CoreMLWhisperError: LocalizedError {
         case .downloadCleanupFailed(let reason):
             "The incomplete model could not be removed: \(reason)"
         case .modelStorageInUse:
-            "Another Tiro process is currently using the model library."
+            "Another McSpeechface process is currently using the model library."
         case .emptyTranscription:
             "WhisperKit returned no transcription result."
         case .unsafeModelDirectory(let directory):

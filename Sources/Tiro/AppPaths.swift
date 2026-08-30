@@ -325,7 +325,7 @@ enum AppPaths {
                 encoding: .utf8
             )
         } catch {
-            NSLog("Could not remember Tiro development checkout: %@", error.localizedDescription)
+            NSLog("Could not remember McSpeechface development checkout: %@", error.localizedDescription)
         }
     }
 }

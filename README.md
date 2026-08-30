@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="native/Assets/TiroIcon.png" width="128" alt="Tiro app icon">
+  <img src="native/Assets/TiroIcon.png" width="128" alt="McSpeechface app icon">
 </p>
 
-<h1 align="center">Tiro</h1>
+<h1 align="center">McSpeechface</h1>
 
 <p align="center"><strong>Private, fast speech-to-text for Apple Silicon Macs.</strong></p>
 
 <p align="center">
-  <strong><a href="https://github.com/hughleat/tiro/releases/download/v0.1.0-beta.8/Tiro-0.1.0-beta.8-8-macOS-arm64.dmg">Download Tiro Public Beta (.dmg, 9.8 MB)</a></strong>
+  <strong><a href="https://github.com/hughleat/tiro/releases">Download the latest Public Beta (.dmg)</a></strong>
   · <a href="#install">Install</a>
   · <a href="#your-first-dictation">First dictation</a>
   · <a href="https://github.com/hughleat/tiro/issues/new/choose">Feedback</a>
@@ -16,57 +16,57 @@
 
 <p align="center"><sub>M1 or newer · macOS 14 Sonoma or later · no account · works offline</sub></p>
 
-Tiro is a native menu-bar app that records your voice, transcribes it entirely
+McSpeechface is a native menu-bar app that records your voice, transcribes it entirely
 on your Mac, and automatically pastes the result when the destination accepts
-it. If pasting fails, the transcript remains on the clipboard. Tiro is free and
-open source.
+it. If pasting fails, the transcript remains on the clipboard. McSpeechface is free and
+open source. Its mascot is Speechy McSpeechface.
 
 <p align="center">
-  <img src="docs/images/tiro-dictation-compact.png" width="820" alt="Tiro recording into a TextEdit document">
-  <br><sub>Tiro records first, then transcribes and attempts to paste after you stop. It does not type live.</sub>
+  <img src="docs/images/tiro-dictation-compact.png" width="820" alt="Dictation recording into a TextEdit document">
+  <br><sub>McSpeechface records first, then transcribes and attempts to paste after you stop. It does not type live.</sub>
 </p>
 
 ## Install
 
 **Before downloading:** the current beta requires macOS Accessibility access
 for its global shortcut and paste workflow. The table below explains exactly
-how Tiro uses this broad permission.
+how McSpeechface uses this broad permission.
 
-1. [Download beta 8](https://github.com/hughleat/tiro/releases/download/v0.1.0-beta.8/Tiro-0.1.0-beta.8-8-macOS-arm64.dmg), open the DMG, and drag Tiro to Applications.
-2. Try to open Tiro. When macOS shows its unidentified-developer warning, open **System Settings > Privacy & Security**, choose **Open Anyway**, then confirm **Open**.
-3. In Tiro's setup, allow the required permissions and select **Fast English — Parakeet Compact**. Choose **Download**, wait for it to finish, try a dictation in the setup field, then select **Start Using Tiro**.
+1. [Download the latest beta](https://github.com/hughleat/tiro/releases), open its DMG, and drag McSpeechface to Applications.
+2. Open **McSpeechface**. When macOS shows its unidentified-developer warning, open **System Settings > Privacy & Security**, choose **Open Anyway**, then confirm **Open**.
+3. In setup, allow the required permissions and select **Fast English — Parakeet Compact**. Choose **Download**, wait for it to finish, try a dictation in the setup field, then select **Start Using McSpeechface**.
 
-The DMG is 9.8 MB and the installed app is about 25 MB. Speech models are not
-bundled: Parakeet Compact is a separate 228 MB download, and Tiro downloads
+The DMG is about 12 MB and the installed app is about 30 MB. Speech models are not
+bundled: Parakeet Compact is a separate 228 MB download, and McSpeechface downloads
 only models you explicitly choose. Once a model is installed, dictation works
 without an internet connection.
 
 <p align="center">
-  <img src="docs/images/tiro-setup.png" width="602" alt="Tiro's private, local first-run setup with Parakeet Compact selected">
+  <img src="docs/images/tiro-setup.png" width="602" alt="Private, local first-run setup with Parakeet Compact selected">
 </p>
 
 ### Permissions
 
-| Permission | Why Tiro needs it | When it is needed |
+| Permission | Why McSpeechface needs it | When it is needed |
 | --- | --- | --- |
-| **Microphone** | Records the speech you ask Tiro to transcribe. | Required by the current setup. |
-| **Accessibility** | Detects the global shortcut, attempts to restore the original app, refuses to auto-paste into secure fields, and sends Paste. To confirm the paste, Tiro may briefly read the focused field's selected range, text, or character count in memory; it does not save or transmit that information. | Required by the current setup for the global shortcut and automatic paste. |
+| **Microphone** | Records the speech you ask McSpeechface to transcribe. | Required by the current setup. |
+| **Accessibility** | Detects the global shortcut, attempts to restore the original app, refuses to auto-paste into secure fields, and sends Paste. To confirm the paste, McSpeechface may briefly read the focused field's selected range, text, or character count in memory; it does not save or transmit that information. | Required by the current setup for the global shortcut and automatic paste. |
 | **Speech Recognition** | Lets macOS perform on-device recognition. | Only when you select Apple Speech. |
 
-Accessibility is a broad macOS permission, even though Tiro uses it for this
+Accessibility is a broad macOS permission, even though McSpeechface uses it for this
 narrow workflow. Temporary microphone files are normally deleted when an
 operation finishes; leftovers from a crash or forced quit are removed the next
-time Tiro launches. **Keep recordings** is off on new installations.
+time McSpeechface launches. **Keep recordings** is off on new installations.
 
 ### Why macOS warns
 
 The free community DMG does not use Apple's paid Developer ID and notarization
 service, so macOS asks you to approve each downloaded version once. This is the
-standard unidentified-developer warning, not a malware finding. Tiro's source,
+standard unidentified-developer warning, not a malware finding. McSpeechface's source,
 [release workflow](.github/workflows/release.yml), and build instructions are
 public, and every release includes a SHA-256 checksum.
 
-Tiro is an independent project maintained by
+McSpeechface is an independent project maintained by
 [Hugh Leather](https://github.com/hughleat). It is currently a public beta:
 dictation is working, but bugs and application compatibility problems are still
 possible. Keep the original audio for an important imported recording and
@@ -78,11 +78,11 @@ receives security fixes.
 <summary>Verify the downloaded DMG (optional)</summary>
 
 Download the `.sha256` file beside the DMG on the
-[release page](https://github.com/hughleat/tiro/releases/tag/v0.1.0-beta.8), then
-run:
+[release page](https://github.com/hughleat/tiro/releases), then run the command
+below with the downloaded DMG's actual filename:
 
 ```sh
-shasum -a 256 ~/Downloads/Tiro-0.1.0-beta.8-8-macOS-arm64.dmg
+shasum -a 256 ~/Downloads/McSpeechface-*.dmg
 ```
 
 The long value printed by `shasum` should match the value in the `.sha256`
@@ -93,47 +93,48 @@ project.
 ## Your First Dictation
 
 1. Open TextEdit, Notes, Mail, or another application and place the cursor in a normal text field.
-2. Tap Right Command. Tiro's red recording panel appears.
+2. Tap Right Command. McSpeechface's red recording panel appears.
 3. Speak, then tap Right Command again.
-4. Tiro shows **Transcribing**, then attempts to restore the original application and paste at the cursor.
+4. McSpeechface shows **Transcribing**, then attempts to restore the original application and paste at the cursor.
 
 Text appears after recording stops; live transcription is not currently part
-of Tiro. Hold Right Command instead for push-to-talk, releasing it when you
+of McSpeechface. Hold Right Command instead for push-to-talk, releasing it when you
 finish. Press Escape to cancel without transcribing.
 
-Tiro stays in the menu bar and has no Dock icon. Its waveform menu lets you
+McSpeechface stays in the menu bar and has no Dock icon. Its waveform menu lets you
 record, change models, open Settings, or quit. You can change the shortcut and
 turn off **Paste after transcription** in **Settings > General**. A completed
 transcript is still copied to the clipboard if automatic paste fails.
 
 Corrections can run **Automatically**, **On request**, or be **Off**. In On
-request mode, Tiro shows the transcript immediately: Right Command accepts it,
-while Option + Right Command repairs it with the selected correction model. Hold
-Option + Right Command to dictate an extra instruction before repair, such as
-"change Tuesday to Thursday". The preview then shows the corrected text and its
-changes before you paste.
+request mode, McSpeechface shows the transcript immediately: Right Command accepts it
+and Option + Right Command repairs it with the selected correction model. Choose
+**Add more**, or hold Option + Right Command, to append another recording. Added
+speech stays uncorrected in transcript mode; after a repair, it is included in a
+new repair. The preview keeps the accumulated original and revised text available
+before you paste.
 
 ## Privacy
 
-- **Local transcription:** Parakeet and Whisper run on your Mac. Tiro requires Apple Speech to use its on-device mode; if that mode is unavailable for a language, Tiro will not use Apple Speech for it.
+- **Local transcription:** Parakeet and Whisper run on your Mac. McSpeechface requires Apple Speech to use its on-device mode; if that mode is unavailable for a language, McSpeechface will not use Apple Speech for it.
 - **Temporary audio:** Microphone files are normally deleted when transcription ends unless **Keep recordings** is enabled. Interrupted-run leftovers are removed at the next launch.
-- **History off by default:** Tiro does not save transcript history or recordings on a new installation. If enabled, retention defaults to 30 days and can be set to 1, 7, 30, or 90 days, or forever, in **Settings > Privacy**. Retained audio can consume substantial disk space.
-- **Clipboard:** Successful auto-paste temporarily uses the clipboard, then restores its previous contents when Tiro can confirm the paste and the clipboard has not changed meanwhile. If auto-paste is off or fails, the transcript stays on the clipboard and may be available to other software or macOS Universal Clipboard.
-- **No tracking:** Tiro has no accounts, telemetry, advertising, or built-in crash reporting.
-- **Limited network use:** Tiro connects when you request a model download and, by default, checks GitHub Releases once a day for updates. Automatic checks can be turned off in **Settings > About**.
-- **Optional external correction:** Local correction models and Apple Intelligence keep transcript text on your Mac. If you explicitly choose Codex, Claude, or a custom command as the correction provider, that provider may send the transcript and correction prompts to its configured service. Tiro labels these providers as potentially off-device; their own terms and privacy policies apply.
+- **History off by default:** McSpeechface does not save transcript history or recordings on a new installation. If enabled, retention defaults to 30 days and can be set to 1, 7, 30, or 90 days, or forever, in **Settings > Privacy**. Retained audio can consume substantial disk space.
+- **Clipboard:** Successful auto-paste temporarily uses the clipboard, then restores its previous contents when McSpeechface can confirm the paste and the clipboard has not changed meanwhile. If auto-paste is off or fails, the transcript stays on the clipboard and may be available to other software or macOS Universal Clipboard.
+- **No tracking:** McSpeechface has no accounts, telemetry, advertising, or built-in crash reporting.
+- **Limited network use:** McSpeechface connects when you request a model download and, by default, checks GitHub Releases once a day for updates. Automatic checks can be turned off in **Settings > About**.
+- **Optional external correction:** Local correction models and Apple Intelligence keep transcript text on your Mac. If you explicitly choose Codex, Claude, or a custom command as the correction provider, that provider may send the transcript and correction prompts to its configured service. McSpeechface labels these providers as potentially off-device; their own terms and privacy policies apply.
 
 Parakeet and speaker-identification models are fetched from public Hugging Face
 repositories through FluidAudio; Whisper models come from Argmax's public
 WhisperKit repository on Hugging Face. Those services receive ordinary
 connection information such as your IP address during a download. Speech and
-transcripts are not uploaded with the request. After downloading, Tiro checks
+transcripts are not uploaded as part of model downloads. After downloading, McSpeechface checks
 that the expected model components are present before activating the model; it
 does not publish independent checksums for upstream model files.
 
-Downloaded models live in `~/Library/Application Support/Tiro/Models/coreml/`.
+For compatibility, downloaded models live in `~/Library/Application Support/Tiro/Models/coreml/`.
 History, optional recordings, vocabulary, snippets, and privacy settings live
-in `~/Library/Application Support/Tiro/data/`. Tiro's diagnostics report
+in `~/Library/Application Support/Tiro/data/`. McSpeechface's diagnostics report
 excludes transcripts, audio, clipboard contents, vocabulary, file paths, and
 application names.
 
@@ -145,46 +146,46 @@ application names.
 | Larger English Parakeet | Parakeet 0.6B v2 | 500 MB |
 | New punctuated English model | Parakeet Unified English | 615 MB |
 | 25 European languages | Parakeet 0.6B v3 | 520 MB |
-| No Tiro-managed download | Apple Speech | None |
+| No McSpeechface-managed download | Apple Speech | None |
 
 For everyday English, start with Compact; v2 provides the established larger
 English-only Parakeet model. Unified is a newer English model with punctuation
 and capitalization built into its recognition output. Choose v3 for automatic
 detection across its
 [supported European languages](https://github.com/FluidInference/FluidAudio/blob/main/Documentation/ASR/GettingStarted.md).
-Apple Speech avoids a Tiro-managed model download but requires macOS Speech
+Apple Speech avoids a McSpeechface-managed model download but requires macOS Speech
 Recognition permission and on-device support for the selected language.
 
-Depending on your Mac, Tiro also offers English and multilingual Whisper Tiny,
+Depending on your Mac, McSpeechface also offers English and multilingual Whisper Tiny,
 Base, and Small models, plus Distil Whisper Large V3, Whisper Large V3, and
 Whisper Large V3 Turbo. Install, compare, and remove models in **Settings >
 Models**.
 
 <p align="center">
-  <img src="docs/images/tiro-models.png" width="720" alt="Tiro's local transcription model library">
+  <img src="docs/images/tiro-models.png" width="720" alt="McSpeechface's local transcription model library">
   <br><sub>The library shows each model's download size and installation state; the selected model can be changed at any time.</sub>
 </p>
 
 ## Do More
 
 Choose **Transcribe Audio File...** from the waveform menu or drop an audio
-file into the transcription window. Tiro can export text, Markdown, and JSON,
+file into the transcription window. McSpeechface can export text, Markdown, and JSON,
 plus SRT and VTT when timestamps are available. Speaker identification requires
 a timestamp-capable speech model and the separately installed **Speaker
 Identification** model.
 
 <p align="center">
-  <img src="docs/images/tiro-file-transcription.png" width="560" alt="Tiro transcribing an audio file locally on a Mac">
+  <img src="docs/images/tiro-file-transcription.png" width="560" alt="McSpeechface transcribing an audio file locally on a Mac">
   <br><sub>Transcribe existing audio and optionally identify speakers.</sub>
 </p>
 
-Vocabulary rules fix names and specialist terms automatically. Tiro also
+Vocabulary rules fix names and specialist terms automatically. McSpeechface also
 supports reusable snippets, spoken formatting, learned suggestions, and
 different vocabulary for individual applications.
 
 <p align="center">
-  <img src="docs/images/tiro-vocabulary.png" width="720" alt="Tiro's structured vocabulary replacement editor">
-  <br><sub>Teach Tiro names, product terms, and other custom spellings.</sub>
+  <img src="docs/images/tiro-vocabulary.png" width="720" alt="McSpeechface's structured vocabulary replacement editor">
+  <br><sub>Teach McSpeechface names, product terms, and other custom spellings.</sub>
 </p>
 
 Turn on **Save transcription history** in **Settings > Privacy** to search,
@@ -192,17 +193,17 @@ copy, correct, or delete previous results. Enable **Keep recordings** as well
 for replay and model comparison.
 
 <p align="center">
-  <img src="docs/images/tiro-history.png" width="620" alt="Tiro's searchable local transcription history">
+  <img src="docs/images/tiro-history.png" width="620" alt="McSpeechface's searchable local transcription history">
   <br><sub>Your optional transcription history stays on your Mac.</sub>
 </p>
 
-## Remove Tiro
+## Remove McSpeechface
 
 1. If installed, remove the command-line link with **Settings > General > Command Line > Uninstall**.
-2. Turn off **Launch Tiro at login** in **Settings > General**.
-3. Choose **Quit Tiro** from its waveform menu, then move Tiro from Applications to the Trash.
+2. Turn off **Launch McSpeechface at login** in **Settings > General**.
+3. Choose **Quit McSpeechface** from its waveform menu, then move McSpeechface from Applications to the Trash. Its bundle remains `Tiro.app` for compatibility with earlier betas.
 4. To remove downloaded models and personal data, open Finder's **Go > Go to Folder...** and delete `~/Library/Application Support/Tiro`.
-5. Turn off Tiro's Microphone, Accessibility, and Speech Recognition access in **System Settings > Privacy & Security**.
+5. Turn off McSpeechface's Microphone, Accessibility, and Speech Recognition access in **System Settings > Privacy & Security**.
 
 For a completely clean removal, you can also delete
 `~/Library/Preferences/local.tiro.dictation.plist` and
@@ -210,15 +211,15 @@ For a completely clean removal, you can also delete
 
 ## More
 
-- [Use Tiro from the command line](docs/COMMAND_LINE.md)
+- [Use McSpeechface from the command line](docs/COMMAND_LINE.md)
 - [See what has changed](CHANGELOG.md)
 - [See ideas under consideration](docs/ROADMAP.md)
-- [Build Tiro from source](docs/DEVELOPMENT.md)
+- [Build McSpeechface from source](docs/DEVELOPMENT.md)
 - [Read the beta testing guide](docs/BETA_TESTING.md)
 - [Report a bug or suggest an improvement](https://github.com/hughleat/tiro/issues/new/choose)
 - [Report a security problem privately](SECURITY.md)
 
 ## License
 
-Tiro is available under the [MIT License](LICENSE). Dependency and model
+McSpeechface is available under the [MIT License](LICENSE). Dependency and model
 attributions are listed in [Third-Party Notices](THIRD_PARTY_NOTICES.md).

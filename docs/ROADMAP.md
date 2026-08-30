@@ -1,14 +1,14 @@
 # Roadmap
 
 This document records product ideas that are worth exploring but are not yet
-committed features. Tiro's core remains fast, private, local transcription.
+committed features. McSpeechface's core remains fast, private, local transcription.
 
-## Local Transcript Editing
+## Transcript Editing
 
-Explore an optional local language model that can interpret spoken
-self-corrections and propose edits to a completed transcript. As with speech
-recognition, people should be able to choose between Apple's built-in model and
-models downloaded from other sources.
+McSpeechface now supports optional transcript correction through Apple Intelligence,
+downloadable local models, and configurable Codex, Claude, or custom command-line
+providers. Remaining work should improve evaluation, speed, and review ergonomics
+without weakening the existing privacy boundaries.
 
 Examples include:
 
@@ -17,14 +17,13 @@ Examples include:
 - "Delete that last sentence."
 - "Actually, make that three hundred pounds."
 
-The first version should:
+The implemented foundation can:
 
-- run entirely on the Mac;
+- run entirely on the Mac with Apple Intelligence or a local model;
 - treat Apple Foundation Models as one provider, not as a dependency of the
   transcript-editing pipeline;
-- launch with a small evaluated set of downloadable third-party models, then
-  grow into a broad catalogue with clear source, licence, language, size, and
-  hardware information;
+- offer a growing catalogue of downloadable third-party models with source,
+  licence, language, size, and hardware information;
 - download only the model the person explicitly selects and support removing it;
 - preserve the verbatim transcript alongside any proposed revision;
 - present changes for review rather than silently rewriting uncertain text;
@@ -45,7 +44,7 @@ all providers. The first providers to prototype are:
 - a bundled native llama.cpp runtime for selected quantized GGUF models fetched
   from pinned Hugging Face revisions.
 
-Tiro should invoke the selected provider in-process, without requiring Python,
+McSpeechface should invoke the selected provider in-process, without requiring Python,
 MLX, Ollama, a local server, or an account. Third-party downloads should use the
 same staged installation, validation, disk-space checks, cancellation, and safe
 removal behaviour as speech models. Compatible models should be addable through
@@ -53,7 +52,7 @@ verified catalogue metadata rather than provider-specific application code, so
 the library can grow without increasing architectural complexity. Catalogue
 entries must pin the source revision and describe the model's licence, prompt
 format, tokenizer, output quality, and memory requirements. Importing compatible
-local GGUF files or adding a model from a URL can be considered once Tiro can
+local GGUF files or adding a model from a URL can be considered once McSpeechface can
 validate those properties safely.
 
 Questions to answer during prototyping:
@@ -64,8 +63,7 @@ Questions to answer during prototyping:
   to the transcription pipeline?
 - Should commands be interpreted within one recording, in a follow-up recording,
   or both?
-- How should Tiro resolve references such as "that name" or "the previous
+- How should McSpeechface resolve references such as "that name" or "the previous
   sentence" without retaining more context than the user expects?
 - What latency, memory, and download-size limits keep ordinary dictation feeling
   immediate?
-- How should proposed edits be represented in history and command-line output?

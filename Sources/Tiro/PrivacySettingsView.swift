@@ -68,7 +68,7 @@ final class PrivacySettingsView: NSStackView {
         spacing = 0
 
         let localOnly = NSTextField(wrappingLabelWithString:
-            "Transcription runs locally on this Mac. Tiro only keeps the history and recordings you choose."
+            "Transcription runs locally on this Mac. McSpeechface only keeps the history and recordings you choose."
         )
         localOnly.textColor = .secondaryLabelColor
 
@@ -110,13 +110,13 @@ final class PrivacySettingsView: NSStackView {
         )
         let retentionRow = preferenceRow(
             title: "Keep history for",
-            detail: "Older transcripts and their recordings are removed from Tiro automatically.",
+            detail: "Older transcripts and their recordings are removed from McSpeechface automatically.",
             control: retentionPicker
         )
 
         let existingLabel = sectionLabel("Existing Data")
         let deleteText = NSTextField(wrappingLabelWithString:
-            "Remove all transcripts, recordings, corrections, and suggestion evidence currently stored by Tiro."
+            "Remove all transcripts, recordings, corrections, and suggestion evidence currently stored by McSpeechface."
         )
         deleteText.textColor = .secondaryLabelColor
         let deleteRow = NSStackView(views: [deleteText, deleteButton])
@@ -245,7 +245,7 @@ final class PrivacySettingsView: NSStackView {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Keep only the last \(days) \(days == 1 ? "day" : "days")?"
-        alert.informativeText = "Older transcripts and recordings will be removed from Tiro."
+        alert.informativeText = "Older transcripts and recordings will be removed from McSpeechface."
         alert.addButton(withTitle: "Cancel")
         alert.addButton(withTitle: "Apply")
         let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
@@ -302,8 +302,8 @@ final class PrivacySettingsView: NSStackView {
     @objc private func confirmDeleteAll() {
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "Delete all Tiro history?"
-        alert.informativeText = "This removes transcripts, recordings, corrections, and suggestion evidence stored by Tiro."
+        alert.messageText = "Delete all McSpeechface history?"
+        alert.informativeText = "This removes transcripts, recordings, corrections, and suggestion evidence stored by McSpeechface."
         alert.addButton(withTitle: "Cancel")
         let delete = alert.addButton(withTitle: "Delete All History")
         delete.hasDestructiveAction = true
@@ -328,19 +328,19 @@ final class PrivacySettingsView: NSStackView {
         mutationTask = Task { [weak self] in
             guard let self else { return }
             setControlsEnabled(false)
-            statusLabel.stringValue = "Deleting Tiro history..."
+            statusLabel.stringValue = "Deleting McSpeechface history..."
             do {
                 try await service.deleteAllHistory()
                 guard !Task.isCancelled else { return }
                 mutationTask = nil
-                statusLabel.stringValue = "All Tiro history was removed."
+                statusLabel.stringValue = "All McSpeechface history was removed."
                 render()
                 onStoredDataChanged?()
                 NSAccessibility.post(
                     element: deleteButton,
                     notification: .announcementRequested,
                     userInfo: [
-                        .announcement: "All Tiro history was removed.",
+                        .announcement: "All McSpeechface history was removed.",
                         .priority: NSAccessibilityPriorityLevel.high.rawValue,
                     ]
                 )

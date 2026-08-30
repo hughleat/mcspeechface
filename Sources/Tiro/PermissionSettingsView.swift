@@ -10,7 +10,7 @@ final class PermissionSettingsView: NSStackView {
     private let microphone = PermissionRow(
         symbolName: "mic",
         title: "Microphone",
-        explanation: "Allows Tiro to record speech for local transcription.",
+        explanation: "Allows McSpeechface to record speech for local transcription.",
         buttonTitle: "Request Access"
     )
     private let accessibility = PermissionRow(

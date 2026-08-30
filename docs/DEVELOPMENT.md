@@ -1,6 +1,6 @@
-# Developing Tiro
+# Developing McSpeechface
 
-Tiro is a native Swift package with no Python runtime or MLX dependency.
+McSpeechface is a native Swift package with no Python runtime or MLX dependency.
 
 ## Build and Test
 
@@ -14,12 +14,16 @@ Core ML transcription, and mounted DMG verification. It can download model
 assets and create a multi-gigabyte `.build` directory, so allow adequate free
 disk space.
 
-Local builds use the `Tiro Local Development` signing identity when available:
+Local builds use the existing `Tiro Local Development` signing identity when available:
 
 ```sh
 ./scripts/setup_local_signing.sh
 ./scripts/build_native_app.sh development
 ```
+
+The transitional McSpeechface release keeps the physical build path
+`dist/Tiro.app` so it replaces existing beta installations cleanly. macOS and
+the app itself display the new product name.
 
 ## Package
 

@@ -3,11 +3,11 @@ import AppKit
 #if TIRO_SPONSORSHIP_ENABLED
 @MainActor
 final class SupportPromptWindowController: NSWindowController, NSWindowDelegate {
-    static let titleText = "Support Tiro"
+    static let titleText = "Support McSpeechface"
     static let messageText = """
-    Sorry for the interruption. Tiro is free and open source, and sponsorship helps fund an Apple Developer membership and ongoing development.
+    Sorry for the interruption. McSpeechface is free and open source, and sponsorship helps fund an Apple Developer membership and ongoing development.
 
-    We'll only ask once every six months. If you already support Tiro, tell us and we won't ask again.
+    We'll only ask once every six months. If you already support McSpeechface, tell us and we won't ask again.
     """
 
     var onSupport: (() -> Void)?

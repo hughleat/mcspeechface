@@ -1,4 +1,4 @@
-name: macOS 14 acceptance
+name: McSpeechface macOS 14 acceptance
 
 on:
   push:
@@ -15,14 +15,14 @@ concurrency:
 
 jobs:
   acceptance:
-    name: Apple Silicon macOS 14
+    name: McSpeechface on Apple Silicon macOS 14
     runs-on: macos-14
     timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
 
     steps:
-      - name: Check out Tiro
+      - name: Check out McSpeechface
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
@@ -36,10 +36,10 @@ jobs:
       - name: Run complete acceptance suite
         run: ./scripts/run_ci_acceptance.sh
 
-      - name: Retain tested DMG
+      - name: Retain tested McSpeechface DMG
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Tiro-macOS-arm64
+          name: McSpeechface-macOS-arm64
           path: |
             dist/releases/*.dmg
             dist/releases/*.dmg.sha256

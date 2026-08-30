@@ -32,13 +32,13 @@ enum ErrorRecovery {
         case .microphonePermission:
             return RecoveryPresentation(
                 title: "Microphone Access Needed",
-                detail: "Allow Tiro to use the microphone, then try dictating again.",
+                detail: "Allow McSpeechface to use the microphone, then try dictating again.",
                 action: .openMicrophoneSettings
             )
         case .speechRecognitionPermission:
             return RecoveryPresentation(
                 title: "Speech Recognition Access Needed",
-                detail: "Allow Tiro to use Apple Speech, then try dictating again.",
+                detail: "Allow McSpeechface to use Apple Speech, then try dictating again.",
                 action: .openSpeechRecognitionSettings
             )
         case .microphoneUnavailable:
@@ -50,7 +50,7 @@ enum ErrorRecovery {
         case .accessibility:
             return RecoveryPresentation(
                 title: "Accessibility Access Needed",
-                detail: "Allow Tiro to control your Mac so the shortcut and automatic paste can work.",
+                detail: "Allow McSpeechface to control your Mac so the shortcut and automatic paste can work.",
                 action: .openAccessibilitySettings
             )
         case .missingModel:
@@ -68,13 +68,13 @@ enum ErrorRecovery {
         case .modelServiceUnavailable:
             return RecoveryPresentation(
                 title: "Models Unavailable",
-                detail: "Tiro could not inspect the local models. Try loading them again.",
+                detail: "McSpeechface could not inspect the local models. Try loading them again.",
                 action: .retryModels
             )
         case .transcription:
             return RecoveryPresentation(
                 title: "Transcription Failed",
-                detail: "Tiro could not transcribe this recording. Try recording it again.",
+                detail: "McSpeechface could not transcribe this recording. Try recording it again.",
                 action: .retryTranscription
             )
         }

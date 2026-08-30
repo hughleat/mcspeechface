@@ -165,6 +165,6 @@ final class SettingsNavigationController: NSSplitViewController, NSTableViewData
             next.view.bottomAnchor.constraint(equalTo: detailContainer.view.bottomAnchor)
         ])
         selectedViewController = next
-        view.window?.title = "Tiro Settings - \(items[index].title)"
+        view.window?.title = "McSpeechface Settings - \(items[index].title)"
     }
 }

@@ -10,7 +10,7 @@ public enum GGUFTranscriptEditorError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .runtimeUnavailable: "Tiro's local language model runtime is unavailable."
+        case .runtimeUnavailable: "McSpeechface's local language model runtime is unavailable."
         case .modelNotInstalled: "Download the local editing model before using it."
         case .transcriptTooLong: "This transcript is too long for the local editing model."
         case .generationTimedOut: "The local editing model took too long to respond."

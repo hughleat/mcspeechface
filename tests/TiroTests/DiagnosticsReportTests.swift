@@ -8,7 +8,7 @@ struct DiagnosticsReportTests {
         let report = DiagnosticsReport.text()
         let lines = report.split(whereSeparator: \Character.isNewline).map(String.init)
         let expectedPrefixes = [
-            "Tiro Diagnostics",
+            "McSpeechface Diagnostics",
             "Version:",
             "Release:",
             "macOS:",

@@ -185,7 +185,7 @@ public final class TiroCommandSocketServer: @unchecked Sendable {
                 } catch {
                     await responder.failIfNeeded(
                         code: "internal_error",
-                        message: "Tiro could not complete the command."
+                        message: "McSpeechface could not complete the command."
                     )
                 }
                 self?.removeConnection(socket)
@@ -541,7 +541,7 @@ public actor TiroCommandResponder {
         try? sendTerminal(.failure(
             id: request.id,
             code: "handler_incomplete",
-            message: "Tiro did not complete the command."
+            message: "McSpeechface did not complete the command."
         ))
     }
 
@@ -601,7 +601,7 @@ public enum TiroCommandSocketServerError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .alreadyRunning:
-            "A Tiro command server is already running."
+            "A McSpeechface command server is already running."
         case .invalidRequestTimeout:
             "The command request timeout is invalid."
         case .requestTimedOut:

@@ -24,10 +24,10 @@ if [[ ! "$BUILD_NUMBER" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
 fi
 
 if [[ -n "$BETA_NUMBER" ]]; then
-    RELEASE_NAME="Tiro $VERSION beta $BETA_NUMBER"
+    RELEASE_NAME="McSpeechface $VERSION beta $BETA_NUMBER"
     PRERELEASE="true"
 else
-    RELEASE_NAME="Tiro $VERSION"
+    RELEASE_NAME="McSpeechface $VERSION"
     PRERELEASE="false"
 fi
 

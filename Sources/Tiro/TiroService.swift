@@ -1031,7 +1031,7 @@ final class TiroService {
 
     private func requireStore() throws -> NativeTiroStore {
         if let store { return store }
-        throw storeError ?? TiroError.message("Tiro could not open its local data store.")
+        throw storeError ?? TiroError.message("McSpeechface could not open its local data store.")
     }
 
     private static func historyEntry(_ entry: NativeHistoryEntry) -> HistoryEntry {

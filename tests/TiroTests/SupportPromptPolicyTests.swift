@@ -178,7 +178,7 @@ struct SupportPromptPolicyTests {
         #expect(SupportPromptWindowController.messageText.contains("Sorry for the interruption"))
         #expect(SupportPromptWindowController.messageText.contains("once every six months"))
         #expect(buttons.count == 2)
-        #expect(buttons.map(\.title).sorted() == ["I already support", "Support Tiro"])
+        #expect(buttons.map(\.title).sorted() == ["I already support", "Support McSpeechface"])
         #expect(controller.window?.styleMask.contains(.closable) == true)
     }
 

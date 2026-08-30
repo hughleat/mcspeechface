@@ -183,7 +183,7 @@ import UniformTypeIdentifiers
 
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Tiro")
+        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "McSpeechface")
 
         let menu = NSMenu()
         menu.delegate = self
@@ -269,7 +269,7 @@ import UniformTypeIdentifiers
         menu.addItem(support)
 #endif
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Tiro", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit McSpeechface", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
     }
 
@@ -279,14 +279,14 @@ import UniformTypeIdentifiers
                 guard let self else {
                     try await responder.sendFailure(
                         code: "app_unavailable",
-                        message: "Tiro is shutting down."
+                        message: "McSpeechface is shutting down."
                     )
                     return
                 }
                 await self.handleCommand(request, responder: responder)
             }
         } catch {
-            NSLog("Could not start Tiro command server: %@", error.localizedDescription)
+            NSLog("Could not start McSpeechface command server: %@", error.localizedDescription)
         }
     }
 
@@ -301,7 +301,7 @@ import UniformTypeIdentifiers
                !UserDefaults.standard.bool(forKey: "setupCompleted") {
                 try await responder.sendFailure(
                     code: "setup_required",
-                    message: "Finish Tiro setup before using command-line transcription."
+                    message: "Finish McSpeechface setup before using command-line transcription."
                 )
                 return
             }
@@ -373,7 +373,7 @@ import UniformTypeIdentifiers
         guard state == .idle, commandRecording == nil, externalOperationID == nil else {
             try await responder.sendFailure(
                 code: "busy",
-                message: "Tiro is already recording or transcribing."
+                message: "McSpeechface is already recording or transcribing."
             )
             return
         }
@@ -399,7 +399,7 @@ import UniformTypeIdentifiers
         let model: DictationModel
         if let key = arguments.model {
             guard let requested = DictationModel.all.first(where: { $0.key == key }) else {
-                throw TiroError.message("No Tiro model has the key \(key).")
+                throw TiroError.message("No McSpeechface model has the key \(key).")
             }
             model = requested
         } else {
@@ -438,7 +438,7 @@ import UniformTypeIdentifiers
         guard state == .idle, commandRecording == nil else {
             try await responder.sendFailure(
                 code: "busy",
-                message: "Tiro is already recording or transcribing."
+                message: "McSpeechface is already recording or transcribing."
             )
             return
         }
@@ -446,7 +446,7 @@ import UniformTypeIdentifiers
         let model: DictationModel
         if let key = arguments?.model {
             guard let requested = DictationModel.all.first(where: { $0.key == key }) else {
-                throw TiroError.message("No Tiro model has the key \(key).")
+                throw TiroError.message("No McSpeechface model has the key \(key).")
             }
             model = requested
         } else {
@@ -480,7 +480,7 @@ import UniformTypeIdentifiers
             }
             beginRecording(reportErrors: false)
             guard state == .recording else {
-                throw TiroError.message("Tiro could not start recording.")
+                throw TiroError.message("McSpeechface could not start recording.")
             }
 
             let session = recording.session.uuidString.lowercased()
@@ -1291,7 +1291,7 @@ import UniformTypeIdentifiers
         if UserDefaults.standard.bool(forKey: "soundFeedback") { recordingSounds.playStop() }
         state = .idle
         menuToggleItem.title = "Start Recording"
-        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Tiro")
+        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "McSpeechface")
         statusItem.button?.contentTintColor = nil
         releaseRecordingModelUse()
         overlay.dismiss()
@@ -1318,7 +1318,7 @@ import UniformTypeIdentifiers
         menuToggleItem.title = "Start Recording"
         statusItem.button?.image = NSImage(
             systemSymbolName: "waveform",
-            accessibilityDescription: "Tiro"
+            accessibilityDescription: "McSpeechface"
         )
         statusItem.button?.contentTintColor = nil
         releaseRecordingModelUse()
@@ -1421,7 +1421,7 @@ import UniformTypeIdentifiers
         guard transcriptionID == operationID else { return }
         state = .idle
         menuToggleItem.title = "Start Recording"
-        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Tiro")
+        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "McSpeechface")
         statusItem.button?.contentTintColor = nil
         releaseRecordingModelUse()
         settingsWindow.refreshHistory()
@@ -1741,12 +1741,12 @@ import UniformTypeIdentifiers
         originApplication = nil
         state = .idle
         menuToggleItem.title = "Start Recording"
-        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Tiro")
+        statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "McSpeechface")
         statusItem.button?.contentTintColor = nil
         releaseRecordingModelUse()
         overlay.show(.error)
         overlay.dismiss(after: 2.0)
-        NSLog("Tiro error: %@", error.localizedDescription)
+        NSLog("McSpeechface error: %@", error.localizedDescription)
         presentRecovery(ErrorRecovery.presentation(
             for: error,
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
@@ -1822,7 +1822,7 @@ import UniformTypeIdentifiers
     func application(_ application: NSApplication, open urls: [URL]) {
         if urls.count == 1, let url = urls.first, url.scheme == "tiro" {
             guard let section = SettingsSection(deepLink: url) else {
-                presentError(TiroError.message("Tiro could not open that link."))
+                presentError(TiroError.message("McSpeechface could not open that link."))
                 return
             }
             settingsWindow.showSettings(section)
@@ -1831,7 +1831,7 @@ import UniformTypeIdentifiers
         guard UserDefaults.standard.bool(forKey: "setupCompleted") else {
             showSetup()
             presentError(TiroError.message(
-                "Finish Tiro setup, then open the audio file again."
+                "Finish McSpeechface setup, then open the audio file again."
             ))
             return
         }
@@ -1970,7 +1970,7 @@ import UniformTypeIdentifiers
             forKey: AutomaticUpdateCheckPolicy.lastNotifiedTagDefaultsKey
         )
         let alert = NSAlert()
-        alert.messageText = "Tiro \(release.tagName) is available"
+        alert.messageText = "McSpeechface \(release.tagName) is available"
         alert.informativeText = "Download the latest version from GitHub Releases."
         alert.addButton(withTitle: "View Release")
         alert.addButton(withTitle: "Later")
