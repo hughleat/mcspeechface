@@ -85,7 +85,7 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
 
         let label = SettingsInfoLabel(
             "Applies in",
-            helpText: "All apps is the shared vocabulary used everywhere. An app-specific profile inherits those replacements and can add or override entries only when dictating into that app.",
+            helpText: "All apps uses these replacements everywhere. An app-specific profile adds replacements only for that app; when the same spoken phrase appears in both, the app-specific replacement wins without changing All apps.",
             font: .systemFont(ofSize: 13, weight: .medium)
         )
 

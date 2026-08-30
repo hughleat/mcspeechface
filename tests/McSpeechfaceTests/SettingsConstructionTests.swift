@@ -137,11 +137,11 @@ struct SettingsConstructionTests {
         defer { settings.close() }
         for width in [500.0, 1_200.0] {
             let general = DictationPreferencesView()
-            assertHelpLayout(in: general, width: width, expectedCount: 2)
+            assertHelpLayout(in: general, width: width, expectedCount: 3)
 
             let corrections = TranscriptEditingSettingsView(service: TranscriptEditingService())
             corrections.cancelWork()
-            assertHelpLayout(in: corrections, width: width, expectedCount: 2)
+            assertHelpLayout(in: corrections, width: width, expectedCount: 3)
 
             let vocabulary = VocabularyEditorView(service: McSpeechfaceService())
             assertHelpLayout(in: vocabulary, width: width, expectedCount: 1)
@@ -160,7 +160,7 @@ struct SettingsConstructionTests {
                 continue
             }
             content.layoutSubtreeIfNeeded()
-            assertHelpFrames(in: content, expectedCount: 4)
+            assertHelpFrames(in: content, expectedCount: 6)
         }
     }
 
@@ -1066,7 +1066,7 @@ private func assertHelpFrames(in view: NSView, expectedCount: Int) {
         let frame = view.convert(alignmentRect, from: button.superview)
         #expect(view.bounds.contains(frame))
         #expect(frame.width >= button.fittingSize.width - 0.5)
-        #expect(abs(frame.height - 18) < 0.5)
+        #expect(abs(frame.height - 22) < 0.5)
     }
 }
 

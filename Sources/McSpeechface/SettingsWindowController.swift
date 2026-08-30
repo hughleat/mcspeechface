@@ -292,11 +292,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let commandLineLabel = sectionLabel("Command Line")
         let correctionTiming = correctionTimingRow()
         let reviewPreference = reviewPreferenceRow()
+        let soundFeedback = soundFeedbackRow()
         let stack = NSStackView(views: [
             dictationLabel, dictationPreferencesView,
             shortcutLabel, shortcutRecorder,
             autoPasteButton, correctionTiming, correctionTimingDetailLabel, reviewPreference,
-            soundFeedbackButton, launchAtLoginButton,
+            soundFeedback, launchAtLoginButton,
             commandLineLabel, commandLineToolView,
             NSView()
         ])
@@ -311,6 +312,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         commandLineToolView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         correctionTiming.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         reviewPreference.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        soundFeedback.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         correctionTimingDetailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 520).isActive = true
         return stack
     }
@@ -400,12 +402,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func reviewPreferenceRow() -> NSView {
         let label = SettingsInfoLabel(
             "Review before pasting",
-            helpText: "Controls when the transcript preview appears before text is pasted or copied. The preview lets you edit, play the recording, or add more dictation. In On request mode it also offers Repair."
+            helpText: "Choose when the editable transcript preview appears before text is pasted or copied. 'When corrections change text' normally skips the preview when text is unchanged, but a provider that requires review or a correction failure may still show it. If Correction timing is On request, the preview also offers Repair."
         )
         let row = NSStackView(views: [label, NSView(), reviewPreferenceButton])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
+        return row
+    }
+
+    private func soundFeedbackRow() -> NSView {
+        let info = SettingsInfoButton(
+            topic: "Recording feedback",
+            helpText: "Plays brief sounds when recording starts and stops. This does not control whether recordings are kept."
+        )
+        let row = NSStackView(views: [soundFeedbackButton, info, NSView()])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 4
         return row
     }
 

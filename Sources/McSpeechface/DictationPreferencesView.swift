@@ -59,7 +59,7 @@ final class DictationPreferencesView: NSStackView {
 
         let modeRow = row(
             label: "Mode",
-            helpText: "Standard applies spoken formatting, vocabulary replacements, and snippets. Verbatim returns the model's transcript without those changes.",
+            helpText: "Standard follows spoken formatting commands such as 'new line' and applies vocabulary replacements and snippets. Verbatim returns the speech model's transcript without those McSpeechface changes; correction timing is controlled separately.",
             control: modeControl
         )
         let punctuationRow = row(
@@ -67,7 +67,11 @@ final class DictationPreferencesView: NSStackView {
             helpText: "Automatic keeps punctuation produced by the model. Spoken replaces phrases such as 'comma' and 'full stop'. None removes punctuation. New line and new paragraph work in every Standard punctuation mode.",
             control: punctuationPicker
         )
-        let languageRow = row(label: "Language", helpText: nil, control: languagePicker)
+        let languageRow = row(
+            label: "Language",
+            helpText: "Language options depend on the selected transcription model. English-only models lock this setting; multilingual models may select a language or use automatic detection.",
+            control: languagePicker
+        )
         addArrangedSubview(modeRow)
         addArrangedSubview(punctuationRow)
         addArrangedSubview(languageRow)

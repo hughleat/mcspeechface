@@ -19,13 +19,14 @@ final class SettingsInfoButton: NSButton, NSPopoverDelegate {
         bezelStyle = .inline
         isBordered = false
         controlSize = .small
+        contentTintColor = .secondaryLabelColor
         target = self
         action = #selector(toggleHelp)
         toolTip = "About \(topic)"
         setAccessibilityLabel("About \(topic)")
         setAccessibilityHelp(helpText)
-        widthAnchor.constraint(equalToConstant: 18).isActive = true
-        heightAnchor.constraint(equalToConstant: 18).isActive = true
+        widthAnchor.constraint(equalToConstant: 22).isActive = true
+        heightAnchor.constraint(equalToConstant: 22).isActive = true
     }
 
     required init?(coder: NSCoder) { nil }

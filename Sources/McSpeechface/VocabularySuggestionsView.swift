@@ -34,7 +34,9 @@ final class VocabularySuggestionsView: NSStackView, NSTableViewDataSource, NSTab
                 guard !Task.isCancelled else { return }
                 suggestions = results
                 table.reloadData()
-                showState(results.isEmpty ? "No vocabulary suggestions." : nil)
+                showState(results.isEmpty
+                    ? "No vocabulary suggestions yet. They appear when the same saved edit is seen more than once."
+                    : nil)
             } catch {
                 guard !Task.isCancelled else { return }
                 suggestions = []
@@ -56,7 +58,7 @@ final class VocabularySuggestionsView: NSStackView, NSTableViewDataSource, NSTab
 
         let label = SettingsInfoLabel(
             "Vocabulary Suggestions",
-            helpText: "McSpeechface learns possible replacements from corrections you save. Accept one for its source app or for all apps; dismissing it leaves your vocabulary unchanged.",
+            helpText: "When you save an edited transcript, McSpeechface may suggest turning a repeated change into a vocabulary replacement. Accept it for the app where you dictated or for all apps; dismissing it keeps the suggestion hidden and leaves vocabulary unchanged.",
             font: .systemFont(ofSize: 13, weight: .medium)
         )
 

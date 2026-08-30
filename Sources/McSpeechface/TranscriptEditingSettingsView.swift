@@ -119,6 +119,13 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         table.usesAlternatingRowBackgroundColors = true
         table.setAccessibilityLabel("Correction models")
 
+        let providersLabel = SettingsInfoLabel(
+            "Correction providers",
+            helpText: "Correction providers rewrite a completed transcript. Apple Intelligence and downloaded local models run on this Mac; Codex, Claude, and custom commands may send transcript text off-device, require an account, or be subject to provider limits or charges.",
+            font: .systemFont(ofSize: 13, weight: .medium)
+        )
+        addArrangedSubview(providersLabel)
+
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .bezelBorder
@@ -129,7 +136,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
 
         let idleTimeoutLabel = SettingsInfoLabel(
             "Unload local model after",
-            helpText: "Keeping a local correction model loaded makes later corrections start faster but uses memory. It unloads after this period without a correction; Stop unloads it immediately.",
+            helpText: "This applies only to downloaded correction models that run on this Mac. Choose how long a model stays in memory after each correction: keeping it loaded speeds up the next correction but uses memory. Use the Stop button beside a running model to unload it immediately.",
             font: .systemFont(ofSize: 13, weight: .medium)
         )
         for timeout in LocalCorrectionIdleTimeout.allCases {
@@ -160,7 +167,7 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         storageLabel.isHidden = true
         let instructionsLabel = SettingsInfoLabel(
             "Correction Prompts",
-            helpText: "These system and user templates tell every correction provider how to revise a transcript. Editing them changes local, Apple, Codex, Claude, and custom-command corrections.",
+            helpText: "These instructions tell every correction provider how to rewrite a completed transcript. The system prompt sets the correction rules, while the user prompt supplies the transcript and request. They affect corrections, not the initial transcription.",
             font: .systemFont(ofSize: 13, weight: .medium)
         )
         let promptsButton = NSButton(
@@ -192,7 +199,10 @@ final class TranscriptEditingSettingsView: NSStackView, NSTableViewDataSource, N
         compareButton.bezelStyle = .rounded
         compareButton.target = self
         compareButton.action = #selector(compareCorrections)
-        compareButton.toolTip = "Compare correction models on a saved transcript"
+        compareButton.toolTip = "Run the same saved transcript through multiple correction providers"
+        compareButton.setAccessibilityHelp(
+            "Configured external providers may use account allowances or incur charges."
+        )
         let footer = NSStackView(views: [compareButton, NSView(), storageLabel])
         footer.orientation = .horizontal
         footer.alignment = .centerY

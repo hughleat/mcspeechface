@@ -68,7 +68,7 @@ final class PrivacySettingsView: NSStackView {
         spacing = 0
 
         let localOnly = NSTextField(wrappingLabelWithString:
-            "Transcription runs locally on this Mac. McSpeechface only keeps the history and recordings you choose."
+            "Transcription runs locally on this Mac. Corrections run wherever your selected correction provider specifies. McSpeechface only keeps the history and recordings you choose."
         )
         localOnly.textColor = .secondaryLabelColor
 

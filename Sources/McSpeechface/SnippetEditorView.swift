@@ -66,7 +66,7 @@ final class SnippetEditorView: NSStackView, NSTableViewDataSource, NSTableViewDe
 
         let label = SettingsInfoLabel(
             "Snippets",
-            helpText: "Snippets expand a short spoken trigger into longer reusable text. Use Replacements instead for names, terminology, and corrected spellings.",
+            helpText: "In Standard mode, snippets expand a short spoken trigger into longer reusable text. Use Replacements instead for names, terminology, and corrected spellings.",
             font: .systemFont(ofSize: 13, weight: .medium)
         )
         table.addTableColumn(column(identifier: "trigger", title: "When McSpeechface hears"))

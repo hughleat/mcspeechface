@@ -136,7 +136,7 @@ final class ModelManagementView: NSStackView, NSTableViewDataSource, NSTableView
         storageLabel.font = .systemFont(ofSize: 11)
         storageLabel.textColor = .secondaryLabelColor
         storageLabel.alignment = .right
-        compareButton.title = "Compare Installed Models…"
+        compareButton.title = "Compare Transcription Models…"
         compareButton.image = NSImage(
             systemSymbolName: "rectangle.split.2x1",
             accessibilityDescription: nil
