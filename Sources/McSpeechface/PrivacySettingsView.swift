@@ -120,10 +120,7 @@ final class PrivacySettingsView: NSStackView {
         )
         deleteText.textColor = .secondaryLabelColor
         deleteText.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let deleteRow = NSStackView(views: [deleteText, deleteButton])
-        deleteRow.orientation = .horizontal
-        deleteRow.alignment = .centerY
-        deleteRow.spacing = 18
+        let deleteRow = trailingControlRow(content: deleteText, control: deleteButton)
 
         let statusRow = NSStackView(views: [statusLabel, NSView(), retryButton])
         statusRow.orientation = .horizontal
@@ -170,12 +167,20 @@ final class PrivacySettingsView: NSStackView {
         labels.spacing = 3
         labels.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
+        let row = trailingControlRow(content: labels, control: control)
+        row.edgeInsets = NSEdgeInsets(top: 14, left: 0, bottom: 14, right: 0)
+        return row
+    }
+
+    private func trailingControlRow(content: NSView, control: NSView) -> NSStackView {
+        content.setContentHuggingPriority(.defaultLow, for: .horizontal)
         control.setContentHuggingPriority(.required, for: .horizontal)
-        let row = NSStackView(views: [labels, control])
+
+        let row = NSStackView(views: [content, control])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 18
-        row.edgeInsets = NSEdgeInsets(top: 14, left: 0, bottom: 14, right: 0)
+        control.trailingAnchor.constraint(equalTo: row.trailingAnchor).isActive = true
         return row
     }
 

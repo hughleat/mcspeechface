@@ -92,37 +92,40 @@ struct SettingsConstructionTests {
     @Test @MainActor
     func privacyControlsShareTheTrailingEdge() throws {
         _ = NSApplication.shared
-        let view = PrivacySettingsView(service: McSpeechfaceService())
-        view.frame = NSRect(x: 0, y: 0, width: 520, height: 500)
-        view.layoutSubtreeIfNeeded()
+        for width in [520.0, 1_400.0] {
+            let view = PrivacySettingsView(service: McSpeechfaceService())
+            view.frame = NSRect(x: 0, y: 0, width: width, height: 700)
+            view.layoutSubtreeIfNeeded()
 
-        let controls: [NSView] = [
-            try #require(allSubviews(of: NSSwitch.self, in: view).first {
-                $0.accessibilityLabel() == "Save transcription history"
-            }),
-            try #require(allSubviews(of: NSSwitch.self, in: view).first {
-                $0.accessibilityLabel() == "Keep recordings after transcription"
-            }),
-            try #require(allSubviews(of: NSPopUpButton.self, in: view).first {
-                $0.accessibilityLabel() == "History retention"
-            }),
-            try #require(allSubviews(of: NSButton.self, in: view).first {
-                $0.accessibilityLabel() == "Delete all transcription history"
-            }),
-        ]
+            let controls: [NSView] = [
+                try #require(allSubviews(of: NSSwitch.self, in: view).first {
+                    $0.accessibilityLabel() == "Save transcription history"
+                }),
+                try #require(allSubviews(of: NSSwitch.self, in: view).first {
+                    $0.accessibilityLabel() == "Keep recordings after transcription"
+                }),
+                try #require(allSubviews(of: NSPopUpButton.self, in: view).first {
+                    $0.accessibilityLabel() == "History retention"
+                }),
+                try #require(allSubviews(of: NSButton.self, in: view).first {
+                    $0.accessibilityLabel() == "Delete all transcription history"
+                }),
+            ]
 
-        for control in controls {
-            let trailingEdge = control.convert(control.bounds, to: view).maxX
-            #expect(abs(trailingEdge - view.bounds.maxX) < 0.5)
+            for control in controls {
+                let trailingEdge = control.convert(control.bounds, to: view).maxX
+                #expect(abs(trailingEdge - view.bounds.maxX) < 0.5)
+                #expect(control.frame.width >= control.fittingSize.width - 0.5)
+            }
+
+            let descriptions = allSubviews(of: NSTextField.self, in: view).filter {
+                $0.stringValue.hasPrefix("Keeps ")
+                    || $0.stringValue.hasPrefix("Older transcripts")
+                    || $0.stringValue.hasPrefix("Remove all transcripts")
+            }
+            #expect(descriptions.count == 4)
+            #expect(descriptions.allSatisfy { $0.frame.width > 300 })
         }
-
-        let descriptions = allSubviews(of: NSTextField.self, in: view).filter {
-            $0.stringValue.hasPrefix("Keeps ")
-                || $0.stringValue.hasPrefix("Older transcripts")
-                || $0.stringValue.hasPrefix("Remove all transcripts")
-        }
-        #expect(descriptions.count == 4)
-        #expect(descriptions.allSatisfy { $0.frame.width > 300 })
     }
 
     @Test @MainActor
