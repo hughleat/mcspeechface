@@ -1,3 +1,16 @@
+import Foundation
+
+func isCurrentDictationTask(
+    isCancelled: Bool,
+    operationID: UUID?,
+    currentOperationID: UUID?,
+    generationID: UUID? = nil,
+    currentGenerationID: UUID? = nil
+) -> Bool {
+    guard !isCancelled, let operationID, operationID == currentOperationID else { return false }
+    return generationID.map { $0 == currentGenerationID } ?? true
+}
+
 enum DictationShortcutTapAction: Equatable {
     case startRecording
     case cancelStarting
@@ -26,8 +39,8 @@ enum DictationWorkflowState: Equatable {
     case starting
     case recording
     case transcribing
-    case addingCorrectionInstruction
-    case transcribingCorrectionInstruction
+    case addingReviewDictation
+    case transcribingReviewDictation
     case correcting
     case reviewing
     case committing
@@ -38,8 +51,8 @@ enum DictationWorkflowState: Equatable {
         case .starting: "starting"
         case .recording: "recording"
         case .transcribing: "transcribing"
-        case .addingCorrectionInstruction: "adding correction instruction"
-        case .transcribingCorrectionInstruction: "transcribing correction instruction"
+        case .addingReviewDictation: "adding review dictation"
+        case .transcribingReviewDictation: "transcribing review dictation"
         case .correcting: "correcting"
         case .reviewing: "reviewing"
         case .committing: "committing"
@@ -48,8 +61,8 @@ enum DictationWorkflowState: Equatable {
 
     var handlesEscape: Bool {
         switch self {
-        case .starting, .recording, .transcribing, .addingCorrectionInstruction,
-             .transcribingCorrectionInstruction, .correcting, .reviewing: true
+        case .starting, .recording, .transcribing, .addingReviewDictation,
+             .transcribingReviewDictation, .correcting, .reviewing: true
         case .idle, .committing: false
         }
     }
@@ -59,8 +72,8 @@ enum DictationWorkflowState: Equatable {
         case .idle: .startRecording
         case .starting: .cancelStarting
         case .recording: .stopRecording
-        case .transcribing, .addingCorrectionInstruction,
-             .transcribingCorrectionInstruction, .correcting: .ignore
+        case .transcribing, .addingReviewDictation,
+             .transcribingReviewDictation, .correcting: .ignore
         case .reviewing: reviewIsActive ? .acceptReview : .requestDeferredRecording
         case .committing: .requestDeferredRecording
         }

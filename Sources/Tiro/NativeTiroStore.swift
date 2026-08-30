@@ -379,6 +379,41 @@ actor NativeTiroStore {
         return true
     }
 
+    @discardableResult
+    func commitHistoryReview(
+        id: String,
+        correctedText: String,
+        audio: Data?,
+        transcriptionSeconds: Double
+    ) throws -> Bool {
+        try Task.checkCancellation()
+        guard correctedText.count <= Limits.transcript else {
+            throw NativeStoreError.invalidData("Corrected transcription text is too long.")
+        }
+        var entries = try loadHistory()
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return false }
+        let recordingURL = try audio.flatMap { _ in
+            try entries[index].audioFile.map(audioURL(for:))
+        }
+        let previousAudio = try recordingURL.map { try Data(contentsOf: $0) }
+        if let audio, let recordingURL {
+            try writePrivate(audio, to: recordingURL)
+        }
+        do {
+            entries[index].correctedText = correctedText
+            entries[index].transcriptionSeconds = transcriptionSeconds
+            entries[index].segments = nil
+            try Task.checkCancellation()
+            try saveHistory(entries)
+        } catch {
+            if let previousAudio, let recordingURL {
+                try? writePrivate(previousAudio, to: recordingURL)
+            }
+            throw error
+        }
+        return true
+    }
+
     func suggestions() throws -> [NativeVocabularySuggestion] {
         let document = try reconcileSuggestions(history: loadHistory())
         return document.suggestions.filter {

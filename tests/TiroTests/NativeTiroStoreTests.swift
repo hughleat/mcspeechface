@@ -68,6 +68,72 @@ struct NativeTiroStoreTests {
     }
 
     @Test
+    func replacingHistoryAudioUpdatesRecordingDurationAndClearsSegments() async throws {
+        try await withStore { store, _ in
+            _ = try await store.updatePrivacySettings(NativePrivacySettings(
+                storeHistory: true,
+                storeRecordings: true,
+                retentionDays: 0
+            ))
+            let entry = try await store.finalize(NativeFinalizationRequest(
+                rawText: "First paragraph.",
+                modelID: "model",
+                transcriptionSeconds: 1,
+                audio: Data("first".utf8),
+                segments: [TranscriptSegment(
+                    text: "First paragraph.",
+                    startSeconds: 0,
+                    endSeconds: 1
+                )]
+            ))
+
+            #expect(try await store.commitHistoryReview(
+                id: entry.id,
+                correctedText: "First paragraph. Second paragraph.",
+                audio: Data("first-second".utf8),
+                transcriptionSeconds: 2.5
+            ))
+
+            #expect(try await store.audio(forHistoryID: entry.id) == Data("first-second".utf8))
+            let updated = try #require(try await store.searchHistory().first)
+            #expect(updated.correctedText == "First paragraph. Second paragraph.")
+            #expect(updated.transcriptionSeconds == 2.5)
+            #expect(updated.segments == nil)
+        }
+    }
+
+    @Test
+    func textOnlyHistoryCommitDoesNotRequireTheRecordingToExist() async throws {
+        try await withStore { store, root in
+            _ = try await store.updatePrivacySettings(NativePrivacySettings(
+                storeHistory: true,
+                storeRecordings: true,
+                retentionDays: 0
+            ))
+            let entry = try await store.finalize(NativeFinalizationRequest(
+                rawText: "Um, first paragraph.",
+                modelID: "model",
+                transcriptionSeconds: 1,
+                audio: Data("first".utf8)
+            ))
+            let audioPath = try #require(entry.audioFile)
+            try FileManager.default.removeItem(
+                at: root.deletingLastPathComponent().appendingPathComponent(audioPath)
+            )
+
+            #expect(try await store.commitHistoryReview(
+                id: entry.id,
+                correctedText: "First paragraph.",
+                audio: nil,
+                transcriptionSeconds: 1
+            ))
+
+            let updated = try #require(try await store.searchHistory().first)
+            #expect(updated.correctedText == "First paragraph.")
+        }
+    }
+
+    @Test
     func disabledHistoryReturnsTextWithoutWritingPrivateContent() async throws {
         try await withStore { store, root in
             let entry = try await store.finalize(NativeFinalizationRequest(

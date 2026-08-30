@@ -28,6 +28,13 @@ import UniformTypeIdentifiers
         let failed: Bool
     }
 
+    private struct ReviewedTranscript {
+        let text: String
+        let audioURL: URL
+        let transcriptionSeconds: TimeInterval
+        let audioWasExtended: Bool
+    }
+
     private let recorder = AudioRecorder()
     private let service = TiroService()
     private let overlay = OverlayPanel()
@@ -70,7 +77,15 @@ import UniformTypeIdentifiers
     private var modelSelectionTask: Task<Void, Never>?
     private var correctionModelRefreshTask: Task<Void, Never>?
     private var transcriptionTask: Task<Void, Never>?
-    private var correctionInstructionTask: Task<Void, Never>?
+    private var reviewAdditionTask: Task<Void, Never>?
+    private var reviewAdditionID: UUID?
+    private var reviewCorrectionTask: Task<CorrectionOutcome?, Never>?
+    private var reviewCorrectionID: UUID?
+    private var restoresReviewAfterCorrectionCancellation = false
+    private var reviewAudioURL: URL?
+    private var reviewDuration: TimeInterval = 0
+    private var reviewAudioWasExtended = false
+    private var reviewAudioOperationID: UUID?
     private var transcriptionID: UUID?
     private var recordingModelUseReserved = false
     private var recordingModel: DictationModel?
@@ -142,7 +157,8 @@ import UniformTypeIdentifiers
         modelSelectionTask?.cancel()
         correctionModelRefreshTask?.cancel()
         transcriptionTask?.cancel()
-        correctionInstructionTask?.cancel()
+        reviewAdditionTask?.cancel()
+        reviewCorrectionTask?.cancel()
         pasteRetryTask?.cancel()
         pasteCoordinator.cancelPendingConfirmation()
         commandTranscriptionTask?.cancel()
@@ -824,20 +840,19 @@ import UniformTypeIdentifiers
         hotkeys.allowsCorrectionGesture = { [weak self] in
             guard let self else { return false }
             return self.state == .reviewing
-                && CorrectionTimingPreference.load() == .onRequest
-                && self.transcriptReviewWindow?.canRequestCorrection == true
+                && self.transcriptReviewWindow?.canAddDictation == true
         }
         hotkeys.onCorrectionTap = { [weak self] in
             self?.transcriptReviewWindow?.requestCorrection()
         }
         hotkeys.onCorrectionHoldStart = { [weak self] in
-            self?.startCorrectionInstructionRecording() ?? false
+            self?.startReviewAdditionRecording() ?? false
         }
         hotkeys.onCorrectionHoldEnd = { [weak self] in
-            self?.stopCorrectionInstructionRecording()
+            self?.stopReviewAdditionRecording()
         }
         hotkeys.onCorrectionHoldCancel = { [weak self] in
-            self?.cancelCorrectionInstructionRecording()
+            self?.cancelReviewAdditionRecording()
         }
         hotkeys.onEscape = { [weak self] in self?.cancelRecording() }
         hotkeys.shouldHandleEscape = { [weak self] in
@@ -1092,15 +1107,15 @@ import UniformTypeIdentifiers
         }
     }
 
-    private func startCorrectionInstructionRecording() -> Bool {
+    private func startReviewAdditionRecording() -> Bool {
         guard state == .reviewing,
-              transcriptReviewWindow?.beginAdditionalInstruction() == true else {
+              transcriptReviewWindow?.beginAdditionalDictation() == true else {
             return false
         }
         do {
             try recorder.start()
-            state = .addingCorrectionInstruction
-            menuToggleItem.title = "Adding Correction Instruction…"
+            state = .addingReviewDictation
+            menuToggleItem.title = "Adding More Dictation…"
             if UserDefaults.standard.bool(forKey: "soundFeedback") {
                 recordingSounds.playHoldStart()
             }
@@ -1108,25 +1123,32 @@ import UniformTypeIdentifiers
         } catch {
             state = .reviewing
             menuToggleItem.title = shouldAutoPaste ? "Paste Transcription" : "Copy Transcription"
-            transcriptReviewWindow?.showInstructionFailure(error.localizedDescription)
+            transcriptReviewWindow?.showAdditionalDictationFailure(error.localizedDescription)
             return false
         }
     }
 
-    private func stopCorrectionInstructionRecording() {
-        guard state == .addingCorrectionInstruction else { return }
+    private func stopReviewAdditionRecording() {
+        guard state == .addingReviewDictation else { return }
         do {
             let audioURL = try recorder.stop()
             if UserDefaults.standard.bool(forKey: "soundFeedback") { recordingSounds.playStop() }
-            state = .transcribingCorrectionInstruction
-            menuToggleItem.title = "Transcribing Correction Instruction…"
-            transcriptReviewWindow?.showInstructionTranscriptionProgress()
+            state = .transcribingReviewDictation
+            menuToggleItem.title = "Transcribing More Dictation…"
+            transcriptReviewWindow?.showAdditionalDictationTranscriptionProgress()
             let model = recordingModel ?? DictationModel.selected
             let operationID = transcriptionID
-            correctionInstructionTask = Task { [weak self] in
+            let additionID = UUID()
+            reviewAdditionID = additionID
+            reviewAdditionTask = Task { [weak self] in
                 guard let self else { return }
                 defer { try? FileManager.default.removeItem(at: audioURL) }
-                defer { self.correctionInstructionTask = nil }
+                defer {
+                    if self.reviewAdditionID == additionID {
+                        self.reviewAdditionID = nil
+                        self.reviewAdditionTask = nil
+                    }
+                }
                 do {
                     let response = try await service.transcribe(
                         audioURL: audioURL,
@@ -1136,57 +1158,96 @@ import UniformTypeIdentifiers
                         usingRecordingReservation: true
                     )
                     try Task.checkCancellation()
-                    guard self.transcriptionID == operationID else { return }
+                    guard self.transcriptionID == operationID,
+                          self.reviewAdditionID == additionID else { return }
+                    try self.appendReviewAudio(
+                        audioURL,
+                        additionalDuration: response.transcription_seconds
+                    )
+                    try Task.checkCancellation()
+                    guard self.transcriptionID == operationID,
+                          self.reviewAdditionID == additionID else { return }
                     self.state = .reviewing
                     self.menuToggleItem.title = self.shouldAutoPaste
                         ? "Paste Transcription"
                         : "Copy Transcription"
-                    self.transcriptReviewWindow?.appendInstructionAndRequestCorrection(response.text)
+                    self.transcriptReviewWindow?.appendAdditionalTranscription(response.text)
                 } catch is CancellationError {
                     return
                 } catch TiroError.noSpeechDetected {
-                    guard self.transcriptionID == operationID else { return }
+                    guard isCurrentDictationTask(
+                        isCancelled: Task.isCancelled,
+                        operationID: operationID,
+                        currentOperationID: self.transcriptionID,
+                        generationID: additionID,
+                        currentGenerationID: self.reviewAdditionID
+                    ) else { return }
                     self.state = .reviewing
                     self.menuToggleItem.title = self.shouldAutoPaste
                         ? "Paste Transcription"
                         : "Copy Transcription"
-                    self.transcriptReviewWindow?.showInstructionFailure(
-                        "No correction instruction was detected."
+                    self.transcriptReviewWindow?.showAdditionalDictationFailure(
+                        "No additional speech was detected."
                     )
                 } catch {
-                    guard self.transcriptionID == operationID else { return }
+                    guard isCurrentDictationTask(
+                        isCancelled: Task.isCancelled,
+                        operationID: operationID,
+                        currentOperationID: self.transcriptionID,
+                        generationID: additionID,
+                        currentGenerationID: self.reviewAdditionID
+                    ) else { return }
                     self.state = .reviewing
                     self.menuToggleItem.title = self.shouldAutoPaste
                         ? "Paste Transcription"
                         : "Copy Transcription"
-                    self.transcriptReviewWindow?.showInstructionFailure(
-                        "Could not transcribe the instruction: \(error.localizedDescription)"
+                    self.transcriptReviewWindow?.showAdditionalDictationFailure(
+                        "Could not transcribe the addition: \(error.localizedDescription)"
                     )
                 }
             }
         } catch {
             state = .reviewing
             menuToggleItem.title = shouldAutoPaste ? "Paste Transcription" : "Copy Transcription"
-            transcriptReviewWindow?.showInstructionFailure(error.localizedDescription)
+            transcriptReviewWindow?.showAdditionalDictationFailure(error.localizedDescription)
         }
     }
 
-    private func cancelCorrectionInstructionRecording() {
-        guard state == .addingCorrectionInstruction else { return }
+    private func cancelReviewAdditionRecording() {
+        guard state == .addingReviewDictation else { return }
         recorder.cancel()
         if UserDefaults.standard.bool(forKey: "soundFeedback") { recordingSounds.playStop() }
         state = .reviewing
         menuToggleItem.title = shouldAutoPaste ? "Paste Transcription" : "Copy Transcription"
-        transcriptReviewWindow?.showInstructionFailure("Correction instruction cancelled.")
+        transcriptReviewWindow?.showAdditionalDictationFailure("Additional dictation cancelled.")
+    }
+
+    private func appendReviewAudio(
+        _ additionURL: URL,
+        additionalDuration: TimeInterval
+    ) throws {
+        guard let reviewAudioURL else { return }
+        try Task.checkCancellation()
+        try ReviewAudioAssembler.append(additionURL, to: reviewAudioURL)
+        reviewDuration += additionalDuration
+        reviewAudioWasExtended = true
     }
 
     private func cancelRecording() {
         guard commandRecording == nil, externalOperationID == nil else { return }
-        if state == .addingCorrectionInstruction || state == .transcribingCorrectionInstruction {
-            if recorder.isRecording { recorder.cancel() }
-            correctionInstructionTask?.cancel()
-            correctionInstructionTask = nil
-            transcriptReviewWindow?.cancel()
+        if state == .addingReviewDictation {
+            cancelReviewAdditionRecording()
+            return
+        }
+        if state == .transcribingReviewDictation {
+            reviewAdditionID = nil
+            reviewAdditionTask?.cancel()
+            reviewAdditionTask = nil
+            state = .reviewing
+            menuToggleItem.title = shouldAutoPaste ? "Paste Transcription" : "Copy Transcription"
+            transcriptReviewWindow?.showAdditionalDictationFailure(
+                "Additional dictation cancelled."
+            )
             return
         }
         if state == .reviewing {
@@ -1194,7 +1255,16 @@ import UniformTypeIdentifiers
             return
         }
         if state == .correcting {
+            if restoresReviewAfterCorrectionCancellation {
+                reviewCorrectionID = nil
+                reviewCorrectionTask?.cancel()
+                return
+            }
             transcriptReviewWindow?.cancel()
+            reviewCorrectionID = nil
+            reviewCorrectionTask?.cancel()
+            reviewCorrectionTask = nil
+            restoresReviewAfterCorrectionCancellation = false
             transcriptionTask?.cancel()
             return
         }
@@ -1288,7 +1358,7 @@ import UniformTypeIdentifiers
         destinationSession = nil
         originApplication = nil
         var completionOverlay = OverlayState.copied
-        guard let completedText = await reviewedText(
+        guard let reviewed = await reviewedText(
             response,
             audioURL: audioURL,
             willPaste: shouldAutoPaste && destination != nil,
@@ -1301,12 +1371,18 @@ import UniformTypeIdentifiers
             settingsWindow.refreshHistory()
             return
         }
+        let completedText = reviewed.text
         guard !Task.isCancelled, transcriptionID == operationID else { return }
         state = .committing
         menuToggleItem.title = "Finishing…"
-        if completedText != response.text {
+        if completedText != response.text || reviewed.audioWasExtended {
             do {
-                try await service.correctHistoryEntry(id: response.id, correctedText: completedText)
+                try await service.commitHistoryReview(
+                    id: response.id,
+                    correctedText: completedText,
+                    audioURL: reviewed.audioWasExtended ? reviewed.audioURL : nil,
+                    transcriptionSeconds: reviewed.transcriptionSeconds
+                )
             } catch is CancellationError {
                 return
             } catch {
@@ -1367,7 +1443,19 @@ import UniformTypeIdentifiers
         audioURL: URL,
         willPaste: Bool,
         operationID: UUID
-    ) async -> String? {
+    ) async -> ReviewedTranscript? {
+        reviewAudioURL = audioURL
+        reviewDuration = response.transcription_seconds
+        reviewAudioWasExtended = false
+        reviewAudioOperationID = operationID
+        defer {
+            if reviewAudioOperationID == operationID {
+                reviewAudioURL = nil
+                reviewDuration = 0
+                reviewAudioWasExtended = false
+                reviewAudioOperationID = nil
+            }
+        }
         let timing = CorrectionTimingPreference.load()
         let correctionIsAvailable = TranscriptEditingModel.selected != .off
             && !response.text.isEmpty
@@ -1381,7 +1469,6 @@ import UniformTypeIdentifiers
             guard let automaticOutcome = await correctionOutcome(
                 for: response.text,
                 fallbackText: response.text,
-                instructionText: nil,
                 response: response,
                 operationID: operationID,
                 inReviewWindow: false
@@ -1402,26 +1489,29 @@ import UniformTypeIdentifiers
             action: willPaste ? .paste : .copy,
             allowsCorrection: timing == .onRequest,
             correctionIsAvailable: correctionIsAvailable,
-            correctionInstructionShortcut: correctionInstructionShortcut
+            mode: timing == .automatic && correctionIsAvailable
+                ? TranscriptReviewMode.transcript.afterRepair(failed: outcome.failed)
+                : .transcript,
+            additionalDictationShortcut: additionalDictationShortcut
         )
         let shouldReview = timing == .onRequest || TranscriptReviewPreference.load().shouldReview(
             textChanged: draft.textChanged,
             requiresReview: outcome.requiresReview
         )
         guard shouldReview else {
-            return nonEmpty(outcome.revisedText)
+            return reviewedTranscript(outcome.revisedText)
         }
 
         overlay.dismiss()
         let reviewWindow = transcriptReviewWindow ?? TranscriptReviewWindowController()
         transcriptReviewWindow = reviewWindow
         reviewWindow.onCancelBusy = { [weak self] in self?.cancelRecording() }
-        reviewWindow.onRequestAdditionalInstruction = { [weak self] in
+        reviewWindow.onRequestAdditionalDictation = { [weak self] in
             guard let self else { return }
-            if self.state == .addingCorrectionInstruction {
-                self.stopCorrectionInstructionRecording()
+            if self.state == .addingReviewDictation {
+                self.stopReviewAdditionRecording()
             } else {
-                _ = self.startCorrectionInstructionRecording()
+                _ = self.startReviewAdditionRecording()
             }
         }
         while !Task.isCancelled, transcriptionID == operationID {
@@ -1430,29 +1520,76 @@ import UniformTypeIdentifiers
             switch await reviewWindow.review(draft) {
             case .accepted(let text):
                 guard !Task.isCancelled, transcriptionID == operationID else { return nil }
-                return nonEmpty(text)
-            case .correctionRequested(let text, let fallbackText, let instructionText):
-                guard timing == .onRequest, TranscriptEditingModel.selected != .off else {
-                    return nonEmpty(text)
+                return reviewedTranscript(text)
+            case .correctionRequested(
+                let text,
+                let originalText,
+                let fallbackText,
+                let reason
+            ):
+                let previousMode = draft.mode
+                let fallbackDraft = TranscriptReviewDraft(
+                    originalText: originalText,
+                    revisedText: fallbackText,
+                    explanation: reason == .additionalDictation
+                        ? "Added dictation preserved without repair."
+                        : "",
+                    audioURL: audioURL,
+                    duration: response.transcription_seconds,
+                    action: willPaste ? .paste : .copy,
+                    allowsCorrection: timing == .onRequest,
+                    correctionIsAvailable: TranscriptEditingModel.selected != .off,
+                    mode: previousMode,
+                    additionalDictationShortcut: additionalDictationShortcut
+                )
+                guard timing != .off, TranscriptEditingModel.selected != .off else {
+                    if reason == .additionalDictation {
+                        draft = fallbackDraft
+                        continue
+                    }
+                    return reviewedTranscript(fallbackText)
                 }
-                guard let requestedOutcome = await correctionOutcome(
-                    for: text,
-                    fallbackText: fallbackText,
-                    instructionText: instructionText,
-                    response: response,
-                    operationID: operationID,
-                    inReviewWindow: true
-                ) else { return nil }
+                let correctionID = UUID()
+                reviewCorrectionID = correctionID
+                restoresReviewAfterCorrectionCancellation = reason == .additionalDictation
+                state = .correcting
+                menuToggleItem.title = "Correcting…"
+                let correctionTask = Task<CorrectionOutcome?, Never> { [weak self] in
+                    guard let self else { return nil }
+                    return await self.correctionOutcome(
+                        for: text,
+                        fallbackText: fallbackText,
+                        response: response,
+                        operationID: operationID,
+                        inReviewWindow: true,
+                        expectedReviewCorrectionID: correctionID
+                    )
+                }
+                reviewCorrectionTask = correctionTask
+                let requestedOutcome = await correctionTask.value
+                reviewCorrectionID = nil
+                reviewCorrectionTask = nil
+                restoresReviewAfterCorrectionCancellation = false
+                guard let requestedOutcome else {
+                    if reason == .additionalDictation,
+                       !Task.isCancelled,
+                       transcriptionID == operationID {
+                        draft = fallbackDraft
+                        continue
+                    }
+                    return nil
+                }
                 draft = TranscriptReviewDraft(
-                    originalText: fallbackText,
+                    originalText: originalText,
                     revisedText: requestedOutcome.revisedText,
                     explanation: requestedOutcome.explanation,
                     audioURL: audioURL,
                     duration: response.transcription_seconds,
                     action: willPaste ? .paste : .copy,
-                    allowsCorrection: true,
+                    allowsCorrection: timing == .onRequest,
                     correctionIsAvailable: true,
-                    correctionInstructionShortcut: correctionInstructionShortcut
+                    mode: previousMode.afterRepair(failed: requestedOutcome.failed),
+                    additionalDictationShortcut: additionalDictationShortcut
                 )
             case .cancelled: return nil
             }
@@ -1460,7 +1597,7 @@ import UniformTypeIdentifiers
         return nil
     }
 
-    private var correctionInstructionShortcut: String? {
+    private var additionalDictationShortcut: String? {
         hotkeys.supportsCorrectionGesture
             ? "Option + \(hotkeys.shortcut.displayName)"
             : nil
@@ -1469,11 +1606,16 @@ import UniformTypeIdentifiers
     private func correctionOutcome(
         for text: String,
         fallbackText: String,
-        instructionText: String?,
         response: TranscriptionResponse,
         operationID: UUID,
-        inReviewWindow: Bool
+        inReviewWindow: Bool,
+        expectedReviewCorrectionID: UUID? = nil
     ) async -> CorrectionOutcome? {
+        guard !Task.isCancelled else { return nil }
+        if let expectedReviewCorrectionID,
+           reviewCorrectionID != expectedReviewCorrectionID {
+            return nil
+        }
         state = .correcting
         menuToggleItem.title = "Correcting…"
         if inReviewWindow {
@@ -1490,6 +1632,10 @@ import UniformTypeIdentifiers
                 progressHandler: { [weak self] progress in
                     Task { @MainActor in
                         guard let self, self.transcriptionID == operationID else { return }
+                        if let expectedReviewCorrectionID,
+                           self.reviewCorrectionID != expectedReviewCorrectionID {
+                            return
+                        }
                         if inReviewWindow {
                             self.transcriptReviewWindow?.showCorrectionProgress(
                                 providerName: progress.providerName,
@@ -1501,32 +1647,29 @@ import UniformTypeIdentifiers
                     }
                 }
             )
+            try Task.checkCancellation()
             var revisedText = fallbackText
             var explanation = ""
-            var instructionWasNotApplied = text != fallbackText
             if case .proposal(let proposal) = result.decision {
-                if Self.containsDictatedInstruction(
-                    proposal.revisedText,
-                    instructionText: instructionText
-                ) {
-                    explanation = "The correction model returned the added instruction instead of applying it."
-                } else {
-                    revisedText = proposal.revisedText
-                    explanation = proposal.explanation
-                    instructionWasNotApplied = false
-                }
-            } else if instructionWasNotApplied {
-                explanation = "The correction model did not apply the added instruction."
+                revisedText = proposal.revisedText
+                explanation = proposal.explanation
             }
             return CorrectionOutcome(
                 revisedText: revisedText,
                 explanation: explanation,
-                requiresReview: result.requiresReview || instructionWasNotApplied,
-                failed: instructionWasNotApplied
+                requiresReview: result.requiresReview,
+                failed: false
             )
         } catch is CancellationError {
             return nil
         } catch {
+            guard isCurrentDictationTask(
+                isCancelled: Task.isCancelled,
+                operationID: operationID,
+                currentOperationID: transcriptionID,
+                generationID: expectedReviewCorrectionID,
+                currentGenerationID: reviewCorrectionID
+            ) else { return nil }
             NSLog("Could not analyse spoken corrections: %@", error.localizedDescription)
             return CorrectionOutcome(
                 revisedText: fallbackText,
@@ -1539,6 +1682,16 @@ import UniformTypeIdentifiers
 
     private func nonEmpty(_ text: String) -> String? {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+    }
+
+    private func reviewedTranscript(_ text: String) -> ReviewedTranscript? {
+        guard let text = nonEmpty(text), let reviewAudioURL else { return nil }
+        return ReviewedTranscript(
+            text: text,
+            audioURL: reviewAudioURL,
+            transcriptionSeconds: reviewDuration,
+            audioWasExtended: reviewAudioWasExtended
+        )
     }
 
     private static func response(
@@ -1559,27 +1712,6 @@ import UniformTypeIdentifiers
             segments: response.segments,
             saved_to_history: response.saved_to_history
         )
-    }
-
-    private static func containsDictatedInstruction(
-        _ revisedText: String,
-        instructionText: String?
-    ) -> Bool {
-        guard let instructionText else { return false }
-        let instructionWords = normalizedWords(instructionText)
-        guard instructionWords.count >= 3 else { return false }
-        let revisedWords = normalizedWords(revisedText)
-        guard revisedWords.count >= instructionWords.count else { return false }
-        for start in 0...(revisedWords.count - instructionWords.count) {
-            if Array(revisedWords[start..<(start + instructionWords.count)]) == instructionWords {
-                return true
-            }
-        }
-        return false
-    }
-
-    private static func normalizedWords(_ text: String) -> [String] {
-        text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
     }
 
     private static func correctionProgressTitle(

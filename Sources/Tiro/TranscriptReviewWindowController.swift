@@ -1,6 +1,20 @@
 import AppKit
 import AVFoundation
 
+enum TranscriptReviewMode: Equatable {
+    case transcript
+    case repaired
+
+    func afterRepair(failed: Bool) -> Self {
+        failed ? self : .repaired
+    }
+}
+
+enum TranscriptReviewCorrectionReason: Equatable {
+    case repair
+    case additionalDictation
+}
+
 struct TranscriptReviewDraft {
     enum Action {
         case paste
@@ -18,8 +32,9 @@ struct TranscriptReviewDraft {
     let action: Action
     let allowsCorrection: Bool
     let correctionIsAvailable: Bool
-    let allowsCorrectionInstruction: Bool
-    let correctionInstructionShortcut: String?
+    let mode: TranscriptReviewMode
+    let allowsAdditionalDictation: Bool
+    let additionalDictationShortcut: String?
 
     init(
         originalText: String,
@@ -30,8 +45,9 @@ struct TranscriptReviewDraft {
         action: Action,
         allowsCorrection: Bool = false,
         correctionIsAvailable: Bool = true,
-        allowsCorrectionInstruction: Bool = true,
-        correctionInstructionShortcut: String? = nil
+        mode: TranscriptReviewMode = .transcript,
+        allowsAdditionalDictation: Bool = true,
+        additionalDictationShortcut: String? = nil
     ) {
         self.originalText = originalText
         self.revisedText = revisedText
@@ -41,8 +57,9 @@ struct TranscriptReviewDraft {
         self.action = action
         self.allowsCorrection = allowsCorrection
         self.correctionIsAvailable = correctionIsAvailable
-        self.allowsCorrectionInstruction = allowsCorrectionInstruction
-        self.correctionInstructionShortcut = correctionInstructionShortcut
+        self.mode = mode
+        self.allowsAdditionalDictation = allowsAdditionalDictation
+        self.additionalDictationShortcut = additionalDictationShortcut
     }
 
     var textChanged: Bool { originalText != revisedText }
@@ -50,7 +67,12 @@ struct TranscriptReviewDraft {
 
 enum TranscriptReviewResult: Equatable {
     case accepted(String)
-    case correctionRequested(text: String, fallbackText: String, instructionText: String?)
+    case correctionRequested(
+        text: String,
+        originalText: String,
+        fallbackText: String,
+        reason: TranscriptReviewCorrectionReason
+    )
     case cancelled
 }
 
@@ -112,16 +134,19 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     private var audioPlayer: AVAudioPlayer?
     private var playbackTimer: Timer?
     private var isBusy = false
-    private var additionalInstructionBase: String?
-
     var onCancelBusy: (() -> Void)?
-    var onRequestAdditionalInstruction: (() -> Void)?
+    var onRequestAdditionalDictation: (() -> Void)?
 
     var isReviewing: Bool { continuation != nil }
     var canRequestCorrection: Bool {
         isReviewing
             && draft?.allowsCorrection == true
             && draft?.correctionIsAvailable == true
+            && !isBusy
+    }
+    var canAddDictation: Bool {
+        isReviewing
+            && draft?.allowsAdditionalDictation == true
             && !isBusy
     }
 
@@ -150,7 +175,6 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         guard continuation == nil else { return .cancelled }
         self.draft = draft
         isBusy = false
-        additionalInstructionBase = nil
         updateSurfaceAppearance()
         revisedText = draft.revisedText
         statusLabel.stringValue = draft.action.statusTitle
@@ -195,13 +219,10 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     }
 
     func requestCorrection() {
-        submitCorrectionRequest(fallbackText: nil)
+        submitCorrectionRequest()
     }
 
-    private func submitCorrectionRequest(
-        fallbackText: String?,
-        instructionText: String? = nil
-    ) {
+    private func submitCorrectionRequest() {
         guard canRequestCorrection, let draft else { return }
         if selectedVersion == .corrected { revisedText = textView.string }
         let text = selectedVersion.acceptedText(
@@ -212,39 +233,35 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         resolve(
             with: .correctionRequested(
                 text: text,
-                fallbackText: fallbackText ?? text,
-                instructionText: instructionText
+                originalText: draft.originalText,
+                fallbackText: text,
+                reason: .repair
             ),
             hidesWindow: false
         )
     }
 
-    func beginAdditionalInstruction() -> Bool {
-        guard canRequestCorrection, draft?.allowsCorrectionInstruction == true,
-              let draft else { return false }
+    func beginAdditionalDictation() -> Bool {
+        guard canAddDictation else { return false }
         if selectedVersion == .corrected { revisedText = textView.string }
-        additionalInstructionBase = selectedVersion.acceptedText(
-            original: draft.originalText,
-            editedCorrection: revisedText
-        )
-        showBusyStatus("Listening for an instruction…")
+        showBusyStatus("Listening for more…")
         instructionButton.title = "Done"
         instructionButton.image = NSImage(
             systemSymbolName: "stop.fill",
             accessibilityDescription: nil
         )
         instructionButton.isEnabled = true
-        instructionButton.setAccessibilityLabel("Finish correction instruction")
-        instructionButton.toolTip = "Finish recording the correction instruction"
+        instructionButton.setAccessibilityLabel("Finish additional dictation")
+        instructionButton.toolTip = "Finish recording the additional dictation"
         return true
     }
 
-    func showInstructionTranscriptionProgress() {
+    func showAdditionalDictationTranscriptionProgress() {
         configureInstructionButtonForIdleState()
-        showBusyStatus("Transcribing your instruction…")
+        showBusyStatus("Transcribing the addition…")
     }
 
-    func showInstructionFailure(_ message: String) {
+    func showAdditionalDictationFailure(_ message: String) {
         guard let draft else { return }
         isBusy = false
         statusLabel.stringValue = draft.action.statusTitle
@@ -253,29 +270,65 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         explanationLabel.isHidden = false
         configureInstructionButton(for: draft)
         setInteractive(true)
-        additionalInstructionBase = nil
         AccessibilityAnnouncements.post(message, from: explanationLabel)
         window?.makeFirstResponder(textView)
     }
 
-    func appendInstructionAndRequestCorrection(_ instruction: String) {
-        guard isReviewing, draft?.allowsCorrection == true else { return }
-        let trimmedInstruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedInstruction.isEmpty else {
-            showInstructionFailure("No correction instruction was detected.")
+    func appendAdditionalTranscription(_ addition: String) {
+        guard isReviewing, let currentDraft = draft else { return }
+        let trimmedAddition = addition.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAddition.isEmpty else {
+            showAdditionalDictationFailure("No additional speech was detected.")
             return
         }
-        let fallbackText = additionalInstructionBase ?? revisedText
-        let base = fallbackText.trimmingCharacters(in: .whitespacesAndNewlines)
-        revisedText = base.isEmpty ? trimmedInstruction : "\(base)\n\n\(trimmedInstruction)"
-        additionalInstructionBase = nil
-        comparisonControl.selectedSegment = 0
-        textView.string = revisedText
-        isBusy = false
-        submitCorrectionRequest(
-            fallbackText: fallbackText,
-            instructionText: trimmedInstruction
+        if selectedVersion == .corrected { revisedText = textView.string }
+        let expandedOriginal = Self.appending(trimmedAddition, to: currentDraft.originalText)
+        let expandedVisibleText = Self.appending(trimmedAddition, to: revisedText)
+        let expandedDraft = TranscriptReviewDraft(
+            originalText: expandedOriginal,
+            revisedText: expandedVisibleText,
+            explanation: "",
+            audioURL: currentDraft.audioURL,
+            duration: currentDraft.duration,
+            action: currentDraft.action,
+            allowsCorrection: currentDraft.allowsCorrection,
+            correctionIsAvailable: currentDraft.correctionIsAvailable,
+            mode: currentDraft.mode,
+            allowsAdditionalDictation: currentDraft.allowsAdditionalDictation,
+            additionalDictationShortcut: currentDraft.additionalDictationShortcut
         )
+        draft = expandedDraft
+        revisedText = expandedVisibleText
+        comparisonControl.selectedSegment = 0
+        isBusy = false
+        if currentDraft.mode == .repaired, currentDraft.correctionIsAvailable {
+            showCorrectionProgress(providerName: nil, phase: "Correcting")
+            resolve(
+                with: .correctionRequested(
+                    text: expandedVisibleText,
+                    originalText: expandedOriginal,
+                    fallbackText: expandedVisibleText,
+                    reason: .additionalDictation
+                ),
+                hidesWindow: false
+            )
+        } else {
+            statusLabel.stringValue = expandedDraft.action.statusTitle
+            statusDot.layer?.backgroundColor = NSColor.systemGreen.cgColor
+            configureComparison(for: expandedDraft)
+            configureCorrectionButton(for: expandedDraft)
+            configureInstructionButton(for: expandedDraft)
+            configureAudio(url: expandedDraft.audioURL)
+            setInteractive(true)
+            showCorrectedText()
+            AccessibilityAnnouncements.post("Additional dictation added.", from: textView)
+            window?.makeFirstResponder(textView)
+        }
+    }
+
+    private static func appending(_ addition: String, to text: String) -> String {
+        let base = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return base.isEmpty ? addition : "\(base)\n\n\(addition)"
     }
 
     func showCorrectionProgress(providerName: String?, phase: String) {
@@ -403,7 +456,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         )
         instructionButton.imagePosition = .imageLeading
         instructionButton.target = self
-        instructionButton.action = #selector(requestAdditionalInstruction)
+        instructionButton.action = #selector(requestAdditionalDictation)
         instructionButton.bezelStyle = .rounded
 
         acceptButton.title = "Paste"
@@ -477,7 +530,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     }
 
     private func configureComparison(for draft: TranscriptReviewDraft) {
-        comparisonControl.setLabel(draft.allowsCorrection ? "Transcript" : "Corrected", forSegment: 0)
+        comparisonControl.setLabel(draft.mode == .repaired ? "Corrected" : "Transcript", forSegment: 0)
         updateDifferenceSummary(
             TranscriptDifference(original: draft.originalText, revised: draft.revisedText),
             original: draft.originalText,
@@ -494,8 +547,6 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         correctionButton.setAccessibilityLabel("Repair transcription")
         correctionButton.toolTip = if !draft.correctionIsAvailable {
             "Choose a correction model in Settings > Models"
-        } else if let shortcut = draft.correctionInstructionShortcut {
-            "Repair now, or hold \(shortcut) to add an instruction"
         } else {
             "Repair transcription"
         }
@@ -503,21 +554,17 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
 
     private func configureInstructionButton(for draft: TranscriptReviewDraft) {
         configureInstructionButtonForIdleState()
-        instructionButton.isHidden = !draft.allowsCorrection
-        instructionButton.isEnabled = draft.allowsCorrection
-            && draft.correctionIsAvailable
-            && draft.allowsCorrectionInstruction
-        instructionButton.toolTip = if !draft.correctionIsAvailable {
-            "Choose a correction model in Settings > Models"
-        } else if let shortcut = draft.correctionInstructionShortcut {
-            "Dictate another instruction, or hold \(shortcut)"
+        instructionButton.isHidden = !draft.allowsAdditionalDictation
+        instructionButton.isEnabled = draft.allowsAdditionalDictation
+        instructionButton.toolTip = if let shortcut = draft.additionalDictationShortcut {
+            "Dictate more, or hold \(shortcut)"
         } else {
-            "Dictate another correction instruction"
+            "Dictate more"
         }
-        let accessibilityLabel = if let shortcut = draft.correctionInstructionShortcut {
-            "Add more correction instructions. Shortcut: hold \(shortcut)."
+        let accessibilityLabel = if let shortcut = draft.additionalDictationShortcut {
+            "Add more dictation. Shortcut: hold \(shortcut)."
         } else {
-            "Add more correction instructions"
+            "Add more dictation"
         }
         instructionButton.setAccessibilityLabel(accessibilityLabel)
     }
@@ -539,9 +586,7 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
             && draft?.allowsCorrection == true
             && draft?.correctionIsAvailable == true
         instructionButton.isEnabled = interactive
-            && draft?.allowsCorrection == true
-            && draft?.correctionIsAvailable == true
-            && draft?.allowsCorrectionInstruction == true
+            && draft?.allowsAdditionalDictation == true
         comparisonControl.isEnabled = interactive
         textView.isEditable = interactive && selectedVersion == .corrected
     }
@@ -605,10 +650,12 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         guard let draft else { return }
         comparisonControl.selectedSegment = 0
         textView.isEditable = true
-        textView.setAccessibilityLabel(draft.allowsCorrection ? "Transcription" : "Corrected transcription")
+        textView.setAccessibilityLabel(
+            draft.mode == .repaired ? "Corrected transcription" : "Transcription"
+        )
         let difference = TranscriptDifference(original: draft.originalText, revised: revisedText)
         updateDifferenceSummary(difference, original: draft.originalText, revised: revisedText)
-        if draft.allowsCorrection, difference.changeCount == 0 {
+        if draft.allowsCorrection, draft.mode == .transcript, difference.changeCount == 0 {
             changeLabel.stringValue = "Not repaired"
             changeLabel.setAccessibilityLabel("The transcript has not been repaired.")
         }
@@ -616,7 +663,9 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
             revisedText,
             highlightedRanges: difference.revisedRanges,
             original: false,
-            foregroundColor: draft.allowsCorrection ? Self.rawTranscriptColor : Self.correctedTranscriptColor
+            foregroundColor: draft.mode == .repaired
+                ? Self.correctedTranscriptColor
+                : Self.rawTranscriptColor
         )
     }
 
@@ -710,7 +759,6 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
         window?.orderOut(nil)
         draft = nil
         isBusy = false
-        additionalInstructionBase = nil
     }
 
     private func stopPlayback() {
@@ -784,5 +832,5 @@ final class TranscriptReviewWindowController: NSWindowController, NSWindowDelega
     }
     @objc private func acceptReview() { accept() }
     @objc private func requestTranscriptCorrection() { requestCorrection() }
-    @objc private func requestAdditionalInstruction() { onRequestAdditionalInstruction?() }
+    @objc private func requestAdditionalDictation() { onRequestAdditionalDictation?() }
 }

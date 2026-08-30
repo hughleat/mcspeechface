@@ -800,6 +800,22 @@ final class TiroService {
         _ = try await requireStore().correctHistoryEntry(id: id, correctedText: correctedText)
     }
 
+    func commitHistoryReview(
+        id: String,
+        correctedText: String,
+        audioURL: URL?,
+        transcriptionSeconds: Double
+    ) async throws {
+        let audio = try audioURL.map { try Data(contentsOf: $0) }
+        try Task.checkCancellation()
+        _ = try await requireStore().commitHistoryReview(
+            id: id,
+            correctedText: correctedText,
+            audio: audio,
+            transcriptionSeconds: transcriptionSeconds
+        )
+    }
+
     func privacySettings() async throws -> PrivacySettings {
         let settings = try await requireStore().privacySettings()
         return PrivacySettings(
