@@ -66,9 +66,13 @@ final class SnippetEditorView: NSStackView, NSTableViewDataSource, NSTableViewDe
 
         let label = SettingsInfoLabel(
             "Snippets",
-            helpText: "In Standard mode, snippets expand a short spoken trigger into longer reusable text. Use Replacements instead for names, terminology, and corrected spellings.",
+            helpText: "In Standard mode, say a short trigger to insert a longer reusable block. For example, 'my address' can insert your full postal address or signature. Use Replacements for names, terms, and corrected spellings.",
             font: .systemFont(ofSize: 13, weight: .medium)
         )
+        let detail = NSTextField(
+            labelWithString: "In Standard mode, a short spoken trigger inserts a longer saved block."
+        )
+        detail.textColor = .secondaryLabelColor
         table.addTableColumn(column(identifier: "trigger", title: "When McSpeechface hears"))
         table.addTableColumn(column(identifier: "content", title: "McSpeechface inserts"))
         table.dataSource = self
@@ -94,6 +98,7 @@ final class SnippetEditorView: NSStackView, NSTableViewDataSource, NSTableViewDe
         controls.alignment = .centerY
         controls.spacing = 6
         addArrangedSubview(label)
+        addArrangedSubview(detail)
         addArrangedSubview(scrollView)
         addArrangedSubview(controls)
         scrollView.widthAnchor.constraint(equalTo: widthAnchor).isActive = true

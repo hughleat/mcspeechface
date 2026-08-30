@@ -2,30 +2,41 @@ import Foundation
 import ServiceManagement
 
 enum LoginItemManager {
+    static let loginItemBundleIdentifier = "com.hughleat.mcspeechface.login-item"
+
     private static let legacyFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(
             "Library/LaunchAgents/\(LegacyInstallationMigrator.previousBundleIdentifier).plist"
         )
+    private static var service: SMAppService {
+        SMAppService.loginItem(identifier: loginItemBundleIdentifier)
+    }
+    private static var previousMainAppService: SMAppService { .mainApp }
 
     static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
+        service.status == .enabled || previousMainAppService.status == .enabled
     }
 
     static func setEnabled(_ enabled: Bool) throws {
         if enabled {
-            try enableMainAppService()
+            try enableService()
+            try removePreviousMainAppService()
             try removeLegacyLaunchAgent()
         } else {
-            try disableMainAppService()
+            try disableService()
+            try removePreviousMainAppService()
             try removeLegacyLaunchAgent()
         }
     }
 
     @discardableResult
     static func finishLegacyMigration() -> Error? {
-        guard ownsLegacyLaunchAgent() else { return nil }
+        let hasPreviousService = previousMainAppService.status == .enabled
+            || previousMainAppService.status == .requiresApproval
+        guard ownsLegacyLaunchAgent() || hasPreviousService else { return nil }
         do {
-            try enableMainAppService()
+            try enableService()
+            try removePreviousMainAppService()
             try removeLegacyLaunchAgent()
             return nil
         } catch {
@@ -34,25 +45,23 @@ enum LoginItemManager {
         }
     }
 
-    private static func enableMainAppService() throws {
-        switch SMAppService.mainApp.status {
+    private static func enableService() throws {
+        switch service.status {
         case .enabled:
             return
         case .requiresApproval:
             throw LoginItemError.approvalRequired
-        case .notRegistered:
+        case .notRegistered, .notFound:
             do {
-                try SMAppService.mainApp.register()
+                try service.register()
             } catch {
                 throw LoginItemError.registrationFailed(error)
             }
-        case .notFound:
-            throw LoginItemError.serviceUnavailable
         @unknown default:
             throw LoginItemError.serviceUnavailable
         }
 
-        switch SMAppService.mainApp.status {
+        switch service.status {
         case .enabled:
             return
         case .requiresApproval:
@@ -64,11 +73,26 @@ enum LoginItemManager {
         }
     }
 
-    private static func disableMainAppService() throws {
-        switch SMAppService.mainApp.status {
+    private static func disableService() throws {
+        switch service.status {
         case .enabled, .requiresApproval:
             do {
-                try SMAppService.mainApp.unregister()
+                try service.unregister()
+            } catch {
+                throw LoginItemError.unregistrationFailed(error)
+            }
+        case .notRegistered, .notFound:
+            break
+        @unknown default:
+            throw LoginItemError.serviceUnavailable
+        }
+    }
+
+    private static func removePreviousMainAppService() throws {
+        switch previousMainAppService.status {
+        case .enabled, .requiresApproval:
+            do {
+                try previousMainAppService.unregister()
             } catch {
                 throw LoginItemError.unregistrationFailed(error)
             }
@@ -143,8 +167,10 @@ private enum LoginItemError: LocalizedError {
         switch self {
         case .approvalRequired:
             return "Open System Settings > General > Login Items, then allow McSpeechface under Open at Login."
-        case .serviceUnavailable, .registrationDidNotComplete:
-            return "Move McSpeechface to Applications, reopen it, and try again."
+        case .serviceUnavailable:
+            return "Reinstall McSpeechface in Applications, reopen it, and try again."
+        case .registrationDidNotComplete:
+            return "Quit and reopen McSpeechface, then try again."
         case .registrationFailed, .unregistrationFailed:
             return "Open System Settings > General > Login Items, check McSpeechface's current state, and try again."
         case .legacyCleanupFailed(let file, _):

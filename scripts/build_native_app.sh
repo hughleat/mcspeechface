@@ -474,7 +474,10 @@ fi
 swift build "${swift_args[@]}"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
+mkdir -p \
+    "$APP/Contents/MacOS" \
+    "$APP/Contents/Helpers" \
+    "$APP/Contents/Resources"
 cp "$ROOT/.build/release/McSpeechface" "$APP/Contents/MacOS/McSpeechface"
 cp "$ROOT/.build/release/McSpeechfaceCommand" "$APP/Contents/Helpers/mcspeechface"
 chmod 755 "$APP/Contents/Helpers/mcspeechface"
@@ -482,6 +485,13 @@ xcrun clang -Os -arch arm64 -mmacosx-version-min="$DEPLOYMENT_TARGET" \
     "$ROOT/native/process_launcher.c" \
     -o "$APP/Contents/Helpers/mcspeechface-process-launcher"
 chmod 755 "$APP/Contents/Helpers/mcspeechface-process-launcher"
+login_item="$APP/Contents/Library/LoginItems/McSpeechfaceLoginItem.app"
+mkdir -p "$login_item/Contents/MacOS"
+xcrun clang -Os -arch arm64 -mmacosx-version-min="$DEPLOYMENT_TARGET" \
+    "$ROOT/native/login_item_launcher.c" \
+    -o "$login_item/Contents/MacOS/McSpeechfaceLoginItem"
+chmod 755 "$login_item/Contents/MacOS/McSpeechfaceLoginItem"
+cp "$ROOT/native/LoginItemInfo.plist" "$login_item/Contents/Info.plist"
 llama_runtime="$(prepare_llama_runtime)"
 llama_helper="$APP/Contents/Helpers/llama"
 mkdir -p "$llama_helper"

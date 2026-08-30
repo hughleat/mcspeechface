@@ -53,9 +53,9 @@ final class SettingsInfoButton: NSButton, NSPopoverDelegate {
         let content = NSStackView(views: [title, message])
         content.orientation = .vertical
         content.alignment = .leading
-        content.spacing = 6
-        content.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
-        message.widthAnchor.constraint(equalToConstant: 272).isActive = true
+        content.spacing = 9
+        content.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
+        message.widthAnchor.constraint(equalToConstant: 304).isActive = true
 
         let controller = NSViewController()
         controller.view = content
@@ -64,7 +64,7 @@ final class SettingsInfoButton: NSButton, NSPopoverDelegate {
         popover.behavior = .applicationDefined
         popover.delegate = self
         popover.contentViewController = controller
-        popover.contentSize = NSSize(width: 300, height: content.fittingSize.height)
+        popover.contentSize = NSSize(width: 340, height: content.fittingSize.height)
         helpPopover = popover
         popover.show(relativeTo: bounds, of: self, preferredEdge: .maxY)
         monitorOutsideClicks()

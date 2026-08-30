@@ -103,6 +103,18 @@ bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$IN
     || fail "bundle executable must be McSpeechface"
 [[ -f "$APP/Contents/MacOS/McSpeechface" && -x "$APP/Contents/MacOS/McSpeechface" ]] \
     || fail "McSpeechface executable is missing or not executable"
+LOGIN_ITEM_APP="$APP/Contents/Library/LoginItems/McSpeechfaceLoginItem.app"
+LOGIN_ITEM_INFO="$LOGIN_ITEM_APP/Contents/Info.plist"
+LOGIN_ITEM_HELPER="$LOGIN_ITEM_APP/Contents/MacOS/McSpeechfaceLoginItem"
+[[ -d "$LOGIN_ITEM_APP" && -f "$LOGIN_ITEM_INFO" ]] \
+    || fail "launch-at-login helper app is missing"
+[[ -f "$LOGIN_ITEM_HELPER" && -x "$LOGIN_ITEM_HELPER" ]] \
+    || fail "launch-at-login helper is missing or not executable"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOGIN_ITEM_INFO")" == \
+    "com.hughleat.mcspeechface.login-item" ]] \
+    || fail "launch-at-login helper identifier is invalid"
+[[ "$("$LOGIN_ITEM_HELPER" --print-app-path)" == "$APP" ]] \
+    || fail "launch-at-login helper resolves the wrong app bundle"
 icon_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$INFO" 2>/dev/null || true)"
 [[ "$icon_name" == "McSpeechface.icns" ]] || fail "bundle icon metadata is missing"
 [[ -s "$APP/Contents/Resources/$icon_name" ]] || fail "bundle icon is missing"

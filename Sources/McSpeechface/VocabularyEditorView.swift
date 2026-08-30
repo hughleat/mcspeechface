@@ -83,9 +83,18 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
         alignment = .leading
         spacing = 10
 
-        let label = SettingsInfoLabel(
+        let replacementsLabel = SettingsInfoLabel(
+            "Replacements",
+            helpText: "In Standard mode, use a replacement when a word or short phrase should always be written differently. For example, when McSpeechface hears 'yana', it can write 'Janne'. Only the matching phrase changes.",
+            font: .systemFont(ofSize: 13, weight: .medium)
+        )
+        let replacementsDetail = NSTextField(
+            labelWithString: "In Standard mode, fix a name, term, or short phrase: 'yana' becomes 'Janne'."
+        )
+        replacementsDetail.textColor = .secondaryLabelColor
+        let scopeLabel = SettingsInfoLabel(
             "Applies in",
-            helpText: "All apps uses these replacements everywhere. An app-specific profile adds replacements only for that app; when the same spoken phrase appears in both, the app-specific replacement wins without changing All apps.",
+            helpText: "Choose All apps to use these replacements everywhere. An app-specific profile adds replacements only for that app; when the same spoken phrase appears in both, the app-specific replacement wins without changing All apps.",
             font: .systemFont(ofSize: 13, weight: .medium)
         )
 
@@ -119,7 +128,9 @@ final class VocabularyEditorView: NSStackView, NSTableViewDataSource, NSTableVie
         let controls = NSStackView(views: [addButton, removeButton, statusLabel])
         controls.orientation = .horizontal
         controls.spacing = 6
-        addArrangedSubview(label)
+        addArrangedSubview(replacementsLabel)
+        addArrangedSubview(replacementsDetail)
+        addArrangedSubview(scopeLabel)
         addArrangedSubview(profilePicker)
         addArrangedSubview(scrollView)
         addArrangedSubview(controls)

@@ -12,6 +12,7 @@ zsh -n \
     "$ROOT/scripts/test_coreml_production.sh" \
     "$ROOT/scripts/test_sponsorship_builds.sh" \
     "$ROOT/scripts/smoke_release.sh"
+plutil -lint "$ROOT/native/LoginItemInfo.plist" >/dev/null
 bash -n "$ROOT/scripts/release_metadata.sh" "$ROOT/scripts/run_ci_acceptance.sh"
 PYTHONPYCACHEPREFIX="$ROOT/.build/python-cache" \
     python3 -m py_compile "$ROOT/scripts/create_dmg_layout.py"
@@ -29,6 +30,16 @@ rg -q -F 'MCSPEECHFACE_SPONSORSHIP_ENABLED' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'APP="$OUTPUT_DIR/McSpeechface.app"' "$ROOT/scripts/build_native_app.sh"
 rg -q -F 'cp "$ROOT/.build/release/McSpeechface" "$APP/Contents/MacOS/McSpeechface"' \
     "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'Contents/Library/LoginItems/McSpeechfaceLoginItem.app' \
+    "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'launch-at-login helper app is missing' "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'native/login_item_launcher.c' "$ROOT/scripts/build_native_app.sh"
+rg -q -F 'launch-at-login helper is missing or not executable' \
+    "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'launch-at-login helper resolves the wrong app bundle' \
+    "$ROOT/scripts/smoke_release.sh"
+rg -q -F 'execl("/usr/bin/open", "open", "-g", resolved' \
+    "$ROOT/native/login_item_launcher.c"
 rg -q -F '.executable(name: "McSpeechfaceCommand", targets: ["McSpeechfaceCLI"])' "$ROOT/Package.swift"
 rg -q -F '.build/release/McSpeechfaceCommand" "$APP/Contents/Helpers/mcspeechface"' \
     "$ROOT/scripts/build_native_app.sh"
@@ -267,14 +278,16 @@ cleanup_lock_test
 trap - EXIT INT TERM
 
 LOGIN_MANAGER="$ROOT/Sources/McSpeechface/LoginItemManager.swift"
-rg -q -F 'SMAppService.mainApp.register()' "$LOGIN_MANAGER"
-rg -q -F 'SMAppService.mainApp.unregister()' "$LOGIN_MANAGER"
+rg -q -F 'SMAppService.loginItem(identifier: loginItemBundleIdentifier)' "$LOGIN_MANAGER"
+rg -q -F 'try service.register()' "$LOGIN_MANAGER"
+rg -q -F 'try service.unregister()' "$LOGIN_MANAGER"
+rg -q -F 'try previousMainAppService.unregister()' "$LOGIN_MANAGER"
 rg -q 'legacyCleanupFailed' "$LOGIN_MANAGER"
 rg -q -F 'propertyList["Label"] as? String == LegacyInstallationMigrator.previousBundleIdentifier' "$LOGIN_MANAGER"
 rg -q -F 'arguments[0] == "/usr/bin/open"' "$LOGIN_MANAGER"
 rg -q -F '== LegacyInstallationMigrator.previousApplicationName' "$LOGIN_MANAGER"
 
-register_line="$(rg -n -F 'try enableMainAppService()' "$LOGIN_MANAGER" | head -1 | cut -d: -f1)"
+register_line="$(rg -n -F 'try enableService()' "$LOGIN_MANAGER" | head -1 | cut -d: -f1)"
 cleanup_line="$(rg -n -F 'try removeLegacyLaunchAgent()' "$LOGIN_MANAGER" | head -1 | cut -d: -f1)"
 [[ "$register_line" -lt "$cleanup_line" ]]
 

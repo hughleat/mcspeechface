@@ -144,7 +144,7 @@ struct SettingsConstructionTests {
             assertHelpLayout(in: corrections, width: width, expectedCount: 3)
 
             let vocabulary = VocabularyEditorView(service: McSpeechfaceService())
-            assertHelpLayout(in: vocabulary, width: width, expectedCount: 1)
+            assertHelpLayout(in: vocabulary, width: width, expectedCount: 2)
 
             let snippets = SnippetEditorView(service: McSpeechfaceService())
             assertHelpLayout(in: snippets, width: width, expectedCount: 1)
