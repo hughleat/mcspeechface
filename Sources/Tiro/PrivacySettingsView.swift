@@ -119,6 +119,7 @@ final class PrivacySettingsView: NSStackView {
             "Remove all transcripts, recordings, corrections, and suggestion evidence currently stored by McSpeechface."
         )
         deleteText.textColor = .secondaryLabelColor
+        deleteText.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let deleteRow = NSStackView(views: [deleteText, deleteButton])
         deleteRow.orientation = .horizontal
         deleteRow.alignment = .centerY
@@ -167,6 +168,7 @@ final class PrivacySettingsView: NSStackView {
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 3
+        labels.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         control.setContentHuggingPriority(.required, for: .horizontal)
         let row = NSStackView(views: [labels, control])
