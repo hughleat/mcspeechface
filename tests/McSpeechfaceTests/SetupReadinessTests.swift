@@ -47,4 +47,21 @@ struct SetupReadinessTests {
         #expect(ModelInventoryStatus.loading.afterPreparationFailure == .unavailable)
         #expect(ModelInventoryStatus.available.afterPreparationFailure == .available)
     }
+
+    @Test
+    func modelPreparationIsSingleFlightAndKeepsInventoryLoading() {
+        var preparation = ModelPreparationState()
+
+        let firstStart = preparation.begin()
+        let overlappingStart = preparation.begin()
+        #expect(firstStart)
+        #expect(!overlappingStart)
+        #expect(preparation.inventoryStatus(hasSelectedModel: true) == .loading)
+        #expect(preparation.inventoryStatus(hasSelectedModel: false) == .missing)
+
+        preparation.finish()
+        #expect(preparation.inventoryStatus(hasSelectedModel: true) == .available)
+        let restarted = preparation.begin()
+        #expect(restarted)
+    }
 }

@@ -263,6 +263,18 @@ struct ErrorRecoveryTests {
     }
 
     @Test
+    func nonRecordingOverlayStatusesUseTheAvailablePanelWidth() {
+        let bounds = NSRect(x: 0, y: 0, width: 340, height: 52)
+
+        let recordingRect = OverlayStatusView.labelRect(for: .recording, in: bounds)
+        let modelBusyRect = OverlayStatusView.labelRect(for: .modelBusy, in: bounds)
+
+        #expect(recordingRect.width == 150)
+        #expect(modelBusyRect.width == 280)
+        #expect(modelBusyRect.maxX <= bounds.maxX)
+    }
+
+    @Test
     func processingStagesHaveDistinctStatusText() {
         #expect(OverlayState.transcribing.label == "Transcribing")
         #expect(OverlayState.correcting.label == "Correcting")

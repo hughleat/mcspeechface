@@ -73,6 +73,7 @@ import UniformTypeIdentifiers
     private var transcriptionMenuNeedsRebuild = false
     private var correctionMenuNeedsRebuild = false
     private var modelInventoryStatus = ModelInventoryStatus.loading
+    private var modelPreparation = ModelPreparationState()
     private var modelStartupTask: Task<Void, Never>?
     private var modelSelectionTask: Task<Void, Never>?
     private var correctionModelRefreshTask: Task<Void, Never>?
@@ -955,6 +956,22 @@ import UniformTypeIdentifiers
     @discardableResult
     private func startRecording(playStartSound: Bool = true) -> Bool {
         guard state == .idle else { return false }
+        switch modelInventoryStatus {
+        case .loading:
+            setTranscriptionStatus("Checking installed transcription models…")
+            overlay.show(.startingUp)
+            overlay.dismiss(after: 1.2)
+            return false
+        case .unavailable:
+            presentRecovery(ErrorRecovery.presentation(for: .modelServiceUnavailable))
+            return false
+        case .missing:
+            setTranscriptionStatus("No transcription model installed")
+            presentRecovery(ErrorRecovery.presentation(for: .missingModel))
+            return false
+        case .available:
+            break
+        }
         do {
             try reserveRecordingModelUse()
         } catch {
@@ -966,25 +983,6 @@ import UniformTypeIdentifiers
 #if MCSPEECHFACE_SPONSORSHIP_ENABLED
         supportPromptWindow.close()
 #endif
-        switch modelInventoryStatus {
-        case .loading:
-            setTranscriptionStatus("Checking installed transcription models…")
-            overlay.show(.startingUp)
-            overlay.dismiss(after: 1.2)
-            releaseRecordingModelUse()
-            return false
-        case .unavailable:
-            releaseRecordingModelUse()
-            presentRecovery(ErrorRecovery.presentation(for: .modelServiceUnavailable))
-            return false
-        case .missing:
-            setTranscriptionStatus("No transcription model installed")
-            releaseRecordingModelUse()
-            presentRecovery(ErrorRecovery.presentation(for: .missingModel))
-            return false
-        case .available:
-            break
-        }
         let isSetupPractice = onboardingWindow?.isPracticeFieldFocused == true
         shouldAutoPaste = isSetupPractice || UserDefaults.standard.bool(forKey: "autoPaste")
         originApplication = isSetupPractice ? nil : destinationTracker.captureApplicationIdentity()
@@ -2202,11 +2200,15 @@ import UniformTypeIdentifiers
     }
 
     private func prepareInstalledModel() {
+        guard modelPreparation.begin() else { return }
         modelInventoryStatus = .loading
         setTranscriptionStatus("Checking installed transcription models…")
-        modelStartupTask?.cancel()
         modelStartupTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                modelPreparation.finish()
+                modelStartupTask = nil
+            }
             do {
                 let models = await service.models()
                 guard !Task.isCancelled else { return }
@@ -2217,7 +2219,9 @@ import UniformTypeIdentifiers
                 try await service.preload(model: model)
                 guard !Task.isCancelled else { return }
                 if DictationModel.selected == model {
+                    modelInventoryStatus = .available
                     setTranscriptionStatus(nil)
+                    updateModelChecks()
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -2239,13 +2243,16 @@ import UniformTypeIdentifiers
             selected = fallback
         }
         updateModelChecks()
-        guard installedModelKeys.contains(selected.key) else {
-            modelInventoryStatus = .missing
+        modelInventoryStatus = modelPreparation.inventoryStatus(
+            hasSelectedModel: installedModelKeys.contains(selected.key)
+        )
+        guard modelInventoryStatus != .missing else {
             setTranscriptionStatus("No transcription model installed")
             return nil
         }
-        modelInventoryStatus = .available
-        setTranscriptionStatus(nil)
+        if modelInventoryStatus == .available {
+            setTranscriptionStatus(nil)
+        }
         return selected
     }
 

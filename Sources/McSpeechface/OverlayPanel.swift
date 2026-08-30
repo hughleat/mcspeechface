@@ -216,12 +216,13 @@ final class OverlayStatusView: NSView {
 
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .left
+        paragraph.lineBreakMode = .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 15, weight: .semibold),
             .foregroundColor: NSColor.white,
             .paragraphStyle: paragraph
         ]
-        state.label.draw(in: NSRect(x: 48, y: 15, width: 150, height: 22), withAttributes: attributes)
+        state.label.draw(in: Self.labelRect(for: state, in: bounds), withAttributes: attributes)
 
         guard state == .recording, feedbackTimer != nil else { return }
 
@@ -239,5 +240,10 @@ final class OverlayStatusView: NSView {
             .foregroundColor: NSColor.white.withAlphaComponent(0.82)
         ]
         timerText.draw(in: NSRect(x: 282, y: 17, width: 46, height: 18), withAttributes: timerAttributes)
+    }
+
+    static func labelRect(for state: OverlayState, in bounds: NSRect) -> NSRect {
+        let width = state == .recording ? 150 : max(0, bounds.width - 60)
+        return NSRect(x: 48, y: 15, width: width, height: 22)
     }
 }

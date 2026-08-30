@@ -21,3 +21,22 @@ enum ModelInventoryStatus: Equatable {
         self == .available ? .available : .unavailable
     }
 }
+
+struct ModelPreparationState: Equatable {
+    private(set) var isInProgress = false
+
+    mutating func begin() -> Bool {
+        guard !isInProgress else { return false }
+        isInProgress = true
+        return true
+    }
+
+    mutating func finish() {
+        isInProgress = false
+    }
+
+    func inventoryStatus(hasSelectedModel: Bool) -> ModelInventoryStatus {
+        guard hasSelectedModel else { return .missing }
+        return isInProgress ? .loading : .available
+    }
+}
