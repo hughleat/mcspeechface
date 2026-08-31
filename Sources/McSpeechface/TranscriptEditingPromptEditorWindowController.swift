@@ -119,14 +119,18 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         setPromptAccessibilityHelp()
         let riskLabel = NSTextField(
             wrappingLabelWithString: "These are the complete prompts sent to the model. Custom "
-                + "prompts permit unrestricted rewrites, so results are always shown for review."
+                + "prompts permit unrestricted rewrites, so results are always shown for review. "
+                + "Destination values are XML-escaped untrusted metadata; keep them inside clear "
+                + "labels or tags. {destinationLine} does this automatically. A full browser URL "
+                + "may include private paths or query text."
         )
         riskLabel.font = .systemFont(ofSize: 11)
         riskLabel.textColor = .secondaryLabelColor
         let placeholderLabel = NSTextField(
             wrappingLabelWithString: "The user prompt must contain {transcript}. {language} inserts the selected "
                 + "transcription language; {languageLine} inserts a complete Language line, or "
-                + "nothing when language is automatic."
+                + "nothing when language is automatic. Destination placeholders: {destinationLine}, "
+                + "{appName}, {appBundleID}, {browserHost}, and {browserURL}."
         )
         placeholderLabel.font = .systemFont(ofSize: 11)
         placeholderLabel.textColor = .secondaryLabelColor
@@ -323,7 +327,9 @@ final class TranscriptEditingPromptEditorWindowController: NSWindowController,
         )
         userPromptTextView.setAccessibilityHelp(
             "Complete user prompt. Include {transcript} exactly once. {language} inserts the "
-                + "selected language; {languageLine} inserts an optional labelled line."
+                + "selected language; {languageLine} and {destinationLine} insert optional labelled "
+                + "content. The default {destinationLine} uses <destination> tags. App and website "
+                + "placeholders are also available."
         )
     }
 

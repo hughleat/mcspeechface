@@ -103,6 +103,7 @@ import UniformTypeIdentifiers
     private var isCapturingShortcut = false
     private var destinationSession: DestinationSession?
     private var originApplication: ApplicationIdentity?
+    private var browserDestinationTask: Task<TranscriptEditingDestinationContext?, Never>?
     private var shouldAutoPaste = false
     private var lastFailedPasteText: String?
     private var pasteRecoveryGeneration = 0
@@ -478,6 +479,8 @@ import UniformTypeIdentifiers
         try reserveRecordingModelUse()
         destinationSession = nil
         originApplication = nil
+        browserDestinationTask?.cancel()
+        browserDestinationTask = nil
         shouldAutoPaste = false
         state = .starting
         menuToggleItem.title = "Recording from Command Line"
@@ -1001,8 +1004,27 @@ import UniformTypeIdentifiers
 #endif
         let isSetupPractice = onboardingWindow?.isPracticeFieldFocused == true
         shouldAutoPaste = isSetupPractice || UserDefaults.standard.bool(forKey: "autoPaste")
-        originApplication = isSetupPractice ? nil : destinationTracker.captureApplicationIdentity()
-        destinationSession = destinationTracker.capture(allowMcSpeechface: isSetupPractice)
+        let correctionIsEnabled = CorrectionTimingPreference.load() != .off
+            && TranscriptEditingModel.selected != .off
+        let promptConfiguration = TranscriptEditingPromptPreferences().load()
+        let includeBrowserContext = correctionIsEnabled
+            && promptConfiguration.usesBrowserContextPlaceholder
+        let includeFullBrowserURL = correctionIsEnabled
+            && promptConfiguration.usesBrowserURLPlaceholder
+        let destinationCapture = destinationTracker.captureContext(
+            allowMcSpeechface: isSetupPractice,
+            includeIdentity: !isSetupPractice,
+            includeBrowserContext: includeBrowserContext
+        )
+        originApplication = destinationCapture.identity
+        destinationSession = destinationCapture.session
+        browserDestinationTask?.cancel()
+        browserDestinationTask = destinationCapture.browserLookup.map { lookup in
+            Task.detached(priority: .utility) {
+                guard !Task.isCancelled else { return nil }
+                return lookup.resolve(includeFullURL: includeFullBrowserURL)
+            }
+        }
         if shouldAutoPaste, destinationSession == nil {
             NSLog("Could not capture the focused destination; transcription will be copied.")
         }
@@ -1010,8 +1032,7 @@ import UniformTypeIdentifiers
         menuToggleItem.title = "Cancel Starting"
         correctionPreloadTask?.cancel()
         correctionPreloadTask = nil
-        if CorrectionTimingPreference.load() != .off,
-           TranscriptEditingModel.selected != .off {
+        if correctionIsEnabled {
             correctionPreloadTask = Task { [weak self, transcriptEditingService] in
                 var token: LocalCorrectionUseToken?
                 do {
@@ -1301,6 +1322,8 @@ import UniformTypeIdentifiers
             recordingSounds.cancelStart()
             destinationSession = nil
             originApplication = nil
+            browserDestinationTask?.cancel()
+            browserDestinationTask = nil
             state = .idle
             menuToggleItem.title = "Start Recording"
             releaseRecordingModelUse()
@@ -1311,6 +1334,8 @@ import UniformTypeIdentifiers
         commandRecording = nil
         destinationSession = nil
         originApplication = nil
+        browserDestinationTask?.cancel()
+        browserDestinationTask = nil
         if UserDefaults.standard.bool(forKey: "soundFeedback") { recordingSounds.playStop() }
         state = .idle
         menuToggleItem.title = "Start Recording"
@@ -1337,6 +1362,8 @@ import UniformTypeIdentifiers
         transcriptionID = nil
         destinationSession = nil
         originApplication = nil
+        browserDestinationTask?.cancel()
+        browserDestinationTask = nil
         state = .idle
         menuToggleItem.title = "Start Recording"
         statusItem.button?.image = NSImage(
@@ -1378,6 +1405,12 @@ import UniformTypeIdentifiers
     ) async {
         guard transcriptionID == operationID else { return }
         let destination = destinationSession
+        let browserContext = await browserDestinationTask?.value
+        guard !Task.isCancelled, transcriptionID == operationID else { return }
+        browserDestinationTask = nil
+        let editingDestination = originApplication?.transcriptEditingContext(
+            browserContext: browserContext
+        )
         destinationSession = nil
         originApplication = nil
         var completionOverlay = OverlayState.copied
@@ -1385,6 +1418,7 @@ import UniformTypeIdentifiers
             response,
             audioURL: audioURL,
             willPaste: shouldAutoPaste && destination != nil,
+            destination: editingDestination,
             operationID: operationID
         ) else {
             guard transcriptionID == operationID else { return }
@@ -1465,6 +1499,7 @@ import UniformTypeIdentifiers
         _ response: TranscriptionResponse,
         audioURL: URL,
         willPaste: Bool,
+        destination: TranscriptEditingDestinationContext?,
         operationID: UUID
     ) async -> ReviewedTranscript? {
         reviewAudioURL = audioURL
@@ -1493,6 +1528,7 @@ import UniformTypeIdentifiers
                 for: response.text,
                 fallbackText: response.text,
                 response: response,
+                destination: destination,
                 operationID: operationID,
                 inReviewWindow: false
             ) else { return nil }
@@ -1583,6 +1619,7 @@ import UniformTypeIdentifiers
                         for: text,
                         fallbackText: fallbackText,
                         response: response,
+                        destination: destination,
                         operationID: operationID,
                         inReviewWindow: true,
                         expectedReviewCorrectionID: correctionID
@@ -1630,6 +1667,7 @@ import UniformTypeIdentifiers
         for text: String,
         fallbackText: String,
         response: TranscriptionResponse,
+        destination: TranscriptEditingDestinationContext?,
         operationID: UUID,
         inReviewWindow: Bool,
         expectedReviewCorrectionID: UUID? = nil
@@ -1652,6 +1690,7 @@ import UniformTypeIdentifiers
         do {
             let result = try await transcriptEditingService.proposeEdits(
                 to: Self.response(response, replacingText: text),
+                destination: destination,
                 progressHandler: { [weak self] progress in
                     Task { @MainActor in
                         guard let self, self.transcriptionID == operationID else { return }
@@ -1762,6 +1801,8 @@ import UniformTypeIdentifiers
         commandRecording = nil
         destinationSession = nil
         originApplication = nil
+        browserDestinationTask?.cancel()
+        browserDestinationTask = nil
         state = .idle
         menuToggleItem.title = "Start Recording"
         statusItem.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "McSpeechface")

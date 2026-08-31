@@ -25,7 +25,109 @@ struct PersistentProviderTranscriptEditorTests {
         }
 
         #expect(try fixture.launchCount() == 1)
+        #expect(try fixture.threadStartCount() == 2)
         #expect(await editor.runtimeState() == .ready)
+        await editor.stop()
+    }
+
+    @Test
+    func codexCanContinueOneConversationAcrossCorrections() async throws {
+        let fixture = try ProcessFixture(script: Self.codexScript)
+        defer { fixture.remove() }
+        let editor = CodexAppServerTranscriptEditor(configuration: .init(
+            executablePath: fixture.executable.path,
+            model: "fixture-model",
+            reasoningEffort: "low",
+            access: .correctionOnly,
+            continuesConversation: true,
+            idleTimeout: 30
+        ))
+
+        for text in ["Remember Kablamo means Futon Mess.", "Use Kablamo here."] {
+            _ = try await editor.proposeEdits(for: TranscriptEditRequest(text: text))
+        }
+
+        #expect(try fixture.launchCount() == 1)
+        #expect(try fixture.threadStartCount() == 1)
+        await editor.stop()
+    }
+
+    @Test
+    func codexResetsContinuedConversationAfterInvalidOutput() async throws {
+        let script = Self.codexScript.replacingOccurrences(
+            of: "__CODEX_DELTA__",
+            with: "not-json"
+        )
+        let fixture = try ProcessFixture(script: script)
+        defer { fixture.remove() }
+        let editor = CodexAppServerTranscriptEditor(configuration: .init(
+            executablePath: fixture.executable.path,
+            model: "fixture-model",
+            reasoningEffort: "low",
+            access: .correctionOnly,
+            continuesConversation: true,
+            idleTimeout: 30
+        ))
+
+        for _ in 0..<2 {
+            await #expect(throws: Error.self) {
+                _ = try await editor.proposeEdits(for: TranscriptEditRequest(text: "Correct me."))
+            }
+        }
+
+        #expect(try fixture.threadStartCount() == 2)
+        await editor.stop()
+    }
+
+    @Test
+    func codexResetsContinuedConversationWhenRenderedSystemPromptChanges() async throws {
+        let fixture = try ProcessFixture(script: Self.codexScript)
+        defer { fixture.remove() }
+        let editor = CodexAppServerTranscriptEditor(configuration: .init(
+            executablePath: fixture.executable.path,
+            model: "fixture-model",
+            reasoningEffort: "low",
+            access: .correctionOnly,
+            continuesConversation: true,
+            idleTimeout: 30
+        ))
+        let prompts = TranscriptEditingPromptConfiguration(
+            systemPrompt: "Correct this {language} transcript.",
+            userPromptTemplate: "{transcript}"
+        )
+
+        for language in ["English", "French"] {
+            _ = try await editor.proposeEdits(for: TranscriptEditRequest(
+                text: "Correct me.",
+                language: language,
+                promptConfiguration: prompts
+            ))
+        }
+
+        #expect(try fixture.launchCount() == 1)
+        #expect(try fixture.threadStartCount() == 2)
+        await editor.stop()
+    }
+
+    @Test
+    func stoppingCodexResetsItsContinuedConversation() async throws {
+        let fixture = try ProcessFixture(script: Self.codexScript)
+        defer { fixture.remove() }
+        let editor = CodexAppServerTranscriptEditor(configuration: .init(
+            executablePath: fixture.executable.path,
+            model: "fixture-model",
+            reasoningEffort: "low",
+            access: .correctionOnly,
+            continuesConversation: true,
+            idleTimeout: 30
+        ))
+
+        _ = try await editor.proposeEdits(for: TranscriptEditRequest(text: "First."))
+        await editor.stop()
+        _ = try await editor.proposeEdits(for: TranscriptEditRequest(text: "Second."))
+
+        #expect(try fixture.launchCount() == 2)
+        #expect(try fixture.threadStartCount() == 2)
         await editor.stop()
     }
 
@@ -138,6 +240,98 @@ struct PersistentProviderTranscriptEditorTests {
         await editor.stop()
     }
 
+    @Test
+    func claudeCanContinueOneStreamingConversationAcrossCorrections() async throws {
+        let fixture = try ProcessFixture(script: Self.claudeScript)
+        defer { fixture.remove() }
+        let editor = ClaudeStreamingTranscriptEditor(configuration: .init(
+            executablePath: fixture.executable.path,
+            arguments: ["-p", "--output-format", "stream-json"],
+            systemPrompt: "Fixture system",
+            continuesConversation: true,
+            idleTimeout: 30
+        ))
+
+        for text in ["Remember Kablamo means Futon Mess.", "Use Kablamo here."] {
+            _ = try await editor.proposeEdits(for: TranscriptEditRequest(text: text))
+        }
+
+        #expect(try fixture.launchCount() == 1)
+        await editor.stop()
+    }
+
+    @Test
+    func claudeResetsContinuedConversationAfterInvalidOutput() async throws {
+        let script = Self.claudeScript.replacingOccurrences(
+            of: "__CLAUDE_OUTPUT__",
+            with: #""not-json""#
+        )
+        let fixture = try ProcessFixture(script: script)
+        defer { fixture.remove() }
+        let editor = ClaudeStreamingTranscriptEditor(configuration: .init(
+            executablePath: fixture.executable.path,
+            arguments: ["-p", "--output-format", "stream-json"],
+            systemPrompt: "Fixture system",
+            continuesConversation: true,
+            idleTimeout: 30
+        ))
+
+        for _ in 0..<2 {
+            await #expect(throws: Error.self) {
+                _ = try await editor.proposeEdits(for: TranscriptEditRequest(text: "Correct me."))
+            }
+        }
+
+        #expect(try fixture.launchCount() == 2)
+        await editor.stop()
+    }
+
+    @Test
+    func claudeResetsContinuedConversationWhenRenderedSystemPromptChanges() async throws {
+        let fixture = try ProcessFixture(script: Self.claudeScript)
+        defer { fixture.remove() }
+        let editor = ClaudeStreamingTranscriptEditor(configuration: .init(
+            executablePath: fixture.executable.path,
+            arguments: ["-p", "--output-format", "stream-json"],
+            continuesConversation: true,
+            idleTimeout: 30
+        ))
+        let prompts = TranscriptEditingPromptConfiguration(
+            systemPrompt: "Correct this {language} transcript.",
+            userPromptTemplate: "{transcript}"
+        )
+
+        for language in ["English", "French"] {
+            _ = try await editor.proposeEdits(for: TranscriptEditRequest(
+                text: "Correct me.",
+                language: language,
+                promptConfiguration: prompts
+            ))
+        }
+
+        #expect(try fixture.launchCount() == 2)
+        await editor.stop()
+    }
+
+    @Test
+    func stoppingClaudeResetsItsContinuedConversation() async throws {
+        let fixture = try ProcessFixture(script: Self.claudeScript)
+        defer { fixture.remove() }
+        let editor = ClaudeStreamingTranscriptEditor(configuration: .init(
+            executablePath: fixture.executable.path,
+            arguments: ["-p", "--output-format", "stream-json"],
+            continuesConversation: true,
+            idleTimeout: 30
+        ))
+
+        _ = try await editor.proposeEdits(for: TranscriptEditRequest(text: "First."))
+        await editor.stop()
+        _ = try await editor.proposeEdits(for: TranscriptEditRequest(text: "Second."))
+
+        #expect(try fixture.launchCount() == 2)
+        await editor.stop()
+    }
+
     private static let codexScript = #"""
         #!/bin/sh
         echo launch >> "__COUNT_FILE__"
@@ -151,6 +345,7 @@ struct PersistentProviderTranscriptEditorTests {
               printf '{"id":%s,"result":{"data":[{"model":"fixture-model","displayName":"Fixture","description":"Fast","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"}]}],"nextCursor":null}}\n' "$id"
               ;;
             *'"method":"thread\/start"'*)
+              echo thread >> "__COUNT_FILE__"
               pending_thread_id=$id
               printf '{"id":999,"method":"item/commandExecution/requestApproval","params":{}}\n'
               ;;
@@ -161,7 +356,7 @@ struct PersistentProviderTranscriptEditorTests {
             *'"method":"turn\/start"'*)
               thread=$(printf '%s' "$line" | sed -E 's/.*"threadId":"([^"]+)".*/\1/')
               printf '{"id":%s,"result":{"turn":{"id":"turn-%s"}}}\n' "$id" "$id"
-              printf '{"method":"item/agentMessage/delta","params":{"threadId":"%s","turnId":"turn-%s","itemId":"item","delta":"{\\"hasChanges\\":true,\\"explanation\\":\\"Removed a filler.\\",\\"revisedText\\":\\"Send it.\\"}"}}\n' "$thread" "$id"
+              printf '{"method":"item/agentMessage/delta","params":{"threadId":"%s","turnId":"turn-%s","itemId":"item","delta":"__CODEX_DELTA__"}}\n' "$thread" "$id"
               printf '{"method":"turn/completed","params":{"threadId":"%s","turn":{"id":"turn-%s","status":"completed"}}}\n' "$thread" "$id"
               ;;
           esac
@@ -178,7 +373,7 @@ struct PersistentProviderTranscriptEditorTests {
         while IFS= read -r line; do
           printf '{"type":"system","subtype":"init","slash_commands":[]}\n'
           printf '{"type":"assistant","message":{"content":[{"type":"text","text":"receiving"}]}}\n'
-          printf '{"type":"result","subtype":"success","structured_output":{"hasChanges":true,"explanation":"Removed a filler.","revisedText":"Send it."}}\n'
+          printf '{"type":"result","subtype":"success","structured_output":__CLAUDE_OUTPUT__}\n'
         done
         """#
 }
@@ -194,7 +389,16 @@ private struct ProcessFixture {
         executable = directory.appendingPathComponent("provider")
         countFile = directory.appendingPathComponent("launch-count")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
-        let rendered = script.replacingOccurrences(of: "__COUNT_FILE__", with: countFile.path)
+        let rendered = script
+            .replacingOccurrences(of: "__COUNT_FILE__", with: countFile.path)
+            .replacingOccurrences(
+                of: "__CODEX_DELTA__",
+                with: #"{\\"hasChanges\\":true,\\"explanation\\":\\"Removed a filler.\\",\\"revisedText\\":\\"Send it.\\"}"#
+            )
+            .replacingOccurrences(
+                of: "__CLAUDE_OUTPUT__",
+                with: #"{"hasChanges":true,"explanation":"Removed a filler.","revisedText":"Send it."}"#
+            )
         try Data(rendered.utf8).write(to: executable, options: .atomic)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o700],
@@ -205,7 +409,15 @@ private struct ProcessFixture {
     func launchCount() throws -> Int {
         guard FileManager.default.fileExists(atPath: countFile.path) else { return 0 }
         return try String(contentsOf: countFile, encoding: .utf8)
-            .split(whereSeparator: \Character.isNewline).count
+            .split(whereSeparator: \Character.isNewline)
+            .filter { $0 == "launch" }.count
+    }
+
+    func threadStartCount() throws -> Int {
+        guard FileManager.default.fileExists(atPath: countFile.path) else { return 0 }
+        return try String(contentsOf: countFile, encoding: .utf8)
+            .split(whereSeparator: \Character.isNewline)
+            .filter { $0 == "thread" }.count
     }
 
     func remove() {

@@ -313,6 +313,7 @@ struct SettingsConstructionTests {
         #expect(CommandLineCorrectionPreset.claude.configuration.effectiveArguments.contains("stream-json"))
         #expect(!CommandLineCorrectionPreset.claude.configuration.effectiveArguments.contains("--bare"))
         #expect(CommandLineCorrectionPreset.codex.configuration.connectionMode == .enhanced)
+        #expect(CommandLineCorrectionPreset.codex.configuration.conversationMode == .fresh)
         #expect(CommandLineCorrectionPreset.claude.configuration.accessProfile == .correctionOnly)
 
         var invalid = configuration
@@ -330,6 +331,7 @@ struct SettingsConstructionTests {
         var codex = CommandLineCorrectionPreset.codex.configuration
         var claude = CommandLineCorrectionPreset.claude.configuration
         codex.model = "codex-test-model"
+        codex.conversationMode = .continueUntilStopped
         claude.model = "claude-test-model"
 
         try codex.save(to: defaults)
@@ -496,12 +498,20 @@ struct SettingsConstructionTests {
                 $0.accessibilityLabel() == "Provider connection mode"
             }
         )
+        let conversationPopup = try #require(
+            allSubviews(of: NSPopUpButton.self, in: content).first {
+                $0.accessibilityLabel() == "Correction conversation"
+            }
+        )
 
         #expect(controller.window?.title == "Claude Correction")
-        #expect(controller.window?.contentLayoutRect.height == 430)
+        #expect(controller.window?.contentLayoutRect.height == 485)
         #expect(modelPopup?.selectedItem?.representedObject as? String == configuration.model)
         #expect(accessPopup?.selectedItem?.representedObject as? String ==
             CorrectionProviderAccessProfile.correctionOnly.rawValue)
+        #expect(conversationPopup.selectedItem?.representedObject as? String ==
+            CorrectionProviderConversationMode.fresh.rawValue)
+        #expect(conversationPopup.isEnabled)
         let argumentTable = try #require(allSubviews(of: NSTableView.self, in: content).first)
         var view: NSView? = argumentTable
         var isEffectivelyHidden = false
@@ -524,7 +534,8 @@ struct SettingsConstructionTests {
             view = current.superview
         }
         #expect(!isEffectivelyHidden)
-        #expect(controller.window?.contentLayoutRect.height == 650)
+        #expect(!conversationPopup.isEnabled)
+        #expect(controller.window?.contentLayoutRect.height == 690)
     }
 
     @Test

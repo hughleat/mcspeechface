@@ -37,6 +37,8 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
     private var modelFieldRow: NSView?
     private let connectionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let connectionDetail = NSTextField(wrappingLabelWithString: "")
+    private let conversationPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let conversationDetail = NSTextField(wrappingLabelWithString: "")
     private let accessPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let accessDetail = NSTextField(wrappingLabelWithString: "")
     private let effortPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -69,13 +71,13 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         self.defaults = defaults
         self.service = service
         let panel = CommandLineCorrectionPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: preset == .custom ? 610 : 430),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: preset == .custom ? 610 : 485),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         panel.title = preset == .custom ? "Custom Correction Command" : "\(preset.title) Correction"
-        panel.minSize = NSSize(width: 580, height: preset == .custom ? 500 : 420)
+        panel.minSize = NSSize(width: 580, height: preset == .custom ? 500 : 455)
         panel.center()
         super.init(window: panel)
         panel.delegate = self
@@ -148,6 +150,16 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         connectionDetail.textColor = .secondaryLabelColor
         connectionDetail.font = .systemFont(ofSize: 11)
 
+        for mode in CorrectionProviderConversationMode.allCases {
+            conversationPopup.addItem(withTitle: mode.title)
+            conversationPopup.lastItem?.representedObject = mode.rawValue
+        }
+        conversationPopup.target = self
+        conversationPopup.action = #selector(controlsChanged)
+        conversationPopup.setAccessibilityLabel("Correction conversation")
+        conversationDetail.textColor = .secondaryLabelColor
+        conversationDetail.font = .systemFont(ofSize: 11)
+
         for profile in CorrectionProviderAccessProfile.allCases {
             accessPopup.addItem(withTitle: profile.title)
             accessPopup.lastItem?.representedObject = profile.rawValue
@@ -208,8 +220,9 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         commandPreviewScroll.heightAnchor.constraint(equalToConstant: 92).isActive = true
 
         let privacy = NSTextField(wrappingLabelWithString:
-            "Transcripts may be sent to \(preset.title). Corrections are validated and shown for "
-                + "review before pasting. Access controls apply only to correction sessions."
+            "Transcripts and any app or website details in your prompt may be sent to \(preset.title). "
+                + "Continued conversations can also retain earlier corrections until the provider stops. "
+                + "Corrections are validated and shown for review before pasting."
         )
         privacy.textColor = .secondaryLabelColor
         privacy.font = .systemFont(ofSize: 11)
@@ -253,6 +266,8 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
                 labeledRow("Effort", effortPopup),
                 labeledRow("Connection", connectionPopup),
                 connectionDetail,
+                labeledRow("Conversation", conversationPopup),
+                conversationDetail,
                 labeledRow("Access", accessPopup),
                 accessDetail,
                 labeledRow("Stop after", idlePopup),
@@ -311,6 +326,7 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
         customModelSelected = !modelOptions.contains(where: { $0.id == configuration.model })
         populateModelPopup(selecting: configuration.model, preferCustom: customModelSelected)
         select(connectionPopup, rawValue: configuration.connectionMode.rawValue)
+        select(conversationPopup, rawValue: configuration.conversationMode.rawValue)
         select(accessPopup, rawValue: configuration.accessProfile.rawValue)
         select(effortPopup, rawValue: configuration.reasoningEffort.rawValue)
         idlePopup.selectItem(withTag: configuration.idleTimeoutSeconds)
@@ -599,6 +615,7 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
             connectionMode: selectedConnectionMode,
             accessProfile: selectedAccessProfile,
             reasoningEffort: selectedEffort,
+            conversationMode: selectedConversationMode,
             idleTimeoutSeconds: idlePopup.selectedTag()
         )
     }
@@ -609,6 +626,10 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
 
     private var selectedAccessProfile: CorrectionProviderAccessProfile {
         selected(accessPopup) ?? .correctionOnly
+    }
+
+    private var selectedConversationMode: CorrectionProviderConversationMode {
+        selected(conversationPopup) ?? .fresh
     }
 
     private var selectedEffort: CorrectionProviderReasoningEffort {
@@ -643,6 +664,10 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
             + (usesExplicitArguments
                 ? " Custom arguments set access and effort; clear them to use those controls."
                 : "")
+        conversationDetail.stringValue = usesCommandLine
+            ? "Command-line mode always starts a fresh provider process"
+            : selectedConversationMode.detail
+        conversationPopup.isEnabled = !usesCommandLine
         accessPopup.isEnabled = !usesExplicitArguments
         effortPopup.isEnabled = !usesExplicitArguments
         argumentsSection.isHidden = !usesCommandLine
@@ -657,8 +682,8 @@ final class CommandLineCorrectionEditorWindowController: NSWindowController, NSW
     private func resizePanelIfNeeded(usesCommandLine: Bool) {
         guard preset != .custom, lastUsesCommandLine != usesCommandLine, let window else { return }
         lastUsesCommandLine = usesCommandLine
-        let targetHeight: CGFloat = usesCommandLine ? 650 : 430
-        window.minSize = NSSize(width: 580, height: usesCommandLine ? 560 : 420)
+        let targetHeight: CGFloat = usesCommandLine ? 690 : 485
+        window.minSize = NSSize(width: 580, height: usesCommandLine ? 600 : 455)
         window.setContentSize(NSSize(width: window.contentLayoutRect.width, height: targetHeight))
     }
 

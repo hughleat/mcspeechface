@@ -27,6 +27,7 @@ public struct CodexAppServerConfiguration: Equatable, Sendable {
     public let model: String
     public let reasoningEffort: String?
     public let access: CodexCorrectionAccess
+    public let continuesConversation: Bool
     public let idleTimeout: TimeInterval
 
     public init(
@@ -34,12 +35,14 @@ public struct CodexAppServerConfiguration: Equatable, Sendable {
         model: String,
         reasoningEffort: String?,
         access: CodexCorrectionAccess,
+        continuesConversation: Bool = false,
         idleTimeout: TimeInterval
     ) {
         self.executablePath = executablePath
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.access = access
+        self.continuesConversation = continuesConversation
         self.idleTimeout = idleTimeout
     }
 }
@@ -141,11 +144,16 @@ public actor CodexAppServerTranscriptEditor: PersistentTranscriptEditor {
             userPrompt: TranscriptEditingPrompt.request(request),
             progressHandler: progressHandler
         )
-        return try CommandLineTranscriptEditor.decision(
-            from: output,
-            originalText: request.text,
-            requiresGrounding: false
-        )
+        do {
+            return try CommandLineTranscriptEditor.decision(
+                from: output,
+                originalText: request.text,
+                requiresGrounding: false
+            )
+        } catch {
+            if configuration.continuesConversation { await client.resetConversation() }
+            throw error
+        }
     }
 }
 
@@ -183,6 +191,8 @@ private actor CodexAppServerClient {
     private var activeCorrection: ActiveCorrection?
     private var preparation: Preparation?
     private var correctionReserved = false
+    private var conversationThreadID: String?
+    private var conversationSystemPrompt: String?
     private var idleTask: Task<Void, Never>?
     private var lifecycleGeneration = 0
 
@@ -343,15 +353,10 @@ private actor CodexAppServerClient {
                 access: configuration.access,
                 runtimeDirectory: runtimeDirectory
             )
-            let threadResult = try await request(
-                method: "thread/start",
-                params: threadParameters(systemPrompt: systemPrompt, cwd: directory.path),
-                timeout: 20
+            let threadID = try await correctionThreadID(
+                systemPrompt: systemPrompt,
+                directory: directory
             )
-            guard let thread = threadResult["thread"] as? [String: Any],
-                  let threadID = thread["id"] as? String else {
-                throw CodexAppServerError.invalidResponse
-            }
             activeCorrection = ActiveCorrection(
                 threadID: threadID,
                 progressHandler: progressHandler
@@ -374,6 +379,8 @@ private actor CodexAppServerClient {
             scheduleIdleStop()
             return result
         } catch {
+            conversationThreadID = nil
+            conversationSystemPrompt = nil
             let turnMayBeRunning = activeCorrection?.turnID == nil && activeCorrection != nil
             activeCorrection?.timeoutTask?.cancel()
             activeCorrection = nil
@@ -389,12 +396,39 @@ private actor CodexAppServerClient {
         }
     }
 
+    private func correctionThreadID(systemPrompt: String, directory: URL) async throws -> String {
+        if configuration.continuesConversation,
+           conversationSystemPrompt == systemPrompt,
+           let conversationThreadID {
+            return conversationThreadID
+        }
+        let threadResult = try await request(
+            method: "thread/start",
+            params: threadParameters(systemPrompt: systemPrompt, cwd: directory.path),
+            timeout: 20
+        )
+        guard let thread = threadResult["thread"] as? [String: Any],
+              let threadID = thread["id"] as? String else {
+            throw CodexAppServerError.invalidResponse
+        }
+        if configuration.continuesConversation {
+            conversationThreadID = threadID
+            conversationSystemPrompt = systemPrompt
+        }
+        return threadID
+    }
+
     func stop() {
         preparation?.task.cancel()
         preparation = nil
         lifecycleGeneration += 1
         stopProcess(failure: CancellationError())
         state = .stopped
+    }
+
+    func resetConversation() {
+        conversationThreadID = nil
+        conversationSystemPrompt = nil
     }
 
     private func request(
@@ -710,6 +744,8 @@ private actor CodexAppServerClient {
         activeCorrection?.continuation?.resume(throwing: failure)
         activeCorrection?.timeoutTask?.cancel()
         activeCorrection = nil
+        conversationThreadID = nil
+        conversationSystemPrompt = nil
         outputPump?.stop()
         errorDrain?.stop()
         try? input?.close()

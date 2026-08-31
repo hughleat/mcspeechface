@@ -1,10 +1,67 @@
 import AppKit
 import ApplicationServices
 import Carbon
+import McSpeechfaceEditing
 
 struct ApplicationIdentity {
     let bundleIdentifier: String?
     let applicationName: String?
+
+    func transcriptEditingContext(
+        browserContext: TranscriptEditingDestinationContext? = nil
+    ) -> TranscriptEditingDestinationContext {
+        TranscriptEditingDestinationContext(
+            applicationName: applicationName,
+            applicationBundleIdentifier: bundleIdentifier,
+            browserHost: browserContext?.browserHost,
+            browserURL: browserContext?.browserURL
+        )
+    }
+}
+
+struct DestinationCapture {
+    let session: DestinationSession?
+    let identity: ApplicationIdentity?
+    let browserLookup: BrowserDestinationContextLookup?
+}
+
+// AXUIElement is a retained Core Foundation reference and each lookup is timeout-bounded.
+struct BrowserDestinationContextLookup: @unchecked Sendable {
+    let focusedElement: AXUIElement?
+    let windowElement: AXUIElement?
+    let applicationElement: AXUIElement
+
+    func resolve(includeFullURL: Bool) -> TranscriptEditingDestinationContext? {
+        var element = focusedElement
+        for _ in 0..<12 {
+            guard !Task.isCancelled, let current = element else { break }
+            AXUIElementSetMessagingTimeout(current, 0.05)
+            let context = TranscriptEditingDestinationContext(
+                browserURL: stringAttribute(kAXDocumentAttribute as CFString, of: current)
+            )
+            if context.browserHost != nil {
+                return includeFullURL
+                    ? context
+                    : TranscriptEditingDestinationContext(browserHost: context.browserHost)
+            }
+            let parent = elementAttribute(kAXParentAttribute as CFString, of: current)
+            if let parent, CFEqual(parent, current) { break }
+            element = parent
+        }
+        for candidate in [windowElement, Optional(applicationElement)].compactMap({ $0 }) {
+            guard !Task.isCancelled else { return nil }
+            AXUIElementSetMessagingTimeout(candidate, 0.05)
+            let context = TranscriptEditingDestinationContext(
+                browserURL: stringAttribute(kAXDocumentAttribute as CFString, of: candidate)
+            )
+            if context.browserHost != nil {
+                return includeFullURL
+                    ? context
+                    : TranscriptEditingDestinationContext(browserHost: context.browserHost)
+            }
+        }
+        return nil
+    }
 }
 
 struct PasteObservation: Sendable {
@@ -256,34 +313,51 @@ final class DestinationTracker: NSObject {
     }
 
     func capture(allowMcSpeechface: Bool = false) -> DestinationSession? {
-        guard let application = currentApplication(allowMcSpeechface: allowMcSpeechface) else { return nil }
-
-        let appElement = AXUIElementCreateApplication(application.processIdentifier)
-        AXUIElementSetMessagingTimeout(appElement, 0.05)
-        let focusedElement = currentFocusedElement(
-            for: appElement,
-            processIdentifier: application.processIdentifier
-        )
-        // Some Electron editors expose their focused window but not the focused child.
-        guard let window = currentFocusedWindow(
-            for: appElement,
-            focusedElement: focusedElement
-        )
-        else { return nil }
-
-        return DestinationSession(
-            application: application,
-            applicationElement: appElement,
-            windowElement: window,
-            focusedElement: focusedElement
-        )
+        captureContext(allowMcSpeechface: allowMcSpeechface).session
     }
 
-    func captureApplicationIdentity() -> ApplicationIdentity? {
-        guard let application = currentApplication(allowMcSpeechface: false) else { return nil }
-        return ApplicationIdentity(
+    func captureContext(
+        allowMcSpeechface: Bool = false,
+        includeIdentity: Bool = false,
+        includeBrowserContext: Bool = false
+    ) -> DestinationCapture {
+        guard let application = currentApplication(allowMcSpeechface: allowMcSpeechface) else {
+            return DestinationCapture(session: nil, identity: nil, browserLookup: nil)
+        }
+        let applicationElement = AXUIElementCreateApplication(application.processIdentifier)
+        AXUIElementSetMessagingTimeout(applicationElement, 0.05)
+        let focusedElement = currentFocusedElement(
+            for: applicationElement,
+            processIdentifier: application.processIdentifier
+        )
+        let focusedWindow = currentFocusedWindow(
+            for: applicationElement,
+            focusedElement: focusedElement
+        )
+        // Some Electron editors expose their focused window but not the focused child.
+        let session = focusedWindow.map {
+            DestinationSession(
+                application: application,
+                applicationElement: applicationElement,
+                windowElement: $0,
+                focusedElement: focusedElement
+            )
+        }
+        let identity = includeIdentity ? ApplicationIdentity(
             bundleIdentifier: application.bundleIdentifier,
             applicationName: application.localizedName
+        ) : nil
+        let browserLookup = includeIdentity && includeBrowserContext
+            ? BrowserDestinationContextLookup(
+                focusedElement: focusedElement,
+                windowElement: focusedWindow,
+                applicationElement: applicationElement
+            )
+            : nil
+        return DestinationCapture(
+            session: session,
+            identity: identity,
+            browserLookup: browserLookup
         )
     }
 

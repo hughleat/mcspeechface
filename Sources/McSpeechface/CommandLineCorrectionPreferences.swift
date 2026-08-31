@@ -20,6 +20,27 @@ enum CorrectionProviderConnectionMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+enum CorrectionProviderConversationMode: String, Codable, CaseIterable, Sendable {
+    case fresh
+    case continueUntilStopped
+
+    var title: String {
+        switch self {
+        case .fresh: "Fresh for each correction"
+        case .continueUntilStopped: "Continue until stopped"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .fresh:
+            "Each correction starts without earlier transcript context"
+        case .continueUntilStopped:
+            "Reset context on Stop, timeout, settings or system prompt change, or app exit"
+        }
+    }
+}
+
 enum CorrectionProviderAccessProfile: String, Codable, CaseIterable, Sendable {
     case correctionOnly
     case readOnly
@@ -166,6 +187,7 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
     var connectionMode: CorrectionProviderConnectionMode
     var accessProfile: CorrectionProviderAccessProfile
     var reasoningEffort: CorrectionProviderReasoningEffort
+    var conversationMode: CorrectionProviderConversationMode
     var idleTimeoutSeconds: Int
 
     var isExecutableAvailable: Bool {
@@ -188,6 +210,7 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         connectionMode: CorrectionProviderConnectionMode = .commandLine,
         accessProfile: CorrectionProviderAccessProfile = .correctionOnly,
         reasoningEffort: CorrectionProviderReasoningEffort = .automatic,
+        conversationMode: CorrectionProviderConversationMode = .fresh,
         idleTimeoutSeconds: Int = 600
     ) {
         self.preset = preset
@@ -197,6 +220,7 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
         self.connectionMode = preset == .custom ? .commandLine : connectionMode
         self.accessProfile = accessProfile
         self.reasoningEffort = reasoningEffort
+        self.conversationMode = conversationMode
         self.idleTimeoutSeconds = idleTimeoutSeconds
     }
 
@@ -385,7 +409,7 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case preset, executablePath, model, arguments, connectionMode, accessProfile
-        case reasoningEffort, idleTimeoutSeconds
+        case reasoningEffort, conversationMode, idleTimeoutSeconds
     }
 
     init(from decoder: Decoder) throws {
@@ -406,6 +430,10 @@ struct CommandLineCorrectionConfiguration: Codable, Equatable, Sendable {
             CorrectionProviderReasoningEffort.self,
             forKey: .reasoningEffort
         ) ?? .automatic
+        conversationMode = try container.decodeIfPresent(
+            CorrectionProviderConversationMode.self,
+            forKey: .conversationMode
+        ) ?? .fresh
         idleTimeoutSeconds = try container.decodeIfPresent(
             Int.self,
             forKey: .idleTimeoutSeconds

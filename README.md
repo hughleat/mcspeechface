@@ -142,15 +142,25 @@ complete system and user prompt templates, compare providers on a saved transcri
 and choose how long downloaded local models remain loaded for faster follow-up
 repairs. Correction models are optional and are never downloaded automatically.
 
+Correction prompts can use `{appName}`, `{appBundleID}`, `{browserHost}`,
+`{browserURL}`, and the concise `{destinationLine}`. The default places the
+destination app and website host inside labelled `<destination>` metadata, when
+macOS Accessibility exposes them, but does not include the full browser URL.
+Destination values are escaped before prompt insertion. Browser context is collected
+in the background while you dictate. Codex and Claude
+can either start fresh for every correction or continue one conversation. It resets
+when the provider is stopped, its idle
+timeout expires, settings or the rendered system prompt change, or McSpeechface quits.
+
 ## Privacy
 
 - **Local transcription:** Parakeet and Whisper run on your Mac. McSpeechface requires Apple Speech to use its on-device mode; if that mode is unavailable for a language, McSpeechface will not use Apple Speech for it.
 - **Temporary audio:** Microphone files are normally deleted when transcription ends unless **Keep recordings** is enabled. Interrupted-run leftovers are removed at the next launch.
-- **History off by default:** McSpeechface does not save transcript history or recordings on a new installation. If enabled, retention defaults to 30 days and can be set to 1, 7, 30, or 90 days, or forever, in **Settings > Privacy**. Retained audio can consume substantial disk space.
+- **History off by default:** McSpeechface does not save transcript history or recordings on a new installation. If enabled, retention defaults to 30 days and can be set to 1, 7, 30, or 90 days, or forever, in **Settings > Privacy**. Destination app identity is stored with saved history; browser URLs are not. Retained audio can consume substantial disk space.
 - **Clipboard:** Successful auto-paste temporarily uses the clipboard, then restores its previous contents when McSpeechface can confirm the paste and the clipboard has not changed meanwhile. If auto-paste is off or fails, the transcript stays on the clipboard and may be available to other software or macOS Universal Clipboard.
 - **No tracking:** McSpeechface has no accounts, telemetry, advertising, or built-in crash reporting.
 - **Limited network use:** McSpeechface connects when you request a model download and, by default, checks GitHub Releases once a day for updates. Automatic checks can be turned off in **Settings > About**.
-- **Optional external correction:** Local correction models and Apple Intelligence keep transcript text on your Mac. If you explicitly choose Codex, Claude, or a custom command as the correction provider, that provider may send the transcript and correction prompts to its configured service. McSpeechface labels these providers as potentially off-device; their own terms and privacy policies apply.
+- **Optional external correction:** Local correction models and Apple Intelligence keep transcript text on your Mac. If you explicitly choose Codex, Claude, or a custom command as the correction provider, that provider may send the transcript, correction prompts, and any destination placeholders used by those prompts to its configured service. Continued conversations may also retain earlier corrections until the provider stops. McSpeechface labels these providers as potentially off-device; their own terms and privacy policies apply.
 
 Parakeet and speaker-identification models are fetched from public Hugging Face
 repositories through FluidAudio; Whisper models come from Argmax's public
@@ -213,6 +223,12 @@ provider is ready, downloading, loaded, or unavailable. A **Stop** action unload
 a running local model immediately; the idle timeout controls automatic unloading.
 External providers may send transcript text and prompts off-device, so McSpeechface
 labels them before selection.
+
+Codex and Claude offer a **Conversation** choice. **Fresh for each correction** is
+the privacy-conscious default. **Continue until stopped** lets you teach the active
+provider session personal correction rules over several dictations; Stop, idle
+timeout, settings or rendered system prompt changes, and quitting all reset that
+context.
 
 ## Do More
 

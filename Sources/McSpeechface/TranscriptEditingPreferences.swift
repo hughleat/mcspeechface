@@ -363,6 +363,7 @@ actor TranscriptEditingService {
     func proposeEdits(
         to response: TranscriptionResponse,
         model: TranscriptEditingModel? = nil,
+        destination: TranscriptEditingDestinationContext? = nil,
         additionalInstructions: String? = nil,
         progressHandler: (@Sendable (TranscriptEditingProgress) -> Void)? = nil
     ) async throws -> TranscriptEditingResult {
@@ -370,6 +371,7 @@ actor TranscriptEditingService {
         return try await proposeEdits(
             to: response,
             snapshot: executionSnapshot(for: selection),
+            destination: destination,
             additionalInstructions: additionalInstructions,
             progressHandler: progressHandler
         )
@@ -378,6 +380,7 @@ actor TranscriptEditingService {
     func proposeEdits(
         to response: TranscriptionResponse,
         snapshot: TranscriptEditingExecutionSnapshot,
+        destination: TranscriptEditingDestinationContext? = nil,
         additionalInstructions: String? = nil,
         progressHandler: (@Sendable (TranscriptEditingProgress) -> Void)? = nil
     ) async throws -> TranscriptEditingResult {
@@ -398,6 +401,7 @@ actor TranscriptEditingService {
         let request = Self.request(
             for: response,
             promptConfiguration: promptConfiguration,
+            destination: destination,
             additionalInstructions: additionalInstructions
         )
         let decision: TranscriptEditDecision
@@ -624,11 +628,22 @@ actor TranscriptEditingService {
     static func request(
         for response: TranscriptionResponse,
         promptConfiguration: TranscriptEditingPromptConfiguration,
+        destination: TranscriptEditingDestinationContext? = nil,
         additionalInstructions: String? = nil
     ) -> TranscriptEditRequest {
-        TranscriptEditRequest(
+        let responseDestination: TranscriptEditingDestinationContext? =
+            if response.origin_app_name != nil || response.origin_bundle_id != nil {
+                TranscriptEditingDestinationContext(
+                    applicationName: response.origin_app_name,
+                    applicationBundleIdentifier: response.origin_bundle_id
+                )
+            } else {
+                nil
+            }
+        return TranscriptEditRequest(
             text: response.text,
             language: response.language,
+            destination: destination ?? responseDestination,
             additionalInstructions: additionalInstructions,
             promptConfiguration: promptConfiguration
         )
@@ -806,6 +821,7 @@ actor TranscriptEditingService {
                 executablePath: saved.executablePath,
                 arguments: arguments,
                 systemPrompt: promptConfiguration.renderedSystemPrompt(language: nil),
+                continuesConversation: saved.conversationMode == .continueUntilStopped,
                 idleTimeout: TimeInterval(saved.idleTimeoutSeconds)
             )
             return ClaudeStreamingTranscriptEditor(configuration: configuration)
@@ -843,6 +859,7 @@ actor TranscriptEditingService {
             model: saved.model,
             reasoningEffort: saved.reasoningEffort.commandLineValue,
             access: saved.codexAccess,
+            continuesConversation: saved.conversationMode == .continueUntilStopped,
             idleTimeout: TimeInterval(saved.idleTimeoutSeconds)
         )
     }

@@ -24,17 +24,20 @@ public struct ClaudeStreamingConfiguration: Equatable, Sendable {
     public let executablePath: String
     public let arguments: [String]
     public let systemPrompt: String
+    public let continuesConversation: Bool
     public let idleTimeout: TimeInterval
 
     public init(
         executablePath: String,
         arguments: [String],
         systemPrompt: String = TranscriptEditingPromptConfiguration.default.systemPrompt,
+        continuesConversation: Bool = false,
         idleTimeout: TimeInterval
     ) {
         self.executablePath = executablePath
         self.arguments = arguments
         self.systemPrompt = systemPrompt
+        self.continuesConversation = continuesConversation
         self.idleTimeout = idleTimeout
     }
 }
@@ -85,11 +88,16 @@ public actor ClaudeStreamingTranscriptEditor: PersistentTranscriptEditor {
             userPrompt: TranscriptEditingPrompt.request(request),
             progressHandler: progressHandler
         )
-        return try CommandLineTranscriptEditor.decision(
-            from: output,
-            originalText: request.text,
-            requiresGrounding: false
-        )
+        do {
+            return try CommandLineTranscriptEditor.decision(
+                from: output,
+                originalText: request.text,
+                requiresGrounding: false
+            )
+        } catch {
+            if configuration.continuesConversation { await client.resetConversation() }
+            throw error
+        }
     }
 }
 
@@ -204,7 +212,7 @@ private actor ClaudeStreamingClient {
 
     func prepareForCorrection(systemPrompt: String) async throws {
         try await prepare(systemPrompt: systemPrompt)
-        guard completedCorrections > 0 else { return }
+        guard !configuration.continuesConversation, completedCorrections > 0 else { return }
         stop()
         try await prepare(systemPrompt: systemPrompt)
     }
@@ -245,6 +253,10 @@ private actor ClaudeStreamingClient {
         lifecycleGeneration += 1
         stopProcess(failure: CancellationError())
         state = .stopped
+    }
+
+    func resetConversation() {
+        stop()
     }
 
     private func sendAndWait(

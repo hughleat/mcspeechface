@@ -28,6 +28,10 @@ The current implementation can:
 - preserve the verbatim transcript alongside any proposed revision;
 - present changes for review rather than silently rewriting uncertain text;
 - distinguish editing instructions from words intended for the document;
+- optionally provide the destination app and browser host through visible,
+  user-editable prompt placeholders;
+- optionally continue a Codex or Claude correction conversation until its
+  provider is stopped;
 - make accepting the unchanged transcript quick and predictable;
 - work without changing the existing transcription engines; and
 - remain optional so it does not add latency or disk use for other users.
@@ -40,8 +44,8 @@ The next work is to evaluate and refine that foundation:
 - improve instruction-following for paragraphs, Markdown, and spoken revisions;
 - make review changes and explanations easier to inspect at a glance;
 - validate imported local GGUF files without trusting filenames or mutable URLs;
-- explore bounded context from earlier dictations only when the user explicitly
-  chooses it; and
+- evaluate whether continued correction conversations need clearer context and
+  privacy indicators; and
 - keep correction completely out of the fast path when it is off or on request.
 
 Questions still to answer:
